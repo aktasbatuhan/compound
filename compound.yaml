@@ -1,0 +1,116 @@
+version: 1
+
+artifacts_dir: artifacts
+manifests_dir: benchmarks/manifests
+seed: 20260717
+
+budget:
+  paid_runs_enabled: true
+  hard_limit_usd: 25.00
+  smoke_cases_per_benchmark: 2
+
+providers:
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+  doubleword:
+    base_url: https://api.doubleword.ai/v1
+    api_key_env: DOUBLEWORD_API_KEY
+
+models:
+  frontier:
+    - id: openai/gpt-5.6-sol
+      provider: openrouter
+      role: reference
+    - id: anthropic/claude-opus-4.8
+      provider: openrouter
+      role: reference
+  candidates:
+    - id: thinkingmachines/Inkling-NVFP4
+      provider: doubleword
+      role: candidate
+    - id: zai-org/GLM-5.2-FP8
+      provider: doubleword
+      role: candidate
+    - id: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
+      provider: doubleword
+      role: candidate
+    - id: deepseek-ai/DeepSeek-V4-Flash
+      provider: doubleword
+      role: candidate
+
+pricing_usd_per_million_tokens:
+  openai/gpt-5.6-sol:
+    input: 5.00
+    output: 30.00
+  anthropic/claude-opus-4.8:
+    input: 5.00
+    output: 25.00
+  zai-org/GLM-5.2-FP8:
+    input: 1.40
+    output: 4.40
+  nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4:
+    input: 0.50
+    output: 2.50
+
+# Doubleword's Responses API service_tier=flex uses the published async rates.
+# Keep these separate from the synchronous/default route prices above.
+flex_pricing_usd_per_million_tokens:
+  thinkingmachines/Inkling-NVFP4:
+    input: 0.90
+    output: 3.00
+  zai-org/GLM-5.2-FP8:
+    input: 0.70
+    output: 2.25
+  nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4:
+    input: 0.38
+    output: 1.65
+  deepseek-ai/DeepSeek-V4-Flash:
+    input: 0.07
+    output: 0.14
+
+benchmarks:
+  ds1000:
+    task_key: data_processing
+    revision: b39aab71da6d23ef8d3cac59a7c5f834516ab334
+    sample_count: 30
+    strata: [numpy, pandas, scipy, pytorch, tensorflow, sklearn, matplotlib]
+    partitions:
+      optimizer_train: 15
+      optimizer_validation: 5
+      decision_test: 10
+  bfcl:
+    task_key: tool_calling
+    revision: f7cf7359b7ac615a0b294831c5ba2bc95ee4a000
+    package: bfcl-eval==2025.12.17
+    sample_count: 30
+    strata: [single_turn, multi_turn]
+    partitions:
+      optimizer_train: 15
+      optimizer_validation: 5
+      decision_test: 10
+  tau_bench:
+    task_key: conversational_agent
+    revision: 07d5b3340b2d016df8c36c9c1a6376ef9f29155d
+    sample_count: 20
+    strata: [retail, airline, telecom]
+    trials: 3
+    max_steps: 30
+    agent_max_tokens: 4096
+    user_max_tokens: 2048
+    partitions:
+      optimizer_train: 10
+      optimizer_validation: 4
+      decision_test: 6
+
+optimization:
+  algorithm: gepa
+  mutable_components: [system_prompt]
+  max_metric_calls: 120
+  selection: pareto
+  require_textual_feedback: true
+
+gate:
+  metric: task_success
+  max_regression: 0.02
+  require_decision_test: true

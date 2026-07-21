@@ -1,0 +1,247 @@
+{
+  "benchmark": "bfcl",
+  "cases": [
+    {
+      "case_id": "multi_turn_base_20",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "optimizer_train",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "simple_python_93",
+      "metadata": {
+        "category": "simple_python"
+      },
+      "partition": "optimizer_train",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_157",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "optimizer_train",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "multiple_83",
+      "metadata": {
+        "category": "multiple"
+      },
+      "partition": "optimizer_train",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_23",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "optimizer_train",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "simple_python_345",
+      "metadata": {
+        "category": "simple_python"
+      },
+      "partition": "optimizer_train",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_106",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "optimizer_train",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "multiple_1",
+      "metadata": {
+        "category": "multiple"
+      },
+      "partition": "optimizer_train",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_97",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "optimizer_train",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "multiple_80",
+      "metadata": {
+        "category": "multiple"
+      },
+      "partition": "optimizer_train",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_178",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "optimizer_train",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "multiple_127",
+      "metadata": {
+        "category": "multiple"
+      },
+      "partition": "optimizer_train",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_5",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "optimizer_train",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "simple_python_302",
+      "metadata": {
+        "category": "simple_python"
+      },
+      "partition": "optimizer_train",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_61",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "optimizer_train",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "simple_python_289",
+      "metadata": {
+        "category": "simple_python"
+      },
+      "partition": "optimizer_validation",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_176",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "optimizer_validation",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "simple_python_100",
+      "metadata": {
+        "category": "simple_python"
+      },
+      "partition": "optimizer_validation",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_140",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "optimizer_validation",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "simple_python_145",
+      "metadata": {
+        "category": "simple_python"
+      },
+      "partition": "optimizer_validation",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_87",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "decision_test",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "parallel_108",
+      "metadata": {
+        "category": "parallel"
+      },
+      "partition": "decision_test",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_128",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "decision_test",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "simple_python_232",
+      "metadata": {
+        "category": "simple_python"
+      },
+      "partition": "decision_test",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_120",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "decision_test",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "simple_python_286",
+      "metadata": {
+        "category": "simple_python"
+      },
+      "partition": "decision_test",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_170",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "decision_test",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "multiple_176",
+      "metadata": {
+        "category": "multiple"
+      },
+      "partition": "decision_test",
+      "stratum": "single_turn"
+    },
+    {
+      "case_id": "multi_turn_base_138",
+      "metadata": {
+        "category": "multi_turn_base"
+      },
+      "partition": "decision_test",
+      "stratum": "multi_turn"
+    },
+    {
+      "case_id": "simple_python_103",
+      "metadata": {
+        "category": "simple_python"
+      },
+      "partition": "decision_test",
+      "stratum": "single_turn"
+    }
+  ],
+  "revision": "f7cf7359b7ac615a0b294831c5ba2bc95ee4a000",
+  "seed": 20260717
+}

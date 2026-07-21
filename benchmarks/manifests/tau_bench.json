@@ -1,0 +1,187 @@
+{
+  "benchmark": "tau_bench",
+  "cases": [
+    {
+      "case_id": "airline:0",
+      "metadata": {
+        "domain": "airline",
+        "source_task_id": "0"
+      },
+      "partition": "optimizer_train",
+      "stratum": "airline"
+    },
+    {
+      "case_id": "retail:20",
+      "metadata": {
+        "domain": "retail",
+        "source_task_id": "20"
+      },
+      "partition": "optimizer_train",
+      "stratum": "retail"
+    },
+    {
+      "case_id": "telecom:[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_app_storage_permission|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]",
+      "metadata": {
+        "domain": "telecom",
+        "source_task_id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_app_storage_permission|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]"
+      },
+      "partition": "optimizer_train",
+      "stratum": "telecom"
+    },
+    {
+      "case_id": "airline:30",
+      "metadata": {
+        "domain": "airline",
+        "source_task_id": "30"
+      },
+      "partition": "optimizer_train",
+      "stratum": "airline"
+    },
+    {
+      "case_id": "retail:98",
+      "metadata": {
+        "domain": "retail",
+        "source_task_id": "98"
+      },
+      "partition": "optimizer_train",
+      "stratum": "retail"
+    },
+    {
+      "case_id": "telecom:[mms_issue]bad_network_preference|bad_wifi_calling|break_apn_mms_setting|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+      "metadata": {
+        "domain": "telecom",
+        "source_task_id": "[mms_issue]bad_network_preference|bad_wifi_calling|break_apn_mms_setting|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Hard]"
+      },
+      "partition": "optimizer_train",
+      "stratum": "telecom"
+    },
+    {
+      "case_id": "airline:6",
+      "metadata": {
+        "domain": "airline",
+        "source_task_id": "6"
+      },
+      "partition": "optimizer_train",
+      "stratum": "airline"
+    },
+    {
+      "case_id": "retail:70",
+      "metadata": {
+        "domain": "retail",
+        "source_task_id": "70"
+      },
+      "partition": "optimizer_train",
+      "stratum": "retail"
+    },
+    {
+      "case_id": "telecom:[mms_issue]bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_storage_permission|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+      "metadata": {
+        "domain": "telecom",
+        "source_task_id": "[mms_issue]bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_storage_permission|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:Hard]"
+      },
+      "partition": "optimizer_train",
+      "stratum": "telecom"
+    },
+    {
+      "case_id": "airline:22",
+      "metadata": {
+        "domain": "airline",
+        "source_task_id": "22"
+      },
+      "partition": "optimizer_train",
+      "stratum": "airline"
+    },
+    {
+      "case_id": "retail:10",
+      "metadata": {
+        "domain": "retail",
+        "source_task_id": "10"
+      },
+      "partition": "optimizer_validation",
+      "stratum": "retail"
+    },
+    {
+      "case_id": "telecom:[mms_issue]break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Easy]",
+      "metadata": {
+        "domain": "telecom",
+        "source_task_id": "[mms_issue]break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Easy]"
+      },
+      "partition": "optimizer_validation",
+      "stratum": "telecom"
+    },
+    {
+      "case_id": "airline:46",
+      "metadata": {
+        "domain": "airline",
+        "source_task_id": "46"
+      },
+      "partition": "optimizer_validation",
+      "stratum": "airline"
+    },
+    {
+      "case_id": "retail:33",
+      "metadata": {
+        "domain": "retail",
+        "source_task_id": "33"
+      },
+      "partition": "optimizer_validation",
+      "stratum": "retail"
+    },
+    {
+      "case_id": "telecom:[mms_issue]airplane_mode_on|bad_wifi_calling|break_apn_mms_setting|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+      "metadata": {
+        "domain": "telecom",
+        "source_task_id": "[mms_issue]airplane_mode_on|bad_wifi_calling|break_apn_mms_setting|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]"
+      },
+      "partition": "decision_test",
+      "stratum": "telecom"
+    },
+    {
+      "case_id": "airline:40",
+      "metadata": {
+        "domain": "airline",
+        "source_task_id": "40"
+      },
+      "partition": "decision_test",
+      "stratum": "airline"
+    },
+    {
+      "case_id": "retail:92",
+      "metadata": {
+        "domain": "retail",
+        "source_task_id": "92"
+      },
+      "partition": "decision_test",
+      "stratum": "retail"
+    },
+    {
+      "case_id": "telecom:[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|data_mode_off|data_usage_exceeded|unseat_sim_card[PERSONA:Easy]",
+      "metadata": {
+        "domain": "telecom",
+        "source_task_id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|data_mode_off|data_usage_exceeded|unseat_sim_card[PERSONA:Easy]"
+      },
+      "partition": "decision_test",
+      "stratum": "telecom"
+    },
+    {
+      "case_id": "airline:41",
+      "metadata": {
+        "domain": "airline",
+        "source_task_id": "41"
+      },
+      "partition": "decision_test",
+      "stratum": "airline"
+    },
+    {
+      "case_id": "retail:101",
+      "metadata": {
+        "domain": "retail",
+        "source_task_id": "101"
+      },
+      "partition": "decision_test",
+      "stratum": "retail"
+    }
+  ],
+  "revision": "07d5b3340b2d016df8c36c9c1a6376ef9f29155d",
+  "seed": 20260717
+}

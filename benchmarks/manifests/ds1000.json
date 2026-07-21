@@ -1,0 +1,277 @@
+{
+  "benchmark": "ds1000",
+  "cases": [
+    {
+      "case_id": "ds1000_593",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 593
+      },
+      "partition": "optimizer_train",
+      "stratum": "matplotlib"
+    },
+    {
+      "case_id": "ds1000_428",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 428
+      },
+      "partition": "optimizer_train",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_164",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 164
+      },
+      "partition": "optimizer_train",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_938",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 938
+      },
+      "partition": "optimizer_train",
+      "stratum": "pytorch"
+    },
+    {
+      "case_id": "ds1000_783",
+      "metadata": {
+        "perturbation_type": "Semantic",
+        "problem_id": 783
+      },
+      "partition": "optimizer_train",
+      "stratum": "scipy"
+    },
+    {
+      "case_id": "ds1000_894",
+      "metadata": {
+        "perturbation_type": "Surface",
+        "problem_id": 894
+      },
+      "partition": "optimizer_train",
+      "stratum": "sklearn"
+    },
+    {
+      "case_id": "ds1000_671",
+      "metadata": {
+        "perturbation_type": "Surface",
+        "problem_id": 671
+      },
+      "partition": "optimizer_train",
+      "stratum": "tensorflow"
+    },
+    {
+      "case_id": "ds1000_626",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 626
+      },
+      "partition": "optimizer_train",
+      "stratum": "matplotlib"
+    },
+    {
+      "case_id": "ds1000_356",
+      "metadata": {
+        "perturbation_type": "Surface",
+        "problem_id": 356
+      },
+      "partition": "optimizer_train",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_144",
+      "metadata": {
+        "perturbation_type": "Surface",
+        "problem_id": 144
+      },
+      "partition": "optimizer_train",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_950",
+      "metadata": {
+        "perturbation_type": "Surface",
+        "problem_id": 950
+      },
+      "partition": "optimizer_train",
+      "stratum": "pytorch"
+    },
+    {
+      "case_id": "ds1000_784",
+      "metadata": {
+        "perturbation_type": "Surface",
+        "problem_id": 784
+      },
+      "partition": "optimizer_train",
+      "stratum": "scipy"
+    },
+    {
+      "case_id": "ds1000_872",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 872
+      },
+      "partition": "optimizer_train",
+      "stratum": "sklearn"
+    },
+    {
+      "case_id": "ds1000_695",
+      "metadata": {
+        "perturbation_type": "Semantic",
+        "problem_id": 695
+      },
+      "partition": "optimizer_train",
+      "stratum": "tensorflow"
+    },
+    {
+      "case_id": "ds1000_530",
+      "metadata": {
+        "perturbation_type": "Semantic",
+        "problem_id": 530
+      },
+      "partition": "optimizer_train",
+      "stratum": "matplotlib"
+    },
+    {
+      "case_id": "ds1000_304",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 304
+      },
+      "partition": "optimizer_validation",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_157",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 157
+      },
+      "partition": "optimizer_validation",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_984",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 984
+      },
+      "partition": "optimizer_validation",
+      "stratum": "pytorch"
+    },
+    {
+      "case_id": "ds1000_775",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 775
+      },
+      "partition": "optimizer_validation",
+      "stratum": "scipy"
+    },
+    {
+      "case_id": "ds1000_822",
+      "metadata": {
+        "perturbation_type": "Surface",
+        "problem_id": 822
+      },
+      "partition": "optimizer_validation",
+      "stratum": "sklearn"
+    },
+    {
+      "case_id": "ds1000_673",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 673
+      },
+      "partition": "decision_test",
+      "stratum": "tensorflow"
+    },
+    {
+      "case_id": "ds1000_657",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 657
+      },
+      "partition": "decision_test",
+      "stratum": "matplotlib"
+    },
+    {
+      "case_id": "ds1000_485",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 485
+      },
+      "partition": "decision_test",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_128",
+      "metadata": {
+        "perturbation_type": "Semantic",
+        "problem_id": 128
+      },
+      "partition": "decision_test",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_997",
+      "metadata": {
+        "perturbation_type": "Surface",
+        "problem_id": 997
+      },
+      "partition": "decision_test",
+      "stratum": "pytorch"
+    },
+    {
+      "case_id": "ds1000_765",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 765
+      },
+      "partition": "decision_test",
+      "stratum": "scipy"
+    },
+    {
+      "case_id": "ds1000_865",
+      "metadata": {
+        "perturbation_type": "Surface",
+        "problem_id": 865
+      },
+      "partition": "decision_test",
+      "stratum": "sklearn"
+    },
+    {
+      "case_id": "ds1000_666",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 666
+      },
+      "partition": "decision_test",
+      "stratum": "tensorflow"
+    },
+    {
+      "case_id": "ds1000_513",
+      "metadata": {
+        "perturbation_type": "Semantic",
+        "problem_id": 513
+      },
+      "partition": "decision_test",
+      "stratum": "matplotlib"
+    },
+    {
+      "case_id": "ds1000_474",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 474
+      },
+      "partition": "decision_test",
+      "stratum": "numpy"
+    }
+  ],
+  "revision": "b39aab71da6d23ef8d3cac59a7c5f834516ab334",
+  "seed": 20260717
+}

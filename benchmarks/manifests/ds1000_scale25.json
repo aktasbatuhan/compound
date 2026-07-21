@@ -1,0 +1,244 @@
+{
+  "benchmark": "ds1000",
+  "cases": [
+    {
+      "case_id": "ds1000_362",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 362
+      },
+      "partition": "optimizer_train",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_226",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 226
+      },
+      "partition": "optimizer_train",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_448",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 448
+      },
+      "partition": "optimizer_train",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_271",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 271
+      },
+      "partition": "optimizer_train",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_291",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 291
+      },
+      "partition": "optimizer_train",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_204",
+      "metadata": {
+        "perturbation_type": "Surface",
+        "problem_id": 204
+      },
+      "partition": "optimizer_train",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_505",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 505
+      },
+      "partition": "optimizer_train",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_25",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 25
+      },
+      "partition": "optimizer_train",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_321",
+      "metadata": {
+        "perturbation_type": "Semantic",
+        "problem_id": 321
+      },
+      "partition": "optimizer_train",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_124",
+      "metadata": {
+        "perturbation_type": "Semantic",
+        "problem_id": 124
+      },
+      "partition": "optimizer_train",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_331",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 331
+      },
+      "partition": "optimizer_train",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_86",
+      "metadata": {
+        "perturbation_type": "Semantic",
+        "problem_id": 86
+      },
+      "partition": "optimizer_train",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_451",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 451
+      },
+      "partition": "optimizer_validation",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_112",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 112
+      },
+      "partition": "optimizer_validation",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_417",
+      "metadata": {
+        "perturbation_type": "Semantic",
+        "problem_id": 417
+      },
+      "partition": "optimizer_validation",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_41",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 41
+      },
+      "partition": "optimizer_validation",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_395",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 395
+      },
+      "partition": "optimizer_validation",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_105",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 105
+      },
+      "partition": "optimizer_validation",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_421",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 421
+      },
+      "partition": "decision_test",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_9",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 9
+      },
+      "partition": "decision_test",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_363",
+      "metadata": {
+        "perturbation_type": "Origin",
+        "problem_id": 363
+      },
+      "partition": "decision_test",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_58",
+      "metadata": {
+        "perturbation_type": "Semantic",
+        "problem_id": 58
+      },
+      "partition": "decision_test",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_386",
+      "metadata": {
+        "perturbation_type": "Semantic",
+        "problem_id": 386
+      },
+      "partition": "decision_test",
+      "stratum": "numpy"
+    },
+    {
+      "case_id": "ds1000_261",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 261
+      },
+      "partition": "decision_test",
+      "stratum": "pandas"
+    },
+    {
+      "case_id": "ds1000_298",
+      "metadata": {
+        "perturbation_type": "Difficult-Rewrite",
+        "problem_id": 298
+      },
+      "partition": "decision_test",
+      "stratum": "numpy"
+    }
+  ],
+  "excluded_case_ids": [
+    "ds1000_128",
+    "ds1000_144",
+    "ds1000_157",
+    "ds1000_164",
+    "ds1000_304",
+    "ds1000_356",
+    "ds1000_428",
+    "ds1000_474",
+    "ds1000_485"
+  ],
+  "purpose": "fresh scaled recursive-optimization proof",
+  "revision": "b39aab71da6d23ef8d3cac59a7c5f834516ab334",
+  "seed": 20260718
+}
