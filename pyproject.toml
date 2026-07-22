@@ -15,6 +15,15 @@ dev = [
   "pytest>=8.4.0",
   "ruff>=0.12.0",
 ]
+# Official BFCL checkers, pinned to the version recorded in
+# benchmarks/manifests/bfcl.json. Heavy dependency tree; only needed to
+# grade BFCL runs, so it stays out of the default install.
+bfcl = [
+  "bfcl-eval==2025.12.17",
+  # qwen-agent (pulled in by bfcl-eval's model handlers) imports soundfile at
+  # import time but does not declare it; the AST checker import chain needs it.
+  "soundfile>=0.12.1",
+]
 
 [project.scripts]
 compound = "compound.cli:main"
