@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["packages/**", "*.json", "!**/schema/*.schema.json"]
+    "includes": ["packages/**", "*.json", "!**/schema/*.schema.json", "!**/drizzle"]
   },
   "formatter": {
     "enabled": true,

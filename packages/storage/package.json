@@ -1,0 +1,22 @@
+{
+  "name": "@compound/storage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "module": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "generate:migrations": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@compound/contract": "workspace:*",
+    "drizzle-orm": "^0.44.3"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.4"
+  }
+}
