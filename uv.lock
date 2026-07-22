@@ -396,6 +396,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "gepa" },
+    { name = "jsonschema" },
     { name = "openai" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -415,6 +416,7 @@ dev = [
 requires-dist = [
     { name = "bfcl-eval", marker = "extra == 'bfcl'", specifier = "==2025.12.17" },
     { name = "gepa", specifier = "==0.1.4" },
+    { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "openai", specifier = ">=1.100.0" },
     { name = "pydantic", specifier = ">=2.11.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.0" },

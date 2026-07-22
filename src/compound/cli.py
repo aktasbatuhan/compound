@@ -8,6 +8,7 @@ from pathlib import Path
 from compound.baseline_matrix import run_ds1000_baseline_matrix
 from compound.bfcl_matrix import run_bfcl_baseline_matrix
 from compound.config import load_config
+from compound.config_schema import validate_config_file
 from compound.ds1000_cache import migrate_legacy_ds1000_cache, regrade_ds1000_run
 from compound.env import load_env
 from compound.flex_smoke import run_doubleword_flex_smoke
@@ -221,7 +222,10 @@ def main() -> None:
     args = _parser().parse_args()
     config = load_config(args.config)
     if args.command == "validate-config":
-        print("compound.yaml is valid")
+        # Engine rules ran in load_config above; also enforce the shared schema
+        # that @compound/config generates, so TS and Python agree on the file.
+        validate_config_file(args.config)
+        print(f"{args.config} is valid (engine rules + shared config schema)")
         return
     if args.command == "prepare-manifests":
         written = prepare_manifests(
