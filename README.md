@@ -1,7 +1,14 @@
 # Compound
 
-Compound is currently benchmark-first: prove that recursive prompt optimization can make
-cheaper models meet a fixed quality gate before building trace ingestion or a dashboard.
+Compound is currently benchmark-first: prove that cheaper open models can meet a fixed
+quality gate — with prompt optimization where it helps — before building trace ingestion
+or a dashboard.
+
+Status (2026-07-22): the DS-1000 line is closed. Three GEPA prompt campaigns failed to beat
+the unmodified GLM 5.2 `minimal` route, and the pre-declared final sealed gate then rejected
+that route against the 80–90%-of-reference bar
+(`docs/ds1000-final-sealed-gate-results-20260722.md`). DS-1000 fresh evidence is exhausted.
+The BFCL single-turn baseline matrix is the active screening surface.
 
 The initial proof pack is deliberately small and reproducible:
 
@@ -71,6 +78,32 @@ uv run compound telemetry-report --output artifacts/telemetry/summary.json
 
 The TPS value is completion tokens divided by full request latency, so it intentionally includes
 provider queueing and time-to-first-token; it is not a server-only decode benchmark.
+
+Screen models on a fresh origin-isolated DS-1000 cohort (excludes every prior `ds1000*`
+manifest automatically), then run selected models with repeated trials:
+
+```bash
+uv run compound prepare-ds1000-baseline-matrix --output benchmarks/manifests/<name>.json
+uv run compound run-ds1000-baseline-matrix \
+  --manifest benchmarks/manifests/<name>.json \
+  --model zai-org/GLM-5.2-FP8 --reasoning-effort minimal \
+  --trials-per-case 3 --experiment-cap-usd 2.5 --output artifacts/baselines/<name>.json
+```
+
+Note: the flex path reserves $0.02 of cap headroom per new request up front, so the cap must
+exceed `0.02 × cases × trials` even when the real spend is far lower. `--reasoning-effort`
+applies only to Doubleword flex candidates and is part of the completion fingerprint.
+
+Doubleword Flex transport compatibility can be smoke-tested with
+`uv run compound run-doubleword-flex-smoke`.
+
+The BFCL single-turn baseline matrix uses the official bfcl-eval prompting and AST checkers
+(multi-turn cases are recorded but never graded — they need the official live harness):
+
+```bash
+uv sync --extra dev --extra bfcl
+uv run compound run-bfcl-baseline-matrix --experiment-cap-usd 4.0
+```
 
 Legacy flat DS-1000 trace caches can be split without repeating model calls:
 
