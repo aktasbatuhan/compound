@@ -1,0 +1,29 @@
+{
+  "schema": "langfuse.trace",
+  "schema_version": 2,
+  "trace_id": "tr-badenvelope",
+  "task_key": null,
+  "started_at": "2026-07-20T19:00:00Z",
+  "source": {
+    "importer": "langfuse",
+    "importer_version": "0.1.0",
+    "source_ids": { "trace_id": "tr-badenvelope" },
+    "exported_at": null
+  },
+  "steps": [
+    {
+      "type": "model_call",
+      "step_id": "gen-1",
+      "input": [{ "role": "user", "content": "hi" }],
+      "output": { "role": "assistant", "content": "hello" },
+      "usage": { "input_tokens": 2, "output_tokens": 2 }
+    }
+  ],
+  "focal_step_id": "gen-1",
+  "permissions": {
+    "judging": true,
+    "optimization": true,
+    "fine_tuning": false
+  },
+  "redactions": []
+}

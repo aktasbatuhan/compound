@@ -1,0 +1,40 @@
+{
+  "schema": "compound.trace",
+  "schema_version": 1,
+  "trace_id": "langfuse:proj-main:tr-imginput1",
+  "task_key": "docs.screenshot_qa",
+  "started_at": "2026-07-20T17:00:00Z",
+  "source": {
+    "importer": "langfuse",
+    "importer_version": "0.1.0",
+    "source_ids": { "trace_id": "tr-imginput1" },
+    "exported_at": "2026-07-21T02:00:00Z"
+  },
+  "steps": [
+    {
+      "type": "model_call",
+      "step_id": "gen-1",
+      "input": [
+        {
+          "role": "user",
+          "content": [
+            { "type": "text", "text": "What error is shown in this screenshot?" },
+            { "type": "unsupported", "media_type": "image/png" }
+          ]
+        }
+      ],
+      "output": {
+        "role": "assistant",
+        "content": "The screenshot shows a 502 Bad Gateway error."
+      },
+      "usage": { "input_tokens": 1042, "output_tokens": 14 }
+    }
+  ],
+  "focal_step_id": "gen-1",
+  "permissions": {
+    "judging": true,
+    "optimization": true,
+    "fine_tuning": false
+  },
+  "redactions": []
+}
