@@ -5,6 +5,8 @@ description = "Reproducible recursive optimization experiments across single-sho
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "gepa==0.1.4",
+  # Validates compound.yaml against packages/config's committed JSON Schema.
+  "jsonschema>=4.23.0",
   "openai>=1.100.0",
   "pydantic>=2.11.0",
   "pyyaml>=6.0.2",
