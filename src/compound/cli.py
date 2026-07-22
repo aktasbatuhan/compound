@@ -6,6 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from compound.baseline_matrix import run_ds1000_baseline_matrix
+from compound.bfcl_matrix import run_bfcl_baseline_matrix
 from compound.config import load_config
 from compound.ds1000_cache import migrate_legacy_ds1000_cache, regrade_ds1000_run
 from compound.env import load_env
@@ -199,6 +200,19 @@ def _parser() -> argparse.ArgumentParser:
         "--evaluator-image", default="compound-ds1000-numpy:20260720-v3"
     )
     baseline_run.add_argument("--output", default=None)
+    bfcl_run = subcommands.add_parser("run-bfcl-baseline-matrix")
+    bfcl_run.add_argument("--config", default="compound.yaml")
+    bfcl_run.add_argument("--manifest", default="benchmarks/manifests/bfcl.json")
+    bfcl_run.add_argument("--source-dir", default=".compound/sources/gorilla")
+    bfcl_run.add_argument("--model", action="append", default=None, dest="models")
+    bfcl_run.add_argument("--case-id", action="append", default=None, dest="case_ids")
+    bfcl_run.add_argument("--max-output-tokens", type=int, default=4096)
+    bfcl_run.add_argument("--reasoning-effort", default=None)
+    bfcl_run.add_argument("--trials-per-case", type=int, default=1)
+    bfcl_run.add_argument("--experiment-cap-usd", type=float, default=4.0)
+    bfcl_run.add_argument("--poll-interval-seconds", type=float, default=2.0)
+    bfcl_run.add_argument("--timeout-seconds", type=float, default=3600.0)
+    bfcl_run.add_argument("--output", default=None)
     return parser
 
 
@@ -447,6 +461,23 @@ def main() -> None:
             count=args.count,
             excluded_case_ids=excluded_case_ids,
             excluded_origin_groups=excluded_origin_groups,
+        )
+        print(path)
+        return
+    if args.command == "run-bfcl-baseline-matrix":
+        path = run_bfcl_baseline_matrix(
+            manifest_path=args.manifest,
+            config_path=args.config,
+            source_dir=args.source_dir,
+            models=args.models,
+            case_ids=args.case_ids,
+            max_output_tokens=args.max_output_tokens,
+            reasoning_effort=args.reasoning_effort,
+            trials_per_case=args.trials_per_case,
+            experiment_cap_usd=args.experiment_cap_usd,
+            poll_interval_seconds=args.poll_interval_seconds,
+            timeout_seconds=args.timeout_seconds,
+            output_path=args.output,
         )
         print(path)
         return
