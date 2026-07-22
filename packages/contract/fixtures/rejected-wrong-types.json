@@ -1,0 +1,19 @@
+{
+  "schema": "compound.trace",
+  "schema_version": "1",
+  "trace_id": 12345,
+  "task_key": null,
+  "started_at": "yesterday afternoon",
+  "source": {
+    "importer": "langfuse",
+    "importer_version": 1,
+    "source_ids": { "trace_id": "tr-wrongtypes" }
+  },
+  "steps": "not-an-array",
+  "focal_step_id": "gen-1",
+  "permissions": {
+    "judging": "yes",
+    "optimization": true
+  },
+  "redactions": {}
+}

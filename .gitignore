@@ -9,3 +9,8 @@ artifacts/
 
 
 .claude/worktrees/
+
+# TypeScript / Bun
+node_modules/
+dist/
+*.tsbuildinfo

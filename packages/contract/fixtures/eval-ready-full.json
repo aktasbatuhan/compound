@@ -1,0 +1,235 @@
+{
+  "schema": "compound.trace",
+  "schema_version": 1,
+  "trace_id": "langfuse:proj-main:tr-8f3a2c91",
+  "task_key": "support.invoice_triage",
+  "started_at": "2026-07-20T14:03:11.000Z",
+  "ended_at": "2026-07-20T14:03:19.412Z",
+  "source": {
+    "importer": "langfuse",
+    "importer_version": "0.1.0",
+    "source_ids": {
+      "trace_id": "tr-8f3a2c91",
+      "project_id": "proj-main"
+    },
+    "exported_at": "2026-07-21T02:00:00Z"
+  },
+  "session_id": "sess-991",
+  "user_ref": "user-a41f9c",
+  "environment": "production",
+  "release": "app-v2.14.0",
+  "metadata": {
+    "channel": "email",
+    "priority": "high"
+  },
+  "tags": ["support", "billing"],
+  "steps": [
+    {
+      "type": "other",
+      "step_id": "span-0",
+      "parent_step_id": null,
+      "name": "retrieve_customer_context",
+      "data": {
+        "type": "RETRIEVER",
+        "level": "DEFAULT",
+        "statusMessage": null
+      }
+    },
+    {
+      "type": "model_call",
+      "step_id": "gen-1",
+      "parent_step_id": null,
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "resolved_model": "gpt-4.1-mini-2025-04-14",
+      "params": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_tokens": 1024
+      },
+      "input": [
+        {
+          "role": "system",
+          "content": "You are a billing support triage assistant. Use tools to verify claims before answering."
+        },
+        {
+          "role": "user",
+          "content": "Customer ⟦redacted:pii⟧ reports being double-charged on invoice INV-2291."
+        }
+      ],
+      "tools_available": [
+        {
+          "name": "lookup_invoice",
+          "description": "Fetch an invoice and its charges by invoice id",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "invoice_id": { "type": "string" }
+            },
+            "required": ["invoice_id"]
+          }
+        }
+      ],
+      "output": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_lookup_1",
+            "name": "lookup_invoice",
+            "arguments": { "invoice_id": "INV-2291" }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 412,
+        "output_tokens": 21,
+        "cached_input_tokens": 256,
+        "total_tokens": 433
+      },
+      "cost_usd": 0.00071,
+      "started_at": "2026-07-20T14:03:11.204Z",
+      "ended_at": "2026-07-20T14:03:12.881Z",
+      "error": null
+    },
+    {
+      "type": "tool_execution",
+      "step_id": "tool-1",
+      "parent_step_id": null,
+      "name": "lookup_invoice",
+      "call_ref": {
+        "step_id": "gen-1",
+        "tool_call_id": "call_lookup_1"
+      },
+      "input": { "invoice_id": "INV-2291" },
+      "output": {
+        "invoice_id": "INV-2291",
+        "status": "paid",
+        "charges": [
+          { "id": "ch_1", "amount_usd": 49.0, "at": "2026-07-19T09:12:00Z" },
+          { "id": "ch_2", "amount_usd": 49.0, "at": "2026-07-19T09:12:04Z" }
+        ]
+      },
+      "replay_policy": "recorded",
+      "started_at": "2026-07-20T14:03:12.902Z",
+      "ended_at": "2026-07-20T14:03:13.310Z",
+      "error": null
+    },
+    {
+      "type": "model_call",
+      "step_id": "gen-2",
+      "parent_step_id": null,
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "resolved_model": "gpt-4.1-mini-2025-04-14",
+      "params": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_tokens": 1024
+      },
+      "input": [
+        {
+          "role": "system",
+          "content": "You are a billing support triage assistant. Use tools to verify claims before answering."
+        },
+        {
+          "role": "user",
+          "content": "Customer ⟦redacted:pii⟧ reports being double-charged on invoice INV-2291."
+        },
+        {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_lookup_1",
+              "name": "lookup_invoice",
+              "arguments": { "invoice_id": "INV-2291" }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": "{\"invoice_id\":\"INV-2291\",\"status\":\"paid\",\"charges\":[{\"id\":\"ch_1\",\"amount_usd\":49.0},{\"id\":\"ch_2\",\"amount_usd\":49.0}]}",
+          "tool_call_id": "call_lookup_1"
+        }
+      ],
+      "tools_available": [
+        {
+          "name": "lookup_invoice",
+          "description": "Fetch an invoice and its charges by invoice id",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "invoice_id": { "type": "string" }
+            },
+            "required": ["invoice_id"]
+          }
+        }
+      ],
+      "output": {
+        "role": "assistant",
+        "content": "The invoice INV-2291 does show two identical $49.00 charges four seconds apart, which is consistent with a duplicate charge. I am routing this to billing for a refund of the second charge.",
+        "tool_calls": null,
+        "tool_call_id": null
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "input_tokens": 583,
+        "output_tokens": 47,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 412,
+        "total_tokens": 630
+      },
+      "cost_usd": 0.00102,
+      "started_at": "2026-07-20T14:03:13.362Z",
+      "ended_at": "2026-07-20T14:03:19.401Z",
+      "error": null
+    }
+  ],
+  "focal_step_id": "gen-2",
+  "outcome": {
+    "feedback": [
+      {
+        "kind": "thumbs",
+        "value": "up",
+        "at": "2026-07-20T14:05:02Z"
+      }
+    ],
+    "scores": [
+      {
+        "name": "resolution_quality",
+        "value": 0.92,
+        "source": "human",
+        "at": "2026-07-20T15:00:00Z"
+      },
+      {
+        "name": "grounded_in_tools",
+        "value": 1,
+        "source": "deterministic",
+        "at": null
+      }
+    ],
+    "deterministic": {
+      "status": "success",
+      "detail": { "refund_issued": true }
+    }
+  },
+  "permissions": {
+    "judging": true,
+    "optimization": true,
+    "fine_tuning": false
+  },
+  "redactions": [
+    {
+      "path": "steps[1].input[1].content",
+      "rule": "pii",
+      "marker": "⟦redacted:pii⟧"
+    },
+    {
+      "path": "steps[3].input[1].content",
+      "rule": "pii",
+      "marker": "⟦redacted:pii⟧"
+    }
+  ]
+}
