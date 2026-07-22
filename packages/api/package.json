@@ -1,0 +1,21 @@
+{
+  "name": "@compound/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "module": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "serve": "bun run src/serve.ts"
+  },
+  "dependencies": {
+    "@compound/config": "workspace:*",
+    "@compound/contract": "workspace:*",
+    "@compound/storage": "workspace:*",
+    "hono": "^4.9.0"
+  }
+}

@@ -5,7 +5,7 @@
  * (docs/langfuse-import-mapping.md, "Import report") — including the counted
  * line numbers of `rejected` records, which are never persisted as traces.
  */
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import type { CompoundDatabase } from "./db";
 import { paginate } from "./pagination";
 import type { ImportBatchRow, ImportBatchStatus, ImportReport } from "./schema";
@@ -107,20 +107,39 @@ export function getImportBatch(handle: CompoundDatabase, id: string): ImportBatc
   return row ?? null;
 }
 
+function batchConditions(filter: ListImportBatchesFilter) {
+  const conditions = [];
+  if (filter.status !== undefined) conditions.push(eq(importBatches.status, filter.status));
+  if (filter.importer !== undefined) conditions.push(eq(importBatches.importer, filter.importer));
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
 /** Newest batches first (by `started_at`, tie-broken by `id` for determinism). */
 export function listImportBatches(
   handle: CompoundDatabase,
   filter: ListImportBatchesFilter = {},
 ): ImportBatchRow[] {
-  const conditions = [];
-  if (filter.status !== undefined) conditions.push(eq(importBatches.status, filter.status));
-  if (filter.importer !== undefined) conditions.push(eq(importBatches.importer, filter.importer));
-
   const query = handle.db
     .select()
     .from(importBatches)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .where(batchConditions(filter))
     .orderBy(desc(importBatches.startedAt), importBatches.id)
     .$dynamic();
   return paginate(query, filter).all();
+}
+
+/**
+ * Total batches matching `filter`, ignoring `limit`/`offset` — the denominator
+ * for a paginated listing.
+ */
+export function countImportBatches(
+  handle: CompoundDatabase,
+  filter: ListImportBatchesFilter = {},
+): number {
+  const [row] = handle.db
+    .select({ value: count() })
+    .from(importBatches)
+    .where(batchConditions(filter))
+    .all();
+  return row?.value ?? 0;
 }
