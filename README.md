@@ -21,6 +21,11 @@ The optimizer runner rejects decision-test access unless final evaluation explic
 
 ## Local setup
 
+Always run the Python engine through the project environment. `uv run pytest` without a synced
+`dev` extra can fall back to a globally installed pytest, which may import a stale `gepa` from
+your user site directory and produce failures that look like library API drift.
+`tests/test_environment.py` guards against this and tells you to re-sync.
+
 ```bash
 uv sync --extra dev
 cp .env.example .env
