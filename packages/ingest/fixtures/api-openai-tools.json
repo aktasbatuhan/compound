@@ -1,0 +1,207 @@
+[
+  {
+    "id": "tr-9c1f",
+    "timestamp": "2026-07-20T14:03:11.000Z",
+    "name": "invoice-triage",
+    "sessionId": "sess-991",
+    "userId": "user-a41f9c",
+    "release": "app-v2.14.0",
+    "version": "2",
+    "environment": "production",
+    "public": false,
+    "metadata": { "task_key": "support.invoice_triage", "channel": "email" },
+    "tags": ["support", "beta"],
+    "htmlPath": "/project/proj-main/traces/tr-9c1f",
+    "latency": 8.412,
+    "totalCost": 0.00214,
+    "observations": [
+      {
+        "id": "gen-1",
+        "traceId": "tr-9c1f",
+        "parentObservationId": null,
+        "type": "GENERATION",
+        "name": "OpenAI-generation",
+        "startTime": "2026-07-20T14:03:11.120Z",
+        "endTime": "2026-07-20T14:03:13.902Z",
+        "completionStartTime": "2026-07-20T14:03:12.400Z",
+        "model": "gpt-4.1-mini",
+        "modelId": "clx-model-gpt41mini",
+        "modelParameters": { "temperature": 0, "max_tokens": 1024 },
+        "input": {
+          "messages": [
+            { "role": "system", "content": "You triage customer invoice questions." },
+            { "role": "user", "content": "Where is invoice INV-4471?" }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "lookup_invoice",
+                "description": "Look up an invoice by id.",
+                "parameters": {
+                  "type": "object",
+                  "properties": { "invoice_id": { "type": "string" } },
+                  "required": ["invoice_id"]
+                }
+              }
+            }
+          ]
+        },
+        "output": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_ab12",
+              "type": "function",
+              "function": {
+                "name": "lookup_invoice",
+                "arguments": "{\"invoice_id\": \"INV-4471\"}"
+              }
+            }
+          ]
+        },
+        "usage": { "input": 999, "output": 999, "total": 999, "unit": "TOKENS" },
+        "usageDetails": {
+          "input": 380,
+          "input_cached_tokens": 32,
+          "output": 20,
+          "output_reasoning_tokens": 8,
+          "total": 440
+        },
+        "costDetails": { "input": 0.00042, "output": 0.00016, "total": 0.00058 },
+        "level": "DEFAULT",
+        "metadata": {},
+        "environment": "production"
+      },
+      {
+        "id": "tool-1",
+        "traceId": "tr-9c1f",
+        "parentObservationId": null,
+        "type": "TOOL",
+        "name": "lookup_invoice",
+        "startTime": "2026-07-20T14:03:13.950Z",
+        "endTime": "2026-07-20T14:03:14.610Z",
+        "input": { "invoice_id": "INV-4471" },
+        "output": { "status": "paid", "paid_at": "2026-07-02", "amount_usd": 1240.0 },
+        "level": "DEFAULT",
+        "metadata": { "tool_call_id": "call_ab12" },
+        "usageDetails": {},
+        "costDetails": {},
+        "environment": "production"
+      },
+      {
+        "id": "gen-2",
+        "traceId": "tr-9c1f",
+        "parentObservationId": null,
+        "type": "GENERATION",
+        "name": "OpenAI-generation",
+        "startTime": "2026-07-20T14:03:14.700Z",
+        "endTime": "2026-07-20T14:03:19.412Z",
+        "model": "gpt-4.1-mini",
+        "modelId": "clx-model-gpt41mini",
+        "modelParameters": { "temperature": 0, "max_tokens": 1024 },
+        "input": {
+          "messages": [
+            { "role": "system", "content": "You triage customer invoice questions." },
+            { "role": "user", "content": "Where is invoice INV-4471?" },
+            {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "id": "call_ab12",
+                  "type": "function",
+                  "function": {
+                    "name": "lookup_invoice",
+                    "arguments": "{\"invoice_id\": \"INV-4471\"}"
+                  }
+                }
+              ]
+            },
+            {
+              "role": "tool",
+              "tool_call_id": "call_ab12",
+              "content": "{\"status\": \"paid\", \"paid_at\": \"2026-07-02\"}"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "lookup_invoice",
+                "description": "Look up an invoice by id.",
+                "parameters": {
+                  "type": "object",
+                  "properties": { "invoice_id": { "type": "string" } },
+                  "required": ["invoice_id"]
+                }
+              }
+            }
+          ]
+        },
+        "output": {
+          "role": "assistant",
+          "content": "Invoice INV-4471 was paid on 2026-07-02 for $1,240.00."
+        },
+        "usageDetails": {
+          "input": 500,
+          "input_cached_tokens": 384,
+          "output": 64,
+          "total": 948
+        },
+        "costDetails": { "input": 0.0009, "output": 0.00066, "total": 0.00156 },
+        "level": "DEFAULT",
+        "metadata": {},
+        "environment": "production"
+      }
+    ],
+    "scores": [
+      {
+        "id": "score-1",
+        "traceId": "tr-9c1f",
+        "name": "helpfulness",
+        "source": "EVAL",
+        "dataType": "NUMERIC",
+        "value": 0.82,
+        "timestamp": "2026-07-20T14:05:00.000Z",
+        "comment": "judge run 3",
+        "environment": "production"
+      },
+      {
+        "id": "score-2",
+        "traceId": "tr-9c1f",
+        "name": "thumbs",
+        "source": "ANNOTATION",
+        "dataType": "BOOLEAN",
+        "value": 1,
+        "stringValue": "True",
+        "authorUserId": "u-77",
+        "timestamp": "2026-07-20T14:06:12.000Z",
+        "environment": "production"
+      },
+      {
+        "id": "score-3",
+        "traceId": "tr-9c1f",
+        "name": "corrected_answer",
+        "source": "ANNOTATION",
+        "dataType": "CORRECTION",
+        "value": null,
+        "stringValue": "Invoice INV-4471 was paid on 2026-07-02.",
+        "timestamp": "2026-07-20T14:07:30.000Z",
+        "environment": "production"
+      },
+      {
+        "id": "score-4",
+        "traceId": "tr-9c1f",
+        "name": "tone",
+        "source": "API",
+        "dataType": "CATEGORICAL",
+        "value": null,
+        "stringValue": "formal",
+        "timestamp": "2026-07-20T14:07:40.000Z",
+        "environment": "production"
+      }
+    ]
+  }
+]

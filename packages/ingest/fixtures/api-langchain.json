@@ -1,0 +1,141 @@
+[
+  {
+    "id": "tr-lc-01",
+    "timestamp": "2026-07-21T08:41:00.000Z",
+    "name": "research-agent",
+    "sessionId": "sess-lc-4",
+    "userId": "user-b12",
+    "release": "agent-v0.9.2",
+    "environment": "production",
+    "public": false,
+    "metadata": { "framework": "langchain", "graph": "research" },
+    "tags": ["langchain", "task:agents.research"],
+    "observations": [
+      {
+        "id": "span-root",
+        "traceId": "tr-lc-01",
+        "parentObservationId": null,
+        "type": "SPAN",
+        "name": "AgentExecutor",
+        "startTime": "2026-07-21T08:41:00.100Z",
+        "endTime": "2026-07-21T08:41:09.900Z",
+        "input": { "question": "What changed in eval tooling this quarter?" },
+        "output": { "answer": "…" },
+        "level": "DEFAULT",
+        "metadata": { "run_id": "b7c1" },
+        "usageDetails": {},
+        "costDetails": {},
+        "environment": "production"
+      },
+      {
+        "id": "gen-a",
+        "traceId": "tr-lc-01",
+        "parentObservationId": "span-root",
+        "type": "GENERATION",
+        "name": "ChatAnthropic",
+        "startTime": "2026-07-21T08:41:00.400Z",
+        "endTime": "2026-07-21T08:41:03.220Z",
+        "model": "claude-sonnet-4-5",
+        "modelParameters": { "temperature": 0.2, "max_tokens": 2048 },
+        "input": [
+          { "role": "system", "content": "You research questions with the tools provided." },
+          { "role": "user", "content": "What changed in eval tooling this quarter?" }
+        ],
+        "output": {
+          "role": "assistant",
+          "content": "",
+          "additional_kwargs": {
+            "tool_calls": [
+              {
+                "id": "call_lc_1",
+                "type": "function",
+                "function": {
+                  "name": "web_search_raw",
+                  "arguments": "{\"query\": \"eval tooling\"}"
+                }
+              }
+            ]
+          },
+          "tool_calls": [
+            {
+              "name": "web_search",
+              "args": { "query": "compound eval tooling", "top_k": 5 },
+              "id": "call_lc_1",
+              "type": "tool_call"
+            }
+          ]
+        },
+        "usageDetails": {
+          "input": 128,
+          "cache_read_input_tokens": 1024,
+          "cache_creation_input_tokens": 256,
+          "output": 41
+        },
+        "costDetails": { "total": 0.00311 },
+        "level": "DEFAULT",
+        "metadata": {},
+        "environment": "production"
+      },
+      {
+        "id": "tool-a",
+        "traceId": "tr-lc-01",
+        "parentObservationId": "span-root",
+        "type": "TOOL",
+        "name": "web_search",
+        "startTime": "2026-07-21T08:41:03.300Z",
+        "endTime": "2026-07-21T08:41:05.010Z",
+        "input": { "query": "compound eval tooling", "top_k": 5 },
+        "output": [{ "title": "Eval tooling in 2026", "url": "https://example.invalid/a" }],
+        "level": "DEFAULT",
+        "metadata": { "tool_call_id": "call_lc_1" },
+        "usageDetails": {},
+        "costDetails": {},
+        "environment": "production"
+      },
+      {
+        "id": "gen-b",
+        "traceId": "tr-lc-01",
+        "parentObservationId": "span-root",
+        "type": "GENERATION",
+        "name": "ChatAnthropic",
+        "startTime": "2026-07-21T08:41:05.100Z",
+        "endTime": "2026-07-21T08:41:09.850Z",
+        "model": "claude-sonnet-4-5",
+        "modelParameters": { "temperature": 0.2, "max_tokens": 2048 },
+        "input": [
+          { "role": "system", "content": "You research questions with the tools provided." },
+          { "role": "user", "content": "What changed in eval tooling this quarter?" },
+          {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+              {
+                "name": "web_search",
+                "args": { "query": "compound eval tooling", "top_k": 5 },
+                "id": "call_lc_1",
+                "type": "tool_call"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call_lc_1",
+            "content": "[{\"title\": \"Eval tooling in 2026\"}]"
+          }
+        ],
+        "output": {
+          "role": "assistant",
+          "content": [
+            { "type": "text", "text": "Three things changed in eval tooling this quarter." }
+          ]
+        },
+        "usageDetails": { "input": 1580, "output": 96 },
+        "costDetails": { "total": 0.00612 },
+        "level": "DEFAULT",
+        "metadata": {},
+        "environment": "production"
+      }
+    ],
+    "scores": []
+  }
+]

@@ -44,6 +44,13 @@
         "ajv-formats": "^3.0.1",
       },
     },
+    "packages/ingest": {
+      "name": "@compound/ingest",
+      "version": "0.1.0",
+      "dependencies": {
+        "@compound/contract": "workspace:*",
+      },
+    },
     "packages/storage": {
       "name": "@compound/storage",
       "version": "0.1.0",
@@ -80,6 +87,8 @@
     "@compound/config": ["@compound/config@workspace:packages/config"],
 
     "@compound/contract": ["@compound/contract@workspace:packages/contract"],
+
+    "@compound/ingest": ["@compound/ingest@workspace:packages/ingest"],
 
     "@compound/storage": ["@compound/storage@workspace:packages/storage"],
 
