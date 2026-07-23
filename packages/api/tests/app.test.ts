@@ -232,6 +232,21 @@ describe("GET /api/traces/stats", () => {
     const { body } = await getJson(testApp(db), "/api/traces/stats");
     expect(body.by_validation_class).toEqual({ eval_ready: 0, diagnostic: 0 });
     expect(body.by_task_key).toEqual([]);
+    expect(body.by_diagnostic_reason).toEqual([]);
+  });
+
+  test("groups diagnostic reasons so the queue can show what dominates", async () => {
+    seedTraces(db, {
+      fixtures: [
+        { name: "diagnostic-missing-focal", count: 2 },
+        { name: "eval-ready-full", count: 1 },
+      ],
+    });
+    const { body } = await getJson(testApp(db), "/api/traces/stats");
+    const missingFocal = body.by_diagnostic_reason.find(
+      (row: any) => row.reason === "missing_focal_step_id",
+    );
+    expect(missingFocal.count).toBe(2);
   });
 });
 

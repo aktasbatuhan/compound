@@ -365,3 +365,34 @@ export function countTracesByTaskKey(
     .orderBy(desc(count()), sql`${traces.taskKey} is null`, asc(traces.taskKey))
     .all();
 }
+
+export interface DiagnosticReasonCount {
+  reason: string;
+  count: number;
+}
+
+/**
+ * Histogram of diagnostic reasons, largest first.
+ *
+ * A trace carries an array of reasons and is counted once per reason it has, so
+ * these counts sum to at least the number of diagnostic traces, not exactly to
+ * it. This backs the diagnostic queue's "which failure dominates?" view, which
+ * is the question worth answering before opening any individual trace.
+ */
+export function countTracesByDiagnosticReason(
+  handle: CompoundDatabase,
+  filter: TraceFilter = {},
+): DiagnosticReasonCount[] {
+  const conditions = buildConditions(filter);
+  // `json_each` expands the stored reason array into one row per reason.
+  return handle.db
+    .select({
+      reason: sql<string>`reason.value`,
+      count: sql<number>`count(*)`,
+    })
+    .from(sql`${traces}, json_each(${traces.diagnosticReasons}) as reason`)
+    .where(conditions)
+    .groupBy(sql`reason.value`)
+    .orderBy(sql`count(*) desc`, sql`reason.value asc`)
+    .all();
+}

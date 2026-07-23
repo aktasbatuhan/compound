@@ -16,6 +16,7 @@ import {
   type CompoundDatabase,
   countImportBatches,
   countTraces,
+  countTracesByDiagnosticReason,
   countTracesByTaskKey,
   countTracesByValidationClass,
   getImportBatch,
@@ -114,8 +115,12 @@ export function createApp({ db, config }: AppDependencies): Hono {
       "eval_ready",
       "diagnostic",
     ] as const);
+    const filter = validationClass ? { validationClass } : {};
     const byClass = countTracesByValidationClass(db);
-    const byTaskKey = countTracesByTaskKey(db, validationClass ? { validationClass } : {});
+    const byTaskKey = countTracesByTaskKey(db, filter);
+    // A trace contributes one count per reason it carries, so these do not sum
+    // to the diagnostic total. The queue wants "which failure dominates?".
+    const byReason = countTracesByDiagnosticReason(db, filter);
     return c.json({
       total: byClass.eval_ready + byClass.diagnostic,
       by_validation_class: byClass,
@@ -123,6 +128,7 @@ export function createApp({ db, config }: AppDependencies): Hono {
         task_key: row.taskKey,
         count: row.count,
       })),
+      by_diagnostic_reason: byReason,
     });
   });
 
