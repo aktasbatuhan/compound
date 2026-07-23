@@ -190,6 +190,40 @@ export const IngestSchema = z.strictObject({
 });
 
 // ---------------------------------------------------------------------------
+// Product section: assertions (docs/assertions-v1.md)
+// ---------------------------------------------------------------------------
+
+/** Deterministic, free checks graded before any judge token is spent. */
+export const AssertionTypeSchema = z.enum([
+  "valid_json",
+  "json_schema",
+  "contains",
+  "not_contains",
+  "regex",
+  "equals",
+  "tool_called",
+  "tool_not_called",
+  "tool_arg_equals",
+  "max_length",
+  "json_path_equals",
+]);
+
+/**
+ * One assertion. The engine (`@compound/assertions`) owns the exact per-type
+ * parameters; here the shape is loose on parameters but strict on `type`,
+ * `required`, and `weight`, so a config is caught for an unknown assertion type
+ * without duplicating the engine's discriminated union.
+ */
+export const AssertionSchema = z.looseObject({
+  type: AssertionTypeSchema,
+  required: z.boolean().optional(),
+  weight: z.number().positive().optional(),
+});
+
+/** Per-task assertion lists, keyed by task_key. */
+export const AssertionsSchema = z.record(z.string(), z.array(AssertionSchema));
+
+// ---------------------------------------------------------------------------
 // Whole file
 // ---------------------------------------------------------------------------
 
@@ -215,6 +249,7 @@ export const CompoundConfigSchema = z.looseObject({
   task_keys: TaskKeysSchema.optional(),
   redaction: RedactionSchema.optional(),
   ingest: IngestSchema.optional(),
+  assertions: AssertionsSchema.optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -271,4 +306,5 @@ export type Permissions = z.infer<typeof PermissionsSchema>;
 export type Importer = z.infer<typeof ImporterSchema>;
 export type IngestSource = z.infer<typeof IngestSourceSchema>;
 export type Ingest = z.infer<typeof IngestSchema>;
+export type Assertions = z.infer<typeof AssertionsSchema>;
 export type CompoundConfig = z.infer<typeof CompoundConfigSchema>;

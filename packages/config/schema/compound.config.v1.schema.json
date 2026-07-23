@@ -498,6 +498,47 @@
         "default_permissions"
       ],
       "additionalProperties": false
+    },
+    "assertions": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "valid_json",
+                "json_schema",
+                "contains",
+                "not_contains",
+                "regex",
+                "equals",
+                "tool_called",
+                "tool_not_called",
+                "tool_arg_equals",
+                "max_length",
+                "json_path_equals"
+              ]
+            },
+            "required": {
+              "type": "boolean"
+            },
+            "weight": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": {}
+        }
+      }
     }
   },
   "required": [

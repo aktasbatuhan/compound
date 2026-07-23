@@ -14,12 +14,21 @@
       "name": "@compound/api",
       "version": "0.1.0",
       "dependencies": {
+        "@compound/assertions": "workspace:*",
         "@compound/config": "workspace:*",
         "@compound/contract": "workspace:*",
         "@compound/curation": "workspace:*",
         "@compound/pipeline": "workspace:*",
         "@compound/storage": "workspace:*",
         "hono": "^4.9.0",
+      },
+    },
+    "packages/assertions": {
+      "name": "@compound/assertions",
+      "version": "0.1.0",
+      "dependencies": {
+        "@compound/contract": "workspace:*",
+        "ajv": "^8.17.1",
       },
     },
     "packages/cli": {
@@ -127,6 +136,8 @@
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.5.5", "", { "os": "win32", "cpu": "x64" }, "sha512-bIBFo+n6MIxdNcVFy5CrurbKiZQiUciK3bt8+O9I4wjFZNTfXLpi+giq47522eXqW5NBc9ulx7dR1SlZKi2J5g=="],
 
     "@compound/api": ["@compound/api@workspace:packages/api"],
+
+    "@compound/assertions": ["@compound/assertions@workspace:packages/assertions"],
 
     "@compound/cli": ["@compound/cli@workspace:packages/cli"],
 

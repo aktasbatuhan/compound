@@ -114,6 +114,43 @@ describe("GET /api/cases/stats", () => {
   });
 });
 
+describe("GET /api/cases/:caseId/assertions", () => {
+  test("grades the case's observed output against the task's assertions", async () => {
+    // The real compound.yaml has no assertions section, so provide one via a
+    // config override to the test app.
+    const config = {
+      ...(await getJson(testApp(db), "/api/config")).body.config,
+      assertions: { support: [{ type: "valid_json" }] },
+    };
+    const app = testApp(db, config);
+    await postJson(app, "/api/imports", { importer: "langfuse", content: exportOf(3) });
+    await postJson(app, "/api/tasks/support/curate", {});
+    const id = (await getJson(app, "/api/cases?limit=1")).body.items[0].case_id;
+
+    const { status, body } = await getJson(app, `/api/cases/${encodeURIComponent(id)}/assertions`);
+    expect(status).toBe(200);
+    // The seeded output is "answer N" (not JSON), so valid_json fails.
+    expect(body.graded).toBe(true);
+    expect(body.passed).toBe(false);
+    expect(body.results[0].type).toBe("valid_json");
+  });
+
+  test("with no assertions configured, grades nothing and vacuously passes", async () => {
+    const app = testApp(db);
+    await postJson(app, "/api/imports", { importer: "langfuse", content: exportOf(2) });
+    await postJson(app, "/api/tasks/support/curate", {});
+    const id = (await getJson(app, "/api/cases?limit=1")).body.items[0].case_id;
+    const { body } = await getJson(app, `/api/cases/${encodeURIComponent(id)}/assertions`);
+    expect(body.passed).toBe(true);
+    expect(body.results).toHaveLength(0);
+  });
+
+  test("404s for an unknown case", async () => {
+    const { status } = await getJson(testApp(db), "/api/cases/case:nope/assertions");
+    expect(status).toBe(404);
+  });
+});
+
 describe("case review", () => {
   async function firstCaseId(app: ReturnType<typeof testApp>): Promise<string> {
     const listed = await getJson(app, "/api/cases?limit=1");

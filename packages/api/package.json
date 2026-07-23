@@ -19,6 +19,7 @@
     "@compound/storage": "workspace:*",
     "hono": "^4.9.0",
     "@compound/pipeline": "workspace:*",
-    "@compound/curation": "workspace:*"
+    "@compound/curation": "workspace:*",
+    "@compound/assertions": "workspace:*"
   }
 }

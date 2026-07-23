@@ -11,6 +11,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { type Assertion, gradeCaseObservedOutput } from "@compound/assertions";
 import { type CompoundConfig, validateConfig } from "@compound/config";
 import { TRACE_SCHEMA_VERSION } from "@compound/contract";
 import { curateTask } from "@compound/curation";
@@ -316,6 +317,26 @@ export function createApp({ db, config }: AppDependencies): Hono {
     // the sealed set, and hiding a case someone already holds the id for would
     // be confusing. Bulk listing remains sealed.
     return c.json(serializeCase(found));
+  });
+
+  app.get("/api/cases/:caseId/assertions", (c) => {
+    const caseId = c.req.param("caseId");
+    const found = getCase(db, caseId);
+    if (found === null) throw notFound(`no case with id ${caseId}`, { case_id: caseId });
+
+    // Free: grades the case's own observed output against the task's assertions.
+    // No model call. Assertions come from config; an absent list grades nothing.
+    const assertions = config.assertions?.[found.taskKey] ?? [];
+    const report = gradeCaseObservedOutput(
+      {
+        caseId: found.caseId,
+        taskKey: found.taskKey,
+        provenance: found.provenance,
+        expected: found.expected,
+      },
+      assertions as Assertion[],
+    );
+    return c.json(report);
   });
 
   app.post("/api/cases/:caseId/review", async (c) => {
