@@ -1,5 +1,29 @@
 # Compound
 
+## Product (TypeScript, `packages/`)
+
+The ingest path is working end to end. From a Langfuse export to queryable, redacted traces:
+
+```bash
+bun install
+bun run --filter '@compound/cli' typecheck     # or: bun test packages
+bun run packages/cli/src/main.ts import export.jsonl
+bun run packages/cli/src/main.ts status
+bun run packages/cli/src/main.ts serve         # local API on 127.0.0.1:4319
+```
+
+Packages: `contract` (the portable trace contract), `config` (one `compound.yaml` schema
+shared with the Python engine), `storage` (SQLite/Drizzle), `ingest` (Langfuse normalizer),
+`redaction` (pre-persistence), `pipeline` (composition), `api` (Hono), `cli`.
+
+Design docs: `docs/product-plan-20260722.md`, `docs/trace-contract-v1.md`,
+`docs/ingest-pipeline-v1.md`, `docs/api-design-v1.md`, `docs/langfuse-import-mapping.md`.
+
+Note: the trace contract stays marked **draft** until a real Langfuse export imports
+losslessly. The ingest fixtures are synthetic, built from the documented schema.
+
+## Benchmark engine (Python, `src/compound/`)
+
 Compound is currently benchmark-first: prove that cheaper open models can meet a fixed
 quality gate — with prompt optimization where it helps — before building trace ingestion
 or a dashboard.
