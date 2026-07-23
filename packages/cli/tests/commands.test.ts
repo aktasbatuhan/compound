@@ -147,6 +147,36 @@ describe("import", () => {
   });
 });
 
+describe("curate", () => {
+  test("curates imported traces into cases and names the seal", () => {
+    const { env, output } = testEnvironment();
+    withTempFile(EXPORT_JSON, (path) => {
+      runCommand(["import", path, "--config", "compound.yaml"], env);
+    });
+    const result = runCommand(["curate", "support"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("cases created:   1");
+    expect(output()).toContain("decision_test");
+  });
+
+  test("requires a task key", () => {
+    const { env, output } = testEnvironment();
+    expect(runCommand(["curate"], env).exitCode).toBe(2);
+    expect(output()).toContain("a task key to curate is required");
+  });
+
+  test("re-running curate reports duplicates, not new cases", () => {
+    const { env, output } = testEnvironment();
+    withTempFile(EXPORT_JSON, (path) => {
+      runCommand(["import", path, "--config", "compound.yaml"], env);
+    });
+    runCommand(["curate", "support"], env);
+    const again = runCommand(["curate", "support"], env);
+    expect(again.exitCode).toBe(0);
+    expect(output()).toContain("duplicates:      1");
+  });
+});
+
 describe("status", () => {
   test("reports an empty store honestly", () => {
     const { env, output } = testEnvironment();

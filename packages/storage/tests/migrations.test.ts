@@ -21,17 +21,25 @@ function indexNames(handle: ReturnType<typeof freshDatabase>): string[] {
 }
 
 describe("migrations", () => {
-  test("apply cleanly and create both tables", () => {
+  test("apply cleanly and create every table", () => {
     const handle = freshDatabase();
     const names = tableNames(handle);
     expect(names).toContain("import_batches");
     expect(names).toContain("traces");
+    expect(names).toContain("cases");
     handle.close();
   });
 
   test("create every declared index", () => {
     const handle = freshDatabase();
     expect(indexNames(handle)).toEqual([
+      "cases_case_id_unique",
+      "cases_partition_idx",
+      "cases_provenance_idx",
+      "cases_review_state_idx",
+      "cases_source_trace_id_idx",
+      "cases_task_content_unique",
+      "cases_task_key_idx",
       "traces_content_hash_idx",
       "traces_import_batch_id_idx",
       "traces_started_at_idx",

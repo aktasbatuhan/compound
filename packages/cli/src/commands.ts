@@ -8,9 +8,12 @@
  */
 import { readFileSync } from "node:fs";
 import { loadConfig } from "@compound/config";
+import { curateTask } from "@compound/curation";
 import { runImport, SUPPORTED_IMPORTERS } from "@compound/pipeline";
 import {
   type CompoundDatabase,
+  countCasesByPartition,
+  countCasesByProvenance,
   countTracesByDiagnosticReason,
   countTracesByTaskKey,
   countTracesByValidationClass,
@@ -84,6 +87,7 @@ export const HELP_TEXT = `compound — turn production traces into gated optimiz
 
 Usage:
   compound import <file> [--importer langfuse] [--db PATH] [--config PATH] [--project-id ID]
+  compound curate <task_key> [--db PATH]
   compound status [--db PATH]
   compound serve [--port N] [--host HOST] [--db PATH] [--config PATH]
   compound help
@@ -165,6 +169,43 @@ export function runImportCommand(args: ParsedArgs, env: CommandEnvironment): Com
   }
 }
 
+export function runCurateCommand(args: ParsedArgs, env: CommandEnvironment): CommandResult {
+  const taskKey = args.positional[0];
+  if (taskKey === undefined) {
+    env.write(`error: a task key to curate is required\n\n${HELP_TEXT}`);
+    return { exitCode: 2 };
+  }
+
+  const db = env.openDatabase(stringFlag(args.flags, "db") ?? DEFAULT_DATABASE_PATH);
+  try {
+    const report = curateTask(db, { taskKey });
+    env.write(`curated task ${taskKey}`);
+    env.write(`  traces scanned:  ${report.tracesScanned}`);
+    env.write(`  cases created:   ${report.casesCreated}`);
+    env.write(`  duplicates:      ${report.duplicates} (same work, already a case)`);
+    if (report.skippedNotExtractable > 0) {
+      env.write(
+        `  not extractable: ${report.skippedNotExtractable} (not a replayable single call)`,
+      );
+    }
+
+    const partitions = Object.entries(report.byPartition).sort();
+    if (partitions.length > 0) {
+      env.write("\npartitions (new cases):");
+      for (const [partition, count] of partitions) env.write(`  ${count}  ${partition}`);
+      // Name the seal explicitly so it is never a surprise later.
+      const sealed = report.byPartition.decision_test ?? 0;
+      env.write(`  (${sealed} sealed into decision_test — never seen by optimization)`);
+    }
+    return { exitCode: 0 };
+  } catch (error) {
+    env.write(`error: curation failed: ${error instanceof Error ? error.message : error}`);
+    return { exitCode: 1 };
+  } finally {
+    db.close();
+  }
+}
+
 export function runStatusCommand(args: ParsedArgs, env: CommandEnvironment): CommandResult {
   const db = env.openDatabase(stringFlag(args.flags, "db") ?? DEFAULT_DATABASE_PATH);
   try {
@@ -189,6 +230,19 @@ export function runStatusCommand(args: ParsedArgs, env: CommandEnvironment): Com
       for (const row of byReason) env.write(`  ${row.count}  ${row.reason}`);
     }
 
+    const byPartition = countCasesByPartition(db);
+    const caseTotal = byPartition.reduce((sum, row) => sum + row.count, 0);
+    if (caseTotal > 0) {
+      env.write(`\ncases: ${caseTotal}`);
+      for (const row of [...byPartition].sort((a, b) => a.partition.localeCompare(b.partition))) {
+        env.write(`  ${row.count}  ${row.partition}`);
+      }
+      env.write("\nby provenance:");
+      for (const row of countCasesByProvenance(db)) {
+        env.write(`  ${row.count}  ${row.provenance}`);
+      }
+    }
+
     return { exitCode: 0 };
   } finally {
     db.close();
@@ -207,6 +261,8 @@ export function runCommand(argv: readonly string[], env: CommandEnvironment): Co
       return { exitCode: args.command === undefined ? 2 : 0 };
     case "import":
       return runImportCommand(args, env);
+    case "curate":
+      return runCurateCommand(args, env);
     case "status":
       return runStatusCommand(args, env);
     default:

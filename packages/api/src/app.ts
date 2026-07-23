@@ -13,26 +13,39 @@
 import { readFileSync } from "node:fs";
 import { type CompoundConfig, validateConfig } from "@compound/config";
 import { TRACE_SCHEMA_VERSION } from "@compound/contract";
+import { curateTask } from "@compound/curation";
 import { runImport, UnsupportedImporterError } from "@compound/pipeline";
 import {
+  CASE_PROVENANCES,
+  CASE_REVIEW_STATES,
+  type CaseRow,
   type CompoundDatabase,
+  countCases,
+  countCasesByPartition,
+  countCasesByProvenance,
   countImportBatches,
   countTraces,
   countTracesByDiagnosticReason,
   countTracesByTaskKey,
   countTracesByValidationClass,
+  getCase,
   getImportBatch,
   getTraceByTraceId,
   type ImportBatchRow,
+  InvalidPromotionError,
+  listCases,
   listImportBatches,
   listTraces,
+  reviewCase,
   type StoredTrace,
+  UnknownCaseError,
 } from "@compound/storage";
 import { Hono } from "hono";
 import { stripSecrets } from "./config-view";
 import { errorResponse, invalidRequest, notFound } from "./errors";
 import { parseImportRequest } from "./import-request";
 import { parseDateParam, parseEnumParam, parsePageParams, parseTaskKeyParam } from "./query";
+import { parseReviewRequest } from "./review-request";
 
 export const APP_VERSION = "0.1.0";
 export const CONFIG_SCHEMA_VERSION = 1;
@@ -54,6 +67,23 @@ function serializeTrace(stored: StoredTrace) {
     import_batch_id: stored.importBatchId,
     content_hash: stored.contentHash,
     imported_at: stored.createdAt.toISOString(),
+  };
+}
+
+function serializeCase(row: CaseRow) {
+  return {
+    case_id: row.caseId,
+    task_key: row.taskKey,
+    source_trace_id: row.sourceTraceId,
+    content_hash: row.contentHash,
+    provenance: row.provenance,
+    partition: row.partition,
+    review_state: row.reviewState,
+    input: row.input,
+    expected: row.expected,
+    duplicate_count: row.duplicateCount,
+    created_at: row.createdAt.toISOString(),
+    updated_at: row.updatedAt.toISOString(),
   };
 }
 
@@ -228,6 +258,87 @@ export function createApp({ db, config }: AppDependencies): Hono {
       throw notFound(`no import batch with id ${id}`, { id });
     }
     return c.json(serializeBatch(batch));
+  });
+
+  // --- cases ---------------------------------------------------------------
+
+  app.post("/api/tasks/:taskKey/curate", (c) => {
+    const taskKey = c.req.param("taskKey");
+    const report = curateTask(db, { taskKey });
+    return c.json(report, 201);
+  });
+
+  app.get("/api/cases", (c) => {
+    const query = new URL(c.req.url).searchParams;
+    const { limit, offset } = parsePageParams(query);
+    // The decision partition is sealed: this route never opens the firewall,
+    // so it can never surface a decision_test case, whatever is asked for.
+    const items = listCases(db, {
+      taskKey: query.get("task_key") ?? undefined,
+      partition: parseEnumParam(query, "partition", [
+        "optimization_train",
+        "optimizer_validation",
+        "judge_calibration",
+      ] as const),
+      provenance: parseEnumParam(query, "provenance", CASE_PROVENANCES),
+      reviewState: parseEnumParam(query, "review_state", CASE_REVIEW_STATES),
+      limit,
+      offset,
+    });
+    return c.json({
+      items: items.map(serializeCase),
+      total: countCases(db, { taskKey: query.get("task_key") ?? undefined }),
+      limit,
+      offset,
+    });
+  });
+
+  app.get("/api/cases/stats", (c) => {
+    const query = new URL(c.req.url).searchParams;
+    const taskKey = query.get("task_key") ?? undefined;
+    return c.json({
+      by_partition: countCasesByPartition(db, taskKey).map((row) => ({
+        partition: row.partition,
+        count: row.count,
+      })),
+      by_provenance: countCasesByProvenance(db, taskKey).map((row) => ({
+        provenance: row.provenance,
+        count: row.count,
+      })),
+    });
+  });
+
+  app.get("/api/cases/:caseId", (c) => {
+    const caseId = c.req.param("caseId");
+    const found = getCase(db, caseId);
+    if (found === null) throw notFound(`no case with id ${caseId}`, { case_id: caseId });
+    // A decision_test case is fetchable by its exact id — that is not a scan of
+    // the sealed set, and hiding a case someone already holds the id for would
+    // be confusing. Bulk listing remains sealed.
+    return c.json(serializeCase(found));
+  });
+
+  app.post("/api/cases/:caseId/review", async (c) => {
+    const caseId = c.req.param("caseId");
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      throw invalidRequest("request body must be a JSON document");
+    }
+    const review = parseReviewRequest(body);
+    try {
+      const updated = reviewCase(db, caseId, review);
+      return c.json(serializeCase(updated));
+    } catch (error) {
+      if (error instanceof UnknownCaseError) {
+        throw notFound(`no case with id ${caseId}`, { case_id: caseId });
+      }
+      if (error instanceof InvalidPromotionError) {
+        throw invalidRequest(error.message);
+      }
+      throw error;
+    }
   });
 
   return app;

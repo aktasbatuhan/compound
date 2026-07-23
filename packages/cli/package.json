@@ -18,6 +18,7 @@
     "@compound/api": "workspace:*",
     "@compound/config": "workspace:*",
     "@compound/pipeline": "workspace:*",
-    "@compound/storage": "workspace:*"
+    "@compound/storage": "workspace:*",
+    "@compound/curation": "workspace:*"
   }
 }

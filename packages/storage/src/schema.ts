@@ -96,6 +96,78 @@ export const traces = sqliteTable(
   ],
 );
 
+/** Typed provenance of a case's expected output (docs/curation-v1.md). */
+export const CASE_PROVENANCES = [
+  "observed_output",
+  "human_golden",
+  "deterministic_outcome",
+  "user_feedback",
+  "synthetic_label",
+] as const;
+export type CaseProvenance = (typeof CASE_PROVENANCES)[number];
+
+/** Immutable data partitions; `decision_test` is sealed (docs/curation-v1.md). */
+export const CASE_PARTITIONS = [
+  "optimization_train",
+  "optimizer_validation",
+  "judge_calibration",
+  "decision_test",
+] as const;
+export type CasePartition = (typeof CASE_PARTITIONS)[number];
+
+/** Human review state of a case. */
+export const CASE_REVIEW_STATES = ["unreviewed", "approved", "rejected", "needs_edit"] as const;
+export type CaseReviewState = (typeof CASE_REVIEW_STATES)[number];
+
+/**
+ * Eval cases extracted from eval-ready traces (docs/curation-v1.md).
+ *
+ * `input` and `expected` hold the replayable request and the typed expected
+ * output. `partition` is assigned once from `content_hash` and is immutable —
+ * reshuffling it would silently move sealed decision data.
+ */
+export const cases = sqliteTable(
+  "cases",
+  {
+    id: text("id").primaryKey(),
+    /** Stable case identifier derived from the source trace. */
+    caseId: text("case_id").notNull(),
+    /** A case always belongs to a task; unassigned traces do not become cases. */
+    taskKey: text("task_key").notNull(),
+    /** Lineage back to the evidence. */
+    sourceTraceId: text("source_trace_id").notNull(),
+    /** Dedupe key, carried from the trace; drives partition assignment. */
+    contentHash: text("content_hash").notNull(),
+    provenance: text("provenance", { enum: CASE_PROVENANCES }).notNull(),
+    partition: text("partition", { enum: CASE_PARTITIONS }).notNull(),
+    reviewState: text("review_state", { enum: CASE_REVIEW_STATES }).notNull().default("unreviewed"),
+    /** The focal call's replayable request: `{model?, input, tools_available?}`. */
+    input: text("input", { mode: "json" }).notNull(),
+    /** Typed expected output; may be null (assertion-gradeable without one). */
+    expected: text("expected", { mode: "json" }),
+    /** How many duplicate traces collapsed into this case (>= 0). */
+    duplicateCount: integer("duplicate_count").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    // Dedupe is within a task_key: the same request under two tasks is two cases.
+    uniqueIndex("cases_task_content_unique").on(table.taskKey, table.contentHash),
+    uniqueIndex("cases_case_id_unique").on(table.caseId),
+    index("cases_task_key_idx").on(table.taskKey),
+    index("cases_partition_idx").on(table.partition),
+    index("cases_provenance_idx").on(table.provenance),
+    index("cases_review_state_idx").on(table.reviewState),
+    index("cases_source_trace_id_idx").on(table.sourceTraceId),
+  ],
+);
+
+export type CaseRow = typeof cases.$inferSelect;
+
 export const importBatchesRelations = relations(importBatches, ({ many }) => ({
   traces: many(traces),
 }));
