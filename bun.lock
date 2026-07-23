@@ -16,8 +16,22 @@
       "dependencies": {
         "@compound/config": "workspace:*",
         "@compound/contract": "workspace:*",
+        "@compound/pipeline": "workspace:*",
         "@compound/storage": "workspace:*",
         "hono": "^4.9.0",
+      },
+    },
+    "packages/cli": {
+      "name": "@compound/cli",
+      "version": "0.1.0",
+      "bin": {
+        "compound": "src/main.ts",
+      },
+      "dependencies": {
+        "@compound/api": "workspace:*",
+        "@compound/config": "workspace:*",
+        "@compound/pipeline": "workspace:*",
+        "@compound/storage": "workspace:*",
       },
     },
     "packages/config": {
@@ -49,6 +63,18 @@
       "version": "0.1.0",
       "dependencies": {
         "@compound/contract": "workspace:*",
+      },
+    },
+    "packages/pipeline": {
+      "name": "@compound/pipeline",
+      "version": "0.1.0",
+      "dependencies": {
+        "@compound/config": "workspace:*",
+        "@compound/contract": "workspace:*",
+        "@compound/ingest": "workspace:*",
+        "@compound/redaction": "workspace:*",
+        "@compound/storage": "workspace:*",
+        "zod": "^4.0.5",
       },
     },
     "packages/redaction": {
@@ -92,11 +118,15 @@
 
     "@compound/api": ["@compound/api@workspace:packages/api"],
 
+    "@compound/cli": ["@compound/cli@workspace:packages/cli"],
+
     "@compound/config": ["@compound/config@workspace:packages/config"],
 
     "@compound/contract": ["@compound/contract@workspace:packages/contract"],
 
     "@compound/ingest": ["@compound/ingest@workspace:packages/ingest"],
+
+    "@compound/pipeline": ["@compound/pipeline@workspace:packages/pipeline"],
 
     "@compound/redaction": ["@compound/redaction@workspace:packages/redaction"],
 

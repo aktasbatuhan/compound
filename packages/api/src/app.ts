@@ -4,14 +4,16 @@
  * Spec: docs/api-design-v1.md. Two rules from it shape this file:
  *
  * 1. No endpoint that lies. Routes exist only for features that are built.
- *    `POST /api/imports` is deliberately absent until ingest lands — a missing
- *    route is honest, a stub returning a fabricated shape is not.
+ *    `POST /api/imports` exists as of Step 2 because ingest is real; it ran a
+ *    genuine import before the route was added.
  * 2. The app is a function, not a server. `createApp` returns a Hono app with
  *    its dependencies injected, so every route is testable without a port.
  */
 
+import { readFileSync } from "node:fs";
 import { type CompoundConfig, validateConfig } from "@compound/config";
 import { TRACE_SCHEMA_VERSION } from "@compound/contract";
+import { runImport, UnsupportedImporterError } from "@compound/pipeline";
 import {
   type CompoundDatabase,
   countImportBatches,
@@ -29,6 +31,7 @@ import {
 import { Hono } from "hono";
 import { stripSecrets } from "./config-view";
 import { errorResponse, invalidRequest, notFound } from "./errors";
+import { parseImportRequest } from "./import-request";
 import { parseDateParam, parseEnumParam, parsePageParams, parseTaskKeyParam } from "./query";
 
 export const APP_VERSION = "0.1.0";
@@ -177,6 +180,45 @@ export function createApp({ db, config }: AppDependencies): Hono {
       limit,
       offset,
     });
+  });
+
+  app.post("/api/imports", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      throw invalidRequest("request body must be a JSON document");
+    }
+    const request = parseImportRequest(body);
+
+    let content: string;
+    if (request.content !== undefined) {
+      content = request.content;
+    } else {
+      try {
+        content = readFileSync(request.path as string, "utf8");
+      } catch (error) {
+        throw invalidRequest(
+          `could not read ${request.path}: ${error instanceof Error ? error.message : "unknown error"}`,
+          { parameter: "path" },
+        );
+      }
+    }
+
+    try {
+      const { batch, report } = runImport(db, {
+        importer: request.importer,
+        content,
+        config,
+        projectId: request.project_id,
+      });
+      return c.json({ batch: serializeBatch(batch), report }, 201);
+    } catch (error) {
+      if (error instanceof UnsupportedImporterError) {
+        throw invalidRequest(error.message, { parameter: "importer" });
+      }
+      throw error;
+    }
   });
 
   app.get("/api/imports/:id", (c) => {

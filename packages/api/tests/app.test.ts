@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { CompoundDatabase } from "@compound/storage";
 import { completeImportBatch, failImportBatch } from "@compound/storage";
 import { APP_VERSION, CONFIG_SCHEMA_VERSION } from "../src/app";
@@ -34,11 +37,106 @@ describe("unknown routes", () => {
     expect(body.error.code).toBe("not_found");
     expect(body.error.message).toContain("/api/nope");
   });
+});
 
-  test("POST /api/imports does not exist until ingest is built", async () => {
-    const { status, body } = await postJson(testApp(db), "/api/imports", {});
-    expect(status).toBe(404);
-    expect(body.error.code).toBe("not_found");
+describe("POST /api/imports", () => {
+  const exportJson = JSON.stringify([
+    {
+      id: "tr-api-1",
+      timestamp: "2026-07-23T10:00:00Z",
+      tags: [],
+      public: false,
+      environment: "production",
+      metadata: { task_key: "support" },
+      observations: [
+        {
+          id: "gen-1",
+          traceId: "tr-api-1",
+          type: "GENERATION",
+          startTime: "2026-07-23T10:00:00Z",
+          endTime: "2026-07-23T10:00:02Z",
+          level: "DEFAULT",
+          environment: "production",
+          model: "gpt-4o",
+          input: [{ role: "user", content: "hello" }],
+          output: { role: "assistant", content: "hi" },
+          usageDetails: { input: 5, output: 2 },
+        },
+      ],
+      scores: [],
+    },
+  ]);
+
+  test("imports inline content and returns the batch with its report", async () => {
+    const app = testApp(db);
+    const { status, body } = await postJson(app, "/api/imports", {
+      importer: "langfuse",
+      content: exportJson,
+    });
+
+    expect(status).toBe(201);
+    expect(body.batch.status).toBe("completed");
+    expect(body.report.counts.eval_ready).toBe(1);
+
+    const listed = await getJson(app, "/api/traces");
+    expect(listed.body.total).toBe(1);
+    expect(listed.body.items[0].trace.trace_id).toBe("langfuse:tr-api-1");
+  });
+
+  test("imports from a file path", async () => {
+    const path = join(tmpdir(), `compound-import-${crypto.randomUUID()}.json`);
+    writeFileSync(path, exportJson);
+    try {
+      const { status, body } = await postJson(testApp(db), "/api/imports", {
+        importer: "langfuse",
+        path,
+      });
+      expect(status).toBe(201);
+      expect(body.report.counts.eval_ready).toBe(1);
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
+  test("requires exactly one of path or content", async () => {
+    const app = testApp(db);
+    const neither = await postJson(app, "/api/imports", { importer: "langfuse" });
+    expect(neither.status).toBe(400);
+    expect(neither.body.error.details.parameter).toBe("path|content");
+
+    const both = await postJson(app, "/api/imports", {
+      importer: "langfuse",
+      path: "/tmp/x.json",
+      content: "[]",
+    });
+    expect(both.status).toBe(400);
+    expect(both.body.error.message).toContain("mutually exclusive");
+  });
+
+  test("rejects an unsupported importer without creating traces", async () => {
+    const app = testApp(db);
+    const { status, body } = await postJson(app, "/api/imports", {
+      importer: "braintrust",
+      content: "[]",
+    });
+    expect(status).toBe(400);
+    expect(body.error.details.parameter).toBe("importer");
+    expect((await getJson(app, "/api/traces")).body.total).toBe(0);
+  });
+
+  test("reports an unreadable path as a bad request, not a crash", async () => {
+    const { status, body } = await postJson(testApp(db), "/api/imports", {
+      importer: "langfuse",
+      path: "/nonexistent/definitely-not-here.json",
+    });
+    expect(status).toBe(400);
+    expect(body.error.details.parameter).toBe("path");
+  });
+
+  test("requires the importer field", async () => {
+    const { status, body } = await postJson(testApp(db), "/api/imports", { content: "[]" });
+    expect(status).toBe(400);
+    expect(body.error.details.parameter).toBe("importer");
   });
 });
 

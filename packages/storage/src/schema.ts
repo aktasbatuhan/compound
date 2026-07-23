@@ -121,6 +121,13 @@ export interface ImportReport {
     diagnostic?: number;
     rejected?: number;
     duplicate?: number;
+    /**
+     * Traces that normalized cleanly and then failed contract validation.
+     * That means Compound produced an invalid trace, so this counts OUR bugs —
+     * deliberately separate from `rejected`, which counts malformed source
+     * records (docs/ingest-pipeline-v1.md).
+     */
+    internal_normalization_errors?: number;
   };
   /** Histogram of diagnostic reasons across the batch. */
   diagnostic_reasons?: Record<string, number>;

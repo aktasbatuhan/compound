@@ -1,23 +1,22 @@
 {
-  "name": "@compound/api",
+  "name": "@compound/pipeline",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "module": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./src/serve": "./src/serve.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
-    "serve": "bun run src/serve.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@compound/config": "workspace:*",
     "@compound/contract": "workspace:*",
+    "@compound/ingest": "workspace:*",
+    "@compound/redaction": "workspace:*",
     "@compound/storage": "workspace:*",
-    "hono": "^4.9.0",
-    "@compound/pipeline": "workspace:*"
+    "zod": "^4.0.5"
   }
 }
