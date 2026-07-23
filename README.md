@@ -8,16 +8,19 @@ The ingest path is working end to end. From a Langfuse export to queryable, reda
 bun install
 bun run --filter '@compound/cli' typecheck     # or: bun test packages
 bun run packages/cli/src/main.ts import export.jsonl
+bun run packages/cli/src/main.ts curate support   # traces -> partitioned eval cases
 bun run packages/cli/src/main.ts status
 bun run packages/cli/src/main.ts serve         # local API on 127.0.0.1:4319
 ```
 
 Packages: `contract` (the portable trace contract), `config` (one `compound.yaml` schema
 shared with the Python engine), `storage` (SQLite/Drizzle), `ingest` (Langfuse normalizer),
-`redaction` (pre-persistence), `pipeline` (composition), `api` (Hono), `cli`.
+`redaction` (pre-persistence), `pipeline` (ingest composition), `curation` (cases, provenance,
+sealed partitions), `api` (Hono), `cli`.
 
 Design docs: `docs/product-plan-20260722.md`, `docs/trace-contract-v1.md`,
-`docs/ingest-pipeline-v1.md`, `docs/api-design-v1.md`, `docs/langfuse-import-mapping.md`.
+`docs/ingest-pipeline-v1.md`, `docs/curation-v1.md`, `docs/api-design-v1.md`,
+`docs/langfuse-import-mapping.md`.
 
 Note: the trace contract stays marked **draft** until a real Langfuse export imports
 losslessly. The ingest fixtures are synthetic, built from the documented schema.
