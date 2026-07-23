@@ -1,0 +1,84 @@
+[
+  {
+    "id": "tr-diag-1",
+    "timestamp": "2026-07-22T16:20:00.000Z",
+    "name": "custom-sdk-agent",
+    "environment": "staging",
+    "public": false,
+    "metadata": {},
+    "tags": [],
+    "observations": [
+      {
+        "id": "gen-x",
+        "traceId": "tr-diag-1",
+        "parentObservationId": null,
+        "type": "GENERATION",
+        "name": "custom-generation",
+        "startTime": "2026-07-22T16:20:00.300Z",
+        "endTime": "2026-07-22T16:20:02.100Z",
+        "model": "gpt-4o",
+        "modelParameters": {},
+        "input": "Answer the user's question using the query tool.",
+        "output": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_x",
+              "type": "function",
+              "function": { "name": "run_query", "arguments": "SELECT * FROM invoices" }
+            }
+          ]
+        },
+        "usageDetails": { "input": 55, "output": 12 },
+        "costDetails": {},
+        "level": "DEFAULT",
+        "metadata": {},
+        "environment": "staging"
+      },
+      {
+        "id": "tool-x",
+        "traceId": "tr-diag-1",
+        "parentObservationId": null,
+        "type": "TOOL",
+        "name": "different_tool",
+        "startTime": "2026-07-22T16:20:02.200Z",
+        "endTime": "2026-07-22T16:20:02.900Z",
+        "input": { "sql": "SELECT * FROM invoices" },
+        "level": "ERROR",
+        "statusMessage": "tool timed out",
+        "metadata": {},
+        "environment": "staging"
+      },
+      {
+        "id": "gen-y",
+        "traceId": "tr-diag-1",
+        "parentObservationId": null,
+        "type": "GENERATION",
+        "name": "custom-generation",
+        "startTime": "2026-07-22T16:20:03.000Z",
+        "endTime": "2026-07-22T16:20:05.400Z",
+        "model": "gpt-4o",
+        "modelParameters": {},
+        "input": [
+          { "role": "moderator", "content": "dropped: not a contract role" },
+          {
+            "role": "user",
+            "content": [
+              { "type": "text", "text": "What does this screenshot show?" },
+              { "type": "image_url", "image_url": { "url": "https://example.invalid/s.png" } }
+            ]
+          },
+          { "role": "function", "name": "run_query", "content": "{\"rows\": 0}" }
+        ],
+        "output": { "role": "assistant", "content": "The query returned no rows." },
+        "usageDetails": { "input": 90, "output": 14 },
+        "costDetails": {},
+        "level": "DEFAULT",
+        "metadata": {},
+        "environment": "staging"
+      }
+    ],
+    "scores": []
+  }
+]
