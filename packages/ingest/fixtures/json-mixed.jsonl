@@ -1,0 +1,3 @@
+{"trace_id":"jsonl-1","task_key":null,"started_at":"2026-07-24T12:00:00.000Z","steps":[{"type":"model_call","step_id":"a","model":"gpt-4o","input":[{"role":"user","content":"q1"}],"output":{"role":"assistant","content":"a1"},"usage":{"input_tokens":2,"output_tokens":1}}],"focal_step_id":"a"}
+this is not json
+{"trace_id":"jsonl-2","task_key":null,"started_at":"2026-07-24T12:01:00.000Z","steps":[{"type":"model_call","step_id":"b","model":"gpt-4o","input":[{"role":"user","content":"q2"}],"output":{"role":"assistant","content":"a2"},"usage":{"input_tokens":2,"output_tokens":1}}],"focal_step_id":"b"}

@@ -1,0 +1,16 @@
+[
+  {
+    "task_key": null,
+    "started_at": "2026-07-24T14:00:00.000Z",
+    "steps": [
+      {
+        "type": "model_call",
+        "step_id": "x",
+        "model": "gpt-4o",
+        "input": [{ "role": "user", "content": "hi" }],
+        "output": { "role": "assistant", "content": "hello" },
+        "usage": { "input_tokens": 3, "output_tokens": 1 }
+      }
+    ]
+  }
+]
