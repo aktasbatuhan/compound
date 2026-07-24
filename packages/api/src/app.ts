@@ -29,12 +29,14 @@ import {
   countTracesByDiagnosticReason,
   countTracesByTaskKey,
   countTracesByValidationClass,
+  type ExperimentRow,
   getCase,
   getImportBatch,
   getTraceByTraceId,
   type ImportBatchRow,
   InvalidPromotionError,
   listCases,
+  listExperiments,
   listImportBatches,
   listTraces,
   reviewCase,
@@ -100,6 +102,24 @@ function serializeBatch(batch: ImportBatchRow) {
     // Drizzle stores `report` as a JSON column and hands it back parsed.
     report: batch.report,
     created_at: batch.createdAt.toISOString(),
+  };
+}
+
+function serializeExperiment(row: ExperimentRow) {
+  return {
+    id: row.id,
+    task_key: row.taskKey,
+    candidate_model: row.candidateModel,
+    provider: row.provider,
+    partition: row.partition,
+    status: row.status,
+    paid: row.paid,
+    // Drizzle stores `report` as a JSON column and hands it back parsed; it is
+    // null until the experiment finishes.
+    report: row.report ?? null,
+    started_at: row.startedAt.toISOString(),
+    completed_at: row.completedAt?.toISOString() ?? null,
+    created_at: row.createdAt.toISOString(),
   };
 }
 
@@ -360,6 +380,31 @@ export function createApp({ db, config }: AppDependencies): Hono {
       }
       throw error;
     }
+  });
+
+  // --- experiments ---------------------------------------------------------
+
+  // Read-only: the dashboard's model matrix shows what has been run. Launching a
+  // paid run stays a deliberate CLI action (docs/dashboard-v1.md), so there is
+  // no POST here.
+  app.get("/api/experiments", (c) => {
+    const query = new URL(c.req.url).searchParams;
+    const { limit, offset } = parsePageParams(query);
+    const filter = {
+      taskKey: query.get("task_key") ?? undefined,
+      candidateModel: query.get("candidate_model") ?? undefined,
+    };
+    const items = listExperiments(db, { ...filter, limit, offset });
+    // No dedicated count helper exists in storage (which this task must not
+    // change); the full filtered list gives an honest total. Experiment volume
+    // is small, so this is cheap.
+    const total = listExperiments(db, filter).length;
+    return c.json({
+      items: items.map(serializeExperiment),
+      total,
+      limit,
+      offset,
+    });
   });
 
   return app;

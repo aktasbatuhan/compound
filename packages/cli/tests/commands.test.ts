@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -180,6 +180,14 @@ describe("curate", () => {
 });
 
 describe("experiment", () => {
+  // Provider resolution reads the key from the provider's api_key_env even for
+  // a dry run (the provider object is built but never called). Set dummy keys
+  // so these tests are hermetic and never depend on a developer's .env.
+  beforeAll(() => {
+    process.env.OPENROUTER_API_KEY ??= "test-openrouter-key";
+    process.env.DOUBLEWORD_API_KEY ??= "test-doubleword-key";
+  });
+
   async function importAndCurate(env: CommandEnvironment): Promise<void> {
     await withTempFile(EXPORT_JSON, async (path) => {
       await runCommand(["import", path, "--config", "compound.yaml"], env);

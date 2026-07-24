@@ -6,7 +6,14 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["packages/**", "*.json", "!**/schema/*.schema.json", "!**/drizzle"]
+    "includes": [
+      "packages/**",
+      "*.json",
+      "!**/schema/*.schema.json",
+      "!**/drizzle",
+      "!**/.next",
+      "!**/next-env.d.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
