@@ -7,16 +7,24 @@ The ingest path is working end to end. From a Langfuse export to queryable, reda
 ```bash
 bun install
 bun run --filter '@compound/cli' typecheck     # or: bun test packages
-bun run packages/cli/src/main.ts import export.jsonl
+bun run packages/cli/src/main.ts import export.jsonl --importer langfuse  # or --importer json
 bun run packages/cli/src/main.ts curate support   # traces -> partitioned eval cases
+bun run packages/cli/src/main.ts experiment support <model>   # dry run; add --paid --cap USD
 bun run packages/cli/src/main.ts status
 bun run packages/cli/src/main.ts serve         # local API on 127.0.0.1:4319
 ```
 
+`experiment` is money-safe by default: without `--paid` it makes zero provider calls and reports
+the estimated cost. `--paid` needs `budget.paid_runs_enabled: true`, a positive
+`budget.hard_limit_usd`, and a `--cap`. Every completion is cached, so a re-run is $0. Paid runs
+currently work against chat-completions providers (OpenRouter, OpenAI-compatible); the Flex
+Responses route for Doubleword's cheap candidates is the next provider addition.
+
 Packages: `contract` (the portable trace contract), `config` (one `compound.yaml` schema
-shared with the Python engine), `storage` (SQLite/Drizzle), `ingest` (Langfuse normalizer),
-`redaction` (pre-persistence), `pipeline` (ingest composition), `curation` (cases, provenance,
-sealed partitions), `api` (Hono), `cli`.
+shared with the Python engine), `storage` (SQLite/Drizzle), `ingest` (Langfuse + plain-JSON
+normalizers), `redaction` (pre-persistence), `pipeline` (ingest composition), `curation` (cases,
+provenance, sealed partitions), `assertions` (deterministic grading), `execution` (candidate
+runner, budget ledger, cache), `api` (Hono), `cli`.
 
 Design docs: `docs/product-plan-20260722.md`, `docs/trace-contract-v1.md`,
 `docs/ingest-pipeline-v1.md`, `docs/curation-v1.md`, `docs/api-design-v1.md`,
