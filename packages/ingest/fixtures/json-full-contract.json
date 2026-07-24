@@ -1,0 +1,41 @@
+[
+  {
+    "schema": "compound.trace",
+    "schema_version": 1,
+    "trace_id": "trace-abc",
+    "task_key": "support",
+    "started_at": "2026-07-24T10:00:00.000Z",
+    "ended_at": "2026-07-24T10:00:02.000Z",
+    "source": {
+      "importer": "json",
+      "importer_version": "0.1.0",
+      "source_ids": { "trace_id": "trace-abc" },
+      "exported_at": "2026-07-24T09:00:00.000Z"
+    },
+    "session_id": null,
+    "user_ref": null,
+    "environment": "production",
+    "release": null,
+    "metadata": { "channel": "web" },
+    "tags": ["support"],
+    "steps": [
+      {
+        "type": "model_call",
+        "step_id": "call-1",
+        "provider": "openai",
+        "model": "gpt-4o",
+        "params": { "temperature": 0 },
+        "input": [{ "role": "user", "content": "What is the refund window?" }],
+        "output": { "role": "assistant", "content": "Thirty days." },
+        "finish_reason": "stop",
+        "usage": { "input_tokens": 12, "output_tokens": 4 },
+        "started_at": "2026-07-24T10:00:00.000Z",
+        "ended_at": "2026-07-24T10:00:02.000Z"
+      }
+    ],
+    "focal_step_id": "call-1",
+    "outcome": null,
+    "permissions": { "judging": true, "optimization": true, "fine_tuning": false },
+    "redactions": []
+  }
+]

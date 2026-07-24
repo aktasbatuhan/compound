@@ -36,6 +36,7 @@ export type InputFormat = "json_array" | "jsonl" | "records";
  * - `blob_join` — separate trace and observation records joined on trace_id.
  * - `enriched_observations` — `observations_v2` alone (trace context denormalized).
  * - `traces_only` — trace records with no observations at all.
+ * - `json` — plain contract-shaped trace JSON (the `@compound/ingest` JSON importer).
  * - `unknown` — nothing recognizable was read.
  */
 export type ExportSurface =
@@ -43,6 +44,7 @@ export type ExportSurface =
   | "blob_join"
   | "enriched_observations"
   | "traces_only"
+  | "json"
   | "unknown";
 
 export type Casing = "camelCase" | "snake_case" | "unknown";
