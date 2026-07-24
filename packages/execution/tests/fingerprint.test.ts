@@ -1,0 +1,80 @@
+import { describe, expect, test } from "bun:test";
+import {
+  completionFingerprint,
+  costFromUsage,
+  estimateCost,
+  type FingerprintInput,
+} from "../src/index";
+
+const base: FingerprintInput = {
+  provider: "openrouter",
+  request: {
+    model: "gpt-4o",
+    messages: [{ role: "user", content: "hi" }],
+    params: { temperature: 0 },
+  },
+};
+
+describe("completionFingerprint", () => {
+  test("is stable for identical inputs", () => {
+    expect(completionFingerprint(base)).toBe(completionFingerprint(base));
+  });
+
+  test("changes with model, params, provider, or revision", () => {
+    const original = completionFingerprint(base);
+    expect(completionFingerprint({ ...base, provider: "doubleword" })).not.toBe(original);
+    expect(completionFingerprint({ ...base, providerRevision: "2026-07" })).not.toBe(original);
+    expect(
+      completionFingerprint({ ...base, request: { ...base.request, model: "other" } }),
+    ).not.toBe(original);
+    expect(
+      completionFingerprint({
+        ...base,
+        request: { ...base.request, params: { temperature: 1 } },
+      }),
+    ).not.toBe(original);
+  });
+
+  test("is insensitive to param key order (canonical JSON)", () => {
+    const a = completionFingerprint({
+      ...base,
+      request: { ...base.request, params: { a: 1, b: 2 } },
+    });
+    const b = completionFingerprint({
+      ...base,
+      request: { ...base.request, params: { b: 2, a: 1 } },
+    });
+    expect(a).toBe(b);
+  });
+
+  test("trial 0 keeps the base identity; later trials differ", () => {
+    expect(completionFingerprint(base, 0)).toBe(completionFingerprint(base));
+    expect(completionFingerprint(base, 1)).not.toBe(completionFingerprint(base, 0));
+    expect(completionFingerprint(base, 1)).not.toBe(completionFingerprint(base, 2));
+  });
+});
+
+describe("costFromUsage", () => {
+  test("bills input and output at their per-million rates", () => {
+    const cost = costFromUsage(
+      { input_tokens: 1_000_000, output_tokens: 500_000 },
+      { input: 2, output: 6 },
+    );
+    expect(cost).toBeCloseTo(2 + 3, 9);
+  });
+
+  test("is zero when usage is null", () => {
+    expect(costFromUsage(null, { input: 5, output: 5 })).toBe(0);
+  });
+});
+
+describe("estimateCost", () => {
+  test("is conservative: assumes the full output budget", () => {
+    const estimate = estimateCost(
+      { model: "m", messages: [{ role: "user", content: "hi" }], params: { max_tokens: 1000 } },
+      { input: 1, output: 10 },
+    );
+    // ~ output-dominated: 1000 output tokens at $10/M ≈ $0.01.
+    expect(estimate).toBeGreaterThanOrEqual(0.01);
+  });
+});

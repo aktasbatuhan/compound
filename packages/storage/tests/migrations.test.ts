@@ -27,6 +27,9 @@ describe("migrations", () => {
     expect(names).toContain("import_batches");
     expect(names).toContain("traces");
     expect(names).toContain("cases");
+    expect(names).toContain("experiments");
+    expect(names).toContain("completions");
+    expect(names).toContain("spend_records");
     handle.close();
   });
 
@@ -40,6 +43,10 @@ describe("migrations", () => {
       "cases_source_trace_id_idx",
       "cases_task_content_unique",
       "cases_task_key_idx",
+      "experiments_candidate_model_idx",
+      "experiments_task_key_idx",
+      "spend_records_experiment_id_idx",
+      "spend_records_fingerprint_unique",
       "traces_content_hash_idx",
       "traces_import_batch_id_idx",
       "traces_started_at_idx",

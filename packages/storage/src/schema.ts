@@ -15,7 +15,7 @@
  * preserved verbatim inside `payload`, which is the authoritative copy.
  */
 import { relations, sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 /** Lifecycle of an import batch. */
 export const IMPORT_BATCH_STATUSES = ["running", "completed", "failed"] as const;
@@ -167,6 +167,107 @@ export const cases = sqliteTable(
 );
 
 export type CaseRow = typeof cases.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Execution: experiments, completion cache, spend ledger (docs/execution-v1.md)
+// ---------------------------------------------------------------------------
+
+export const EXPERIMENT_STATUSES = ["running", "completed", "failed"] as const;
+export type ExperimentStatus = (typeof EXPERIMENT_STATUSES)[number];
+
+/** One run of a candidate model against a task's cases in a partition. */
+export const experiments = sqliteTable(
+  "experiments",
+  {
+    id: text("id").primaryKey(),
+    taskKey: text("task_key").notNull(),
+    candidateModel: text("candidate_model").notNull(),
+    provider: text("provider").notNull(),
+    partition: text("partition", { enum: CASE_PARTITIONS }).notNull(),
+    status: text("status", { enum: EXPERIMENT_STATUSES }).notNull(),
+    /** true if real provider calls were permitted; false for a dry run. */
+    paid: integer("paid", { mode: "boolean" }).notNull().default(false),
+    /** JSON run report: counts, pass rate, cost, cache hits, run fingerprint. */
+    report: text("report", { mode: "json" }).$type<ExperimentReport>(),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    index("experiments_task_key_idx").on(table.taskKey),
+    index("experiments_candidate_model_idx").on(table.candidateModel),
+  ],
+);
+
+export type ExperimentRow = typeof experiments.$inferSelect;
+
+/**
+ * Content-addressed completion cache. A hit costs $0 and makes no provider
+ * call, so a re-run of an identical experiment is free (docs/execution-v1.md).
+ */
+export const completions = sqliteTable("completions", {
+  /** Fingerprint over {provider, model, params, input, provider_revision}. */
+  fingerprint: text("fingerprint").primaryKey(),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  /** The resolved model id the provider actually served, when reported. */
+  resolvedModel: text("resolved_model"),
+  paramsJson: text("params_json", { mode: "json" }),
+  outputJson: text("output_json", { mode: "json" }).notNull(),
+  usageJson: text("usage_json", { mode: "json" }),
+  finishReason: text("finish_reason"),
+  latencyMs: integer("latency_ms"),
+  costUsd: real("cost_usd").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`),
+});
+
+export type CompletionRow = typeof completions.$inferSelect;
+
+/**
+ * Durable, append-only spend ledger. Every paid call appends a record with its
+ * fingerprint; the running total is the sum. A fingerprint present here was
+ * already charged and is never double-charged.
+ */
+export const spendRecords = sqliteTable(
+  "spend_records",
+  {
+    id: text("id").primaryKey(),
+    experimentId: text("experiment_id"),
+    fingerprint: text("fingerprint").notNull(),
+    costUsd: real("cost_usd").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    uniqueIndex("spend_records_fingerprint_unique").on(table.fingerprint),
+    index("spend_records_experiment_id_idx").on(table.experimentId),
+  ],
+);
+
+export type SpendRecordRow = typeof spendRecords.$inferSelect;
+
+/** Stored on each experiment (docs/execution-v1.md, "Experiment and run"). */
+export interface ExperimentReport {
+  cases_total?: number;
+  cases_graded?: number;
+  cases_skipped?: number;
+  passed?: number;
+  pass_rate?: number;
+  mean_score?: number;
+  cache_hits?: number;
+  provider_calls?: number;
+  estimated_cost_usd?: number;
+  actual_cost_usd?: number;
+  run_fingerprint?: string;
+  skip_reasons?: Record<string, number>;
+  error?: string;
+  [key: string]: unknown;
+}
 
 export const importBatchesRelations = relations(importBatches, ({ many }) => ({
   traces: many(traces),

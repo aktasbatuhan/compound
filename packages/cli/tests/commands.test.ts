@@ -47,11 +47,11 @@ function testEnvironment() {
   return { env, lines, output: () => lines.join("\n"), db };
 }
 
-function withTempFile(contents: string, run: (path: string) => void): void {
+async function withTempFile(contents: string, run: (path: string) => Promise<void>): Promise<void> {
   const path = join(tmpdir(), `compound-cli-${crypto.randomUUID()}.json`);
   writeFileSync(path, contents);
   try {
-    run(path);
+    await run(path);
   } finally {
     rmSync(path, { force: true });
   }
@@ -67,29 +67,29 @@ describe("parseArgs", () => {
 });
 
 describe("help", () => {
-  test("no command prints help and exits non-zero", () => {
+  test("no command prints help and exits non-zero", async () => {
     const { env, output } = testEnvironment();
-    expect(runCommand([], env).exitCode).toBe(2);
+    expect((await runCommand([], env)).exitCode).toBe(2);
     expect(output()).toContain("Usage:");
   });
 
-  test("explicit help exits zero", () => {
+  test("explicit help exits zero", async () => {
     const { env } = testEnvironment();
-    expect(runCommand(["help"], env).exitCode).toBe(0);
+    expect((await runCommand(["help"], env)).exitCode).toBe(0);
   });
 
-  test("an unknown command is an error, not a silent no-op", () => {
+  test("an unknown command is an error, not a silent no-op", async () => {
     const { env, output } = testEnvironment();
-    expect(runCommand(["frobnicate"], env).exitCode).toBe(2);
+    expect((await runCommand(["frobnicate"], env)).exitCode).toBe(2);
     expect(output()).toContain("unknown command 'frobnicate'");
   });
 });
 
 describe("import", () => {
-  test("imports a file and reports concrete counts", () => {
+  test("imports a file and reports concrete counts", async () => {
     const { env, output } = testEnvironment();
-    withTempFile(EXPORT_JSON, (path) => {
-      const result = runCommand(["import", path, "--config", "compound.yaml"], env);
+    await withTempFile(EXPORT_JSON, async (path) => {
+      const result = await runCommand(["import", path, "--config", "compound.yaml"], env);
       expect(result.exitCode).toBe(0);
     });
     expect(output()).toContain("eval_ready:  1");
@@ -97,99 +97,149 @@ describe("import", () => {
     expect(output()).toContain("rejected:    0");
   });
 
-  test("requires a file argument", () => {
+  test("requires a file argument", async () => {
     const { env, output } = testEnvironment();
-    expect(runCommand(["import"], env).exitCode).toBe(2);
+    expect((await runCommand(["import"], env)).exitCode).toBe(2);
     expect(output()).toContain("a file to import is required");
   });
 
-  test("reports an unreadable file without a stack trace", () => {
+  test("reports an unreadable file without a stack trace", async () => {
     const { env, output } = testEnvironment();
-    expect(runCommand(["import", "/nonexistent/nope.json"], env).exitCode).toBe(1);
+    expect((await runCommand(["import", "/nonexistent/nope.json"], env)).exitCode).toBe(1);
     expect(output()).toContain("could not read");
   });
 
-  test("warns loudly when config is missing, since redaction is then not applied", () => {
+  test("warns loudly when config is missing, since redaction is then not applied", async () => {
     const { env, output } = testEnvironment();
-    withTempFile(EXPORT_JSON, (path) => {
-      runCommand(["import", path, "--config", "/nonexistent/compound.yaml"], env);
+    await withTempFile(EXPORT_JSON, async (path) => {
+      await runCommand(["import", path, "--config", "/nonexistent/compound.yaml"], env);
     });
     expect(output()).toContain("importing WITHOUT redaction rules");
   });
 
-  test("reports duplicates on a second import rather than failing", () => {
+  test("reports duplicates on a second import rather than failing", async () => {
     const { env, output } = testEnvironment();
-    withTempFile(EXPORT_JSON, (path) => {
-      runCommand(["import", path, "--config", "compound.yaml"], env);
-      const second = runCommand(["import", path, "--config", "compound.yaml"], env);
+    await withTempFile(EXPORT_JSON, async (path) => {
+      await runCommand(["import", path, "--config", "compound.yaml"], env);
+      const second = await runCommand(["import", path, "--config", "compound.yaml"], env);
       expect(second.exitCode).toBe(0);
     });
     expect(output()).toContain("duplicate:   1");
   });
 
-  test("lists diagnostic reasons when traces are not replayable", () => {
+  test("lists diagnostic reasons when traces are not replayable", async () => {
     const broken = JSON.parse(EXPORT_JSON);
     broken[0].observations[0].input = 42;
     const { env, output } = testEnvironment();
-    withTempFile(JSON.stringify(broken), (path) => {
-      runCommand(["import", path, "--config", "compound.yaml"], env);
+    await withTempFile(JSON.stringify(broken), async (path) => {
+      await runCommand(["import", path, "--config", "compound.yaml"], env);
     });
     expect(output()).toContain("diagnostic reasons:");
     expect(output()).toContain("unparseable_generation_input");
   });
 
-  test("rejects an unsupported importer", () => {
+  test("rejects an unsupported importer", async () => {
     const { env, output } = testEnvironment();
-    withTempFile(EXPORT_JSON, (path) => {
-      expect(runCommand(["import", path, "--importer", "braintrust"], env).exitCode).toBe(1);
+    await withTempFile(EXPORT_JSON, async (path) => {
+      expect((await runCommand(["import", path, "--importer", "braintrust"], env)).exitCode).toBe(
+        1,
+      );
     });
     expect(output()).toContain("unsupported importer");
   });
 });
 
 describe("curate", () => {
-  test("curates imported traces into cases and names the seal", () => {
+  test("curates imported traces into cases and names the seal", async () => {
     const { env, output } = testEnvironment();
-    withTempFile(EXPORT_JSON, (path) => {
-      runCommand(["import", path, "--config", "compound.yaml"], env);
+    await withTempFile(EXPORT_JSON, async (path) => {
+      await runCommand(["import", path, "--config", "compound.yaml"], env);
     });
-    const result = runCommand(["curate", "support"], env);
+    const result = await runCommand(["curate", "support"], env);
     expect(result.exitCode).toBe(0);
     expect(output()).toContain("cases created:   1");
     expect(output()).toContain("decision_test");
   });
 
-  test("requires a task key", () => {
+  test("requires a task key", async () => {
     const { env, output } = testEnvironment();
-    expect(runCommand(["curate"], env).exitCode).toBe(2);
+    expect((await runCommand(["curate"], env)).exitCode).toBe(2);
     expect(output()).toContain("a task key to curate is required");
   });
 
-  test("re-running curate reports duplicates, not new cases", () => {
+  test("re-running curate reports duplicates, not new cases", async () => {
     const { env, output } = testEnvironment();
-    withTempFile(EXPORT_JSON, (path) => {
-      runCommand(["import", path, "--config", "compound.yaml"], env);
+    await withTempFile(EXPORT_JSON, async (path) => {
+      await runCommand(["import", path, "--config", "compound.yaml"], env);
     });
-    runCommand(["curate", "support"], env);
-    const again = runCommand(["curate", "support"], env);
+    await runCommand(["curate", "support"], env);
+    const again = await runCommand(["curate", "support"], env);
     expect(again.exitCode).toBe(0);
     expect(output()).toContain("duplicates:      1");
   });
 });
 
-describe("status", () => {
-  test("reports an empty store honestly", () => {
+describe("experiment", () => {
+  async function importAndCurate(env: CommandEnvironment): Promise<void> {
+    await withTempFile(EXPORT_JSON, async (path) => {
+      await runCommand(["import", path, "--config", "compound.yaml"], env);
+    });
+    await runCommand(["curate", "support"], env);
+  }
+
+  test("a dry run makes no provider calls and reports estimated cost", async () => {
     const { env, output } = testEnvironment();
-    expect(runCommand(["status"], env).exitCode).toBe(0);
+    await importAndCurate(env);
+    // GLM is a configured candidate with pricing in the repo compound.yaml.
+    const result = await runCommand(
+      ["experiment", "support", "zai-org/GLM-5.2-FP8", "--partition", "optimization_train"],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("dry run (no provider calls)");
+    expect(output()).toContain("provider calls: 0");
+  });
+
+  test("requires a task key and a model", async () => {
+    const { env } = testEnvironment();
+    expect((await runCommand(["experiment", "support"], env)).exitCode).toBe(2);
+  });
+
+  test("--paid without an enabled budget is refused", async () => {
+    const { env, output } = testEnvironment();
+    await importAndCurate(env);
+    // The repo compound.yaml has paid_runs_enabled: true, so the block that
+    // trips first here is the missing --cap.
+    const result = await runCommand(
+      ["experiment", "support", "zai-org/GLM-5.2-FP8", "--paid"],
+      env,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(output()).toContain("--cap");
+  });
+
+  test("an unknown model is a clear config error", async () => {
+    const { env, output } = testEnvironment();
+    await importAndCurate(env);
+    const result = await runCommand(["experiment", "support", "no-such-model"], env);
+    expect(result.exitCode).toBe(1);
+    expect(output()).toContain("not in models");
+  });
+});
+
+describe("status", () => {
+  test("reports an empty store honestly", async () => {
+    const { env, output } = testEnvironment();
+    expect((await runCommand(["status"], env)).exitCode).toBe(0);
     expect(output()).toContain("traces: 0");
   });
 
-  test("summarises traces, task keys and the diagnostic queue after an import", () => {
+  test("summarises traces, task keys and the diagnostic queue after an import", async () => {
     const { env, output } = testEnvironment();
-    withTempFile(EXPORT_JSON, (path) => {
-      runCommand(["import", path, "--config", "compound.yaml"], env);
+    await withTempFile(EXPORT_JSON, async (path) => {
+      await runCommand(["import", path, "--config", "compound.yaml"], env);
     });
-    runCommand(["status"], env);
+    await runCommand(["status"], env);
     expect(output()).toContain("traces: 1");
     expect(output()).toContain("eval_ready: 1");
     expect(output()).toContain("support");

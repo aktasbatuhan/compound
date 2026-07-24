@@ -39,8 +39,10 @@
       },
       "dependencies": {
         "@compound/api": "workspace:*",
+        "@compound/assertions": "workspace:*",
         "@compound/config": "workspace:*",
         "@compound/curation": "workspace:*",
+        "@compound/execution": "workspace:*",
         "@compound/pipeline": "workspace:*",
         "@compound/storage": "workspace:*",
       },
@@ -75,6 +77,19 @@
       "dependencies": {
         "@compound/contract": "workspace:*",
         "@compound/storage": "workspace:*",
+      },
+    },
+    "packages/execution": {
+      "name": "@compound/execution",
+      "version": "0.1.0",
+      "dependencies": {
+        "@compound/assertions": "workspace:*",
+        "@compound/config": "workspace:*",
+        "@compound/contract": "workspace:*",
+        "@compound/storage": "workspace:*",
+      },
+      "devDependencies": {
+        "@compound/curation": "workspace:*",
       },
     },
     "packages/ingest": {
@@ -146,6 +161,8 @@
     "@compound/contract": ["@compound/contract@workspace:packages/contract"],
 
     "@compound/curation": ["@compound/curation@workspace:packages/curation"],
+
+    "@compound/execution": ["@compound/execution@workspace:packages/execution"],
 
     "@compound/ingest": ["@compound/ingest@workspace:packages/ingest"],
 

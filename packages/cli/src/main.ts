@@ -19,6 +19,6 @@ if (argv[0] === "serve" || argv[0] === "dev") {
   });
   console.log(`compound listening on http://${server.hostname}:${server.port}`);
 } else {
-  const { exitCode } = runCommand(argv, defaultEnvironment());
+  const { exitCode } = await runCommand(argv, defaultEnvironment());
   process.exit(exitCode);
 }

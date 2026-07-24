@@ -20,6 +20,7 @@ import {
   createDatabase,
   migrate,
 } from "@compound/storage";
+import { runExperimentCommand } from "./experiment";
 
 export interface CommandEnvironment {
   /** Where output goes; injected so tests can capture it. */
@@ -88,6 +89,7 @@ export const HELP_TEXT = `compound — turn production traces into gated optimiz
 Usage:
   compound import <file> [--importer langfuse] [--db PATH] [--config PATH] [--project-id ID]
   compound curate <task_key> [--db PATH]
+  compound experiment <task_key> <model> [--partition P] [--paid --cap USD]
   compound status [--db PATH]
   compound serve [--port N] [--host HOST] [--db PATH] [--config PATH]
   compound help
@@ -249,7 +251,10 @@ export function runStatusCommand(args: ParsedArgs, env: CommandEnvironment): Com
   }
 }
 
-export function runCommand(argv: readonly string[], env: CommandEnvironment): CommandResult {
+export async function runCommand(
+  argv: readonly string[],
+  env: CommandEnvironment,
+): Promise<CommandResult> {
   const args = parseArgs(argv);
 
   switch (args.command) {
@@ -265,6 +270,8 @@ export function runCommand(argv: readonly string[], env: CommandEnvironment): Co
       return runCurateCommand(args, env);
     case "status":
       return runStatusCommand(args, env);
+    case "experiment":
+      return runExperimentCommand(args, env);
     default:
       env.write(`error: unknown command '${args.command}'\n\n${HELP_TEXT}`);
       return { exitCode: 2 };

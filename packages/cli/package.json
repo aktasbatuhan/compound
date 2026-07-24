@@ -19,6 +19,8 @@
     "@compound/config": "workspace:*",
     "@compound/pipeline": "workspace:*",
     "@compound/storage": "workspace:*",
-    "@compound/curation": "workspace:*"
+    "@compound/curation": "workspace:*",
+    "@compound/execution": "workspace:*",
+    "@compound/assertions": "workspace:*"
   }
 }
