@@ -12,7 +12,12 @@ bun run packages/cli/src/main.ts curate support   # traces -> partitioned eval c
 bun run packages/cli/src/main.ts experiment support <model>   # dry run; add --paid --cap USD
 bun run packages/cli/src/main.ts status
 bun run packages/cli/src/main.ts serve         # local API on 127.0.0.1:4319
+cd packages/dashboard && bun run dev           # dashboard on localhost:3000 (needs the API up)
 ```
+
+The dashboard (`@compound/dashboard`, Next.js) is a view over the API: a labeling/review
+workflow, cases, a task×model matrix, the diagnostic queue, and imports. It holds no data and
+re-implements no logic — set `COMPOUND_API_URL` to point it at a non-default API.
 
 `experiment` is money-safe by default: without `--paid` it makes zero provider calls and reports
 the estimated cost. `--paid` needs `budget.paid_runs_enabled: true`, a positive
