@@ -7,6 +7,7 @@
  */
 import type { CompoundConfig } from "@compound/config";
 import type { TokenPrice } from "./fingerprint";
+import { FlexProvider } from "./flex-provider";
 import { HttpProvider, type Provider } from "./provider";
 
 export class ExecutionConfigError extends Error {
@@ -56,19 +57,32 @@ export function resolveModel(
     );
   }
 
-  const priceEntry = config.pricing_usd_per_million_tokens?.[modelId];
+  // A model entry may declare its backend; default is chat completions.
+  const backend =
+    (entry as { backend?: "chat_completions" | "flex" }).backend ?? "chat_completions";
+
+  // Flex models bill at the async flex rates; the two tables are kept separate
+  // because Doubleword prices them differently.
+  const priceTable =
+    backend === "flex"
+      ? config.flex_pricing_usd_per_million_tokens
+      : config.pricing_usd_per_million_tokens;
+  const priceEntry = priceTable?.[modelId];
   if (priceEntry === undefined) {
+    const which =
+      backend === "flex" ? "flex_pricing_usd_per_million_tokens" : "pricing_usd_per_million_tokens";
     throw new ExecutionConfigError(
-      `no pricing_usd_per_million_tokens entry for '${modelId}'; refusing to run without a price`,
+      `no ${which} entry for '${modelId}'; refusing to run without a price`,
     );
   }
 
+  const provider =
+    backend === "flex"
+      ? new FlexProvider({ name: providerName, baseUrl: providerConfig.base_url, apiKey })
+      : new HttpProvider({ name: providerName, baseUrl: providerConfig.base_url, apiKey });
+
   return {
-    provider: new HttpProvider({
-      name: providerName,
-      baseUrl: providerConfig.base_url,
-      apiKey,
-    }),
+    provider,
     providerName,
     price: { input: priceEntry.input, output: priceEntry.output },
   };

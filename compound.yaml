@@ -29,15 +29,19 @@ models:
     - id: thinkingmachines/Inkling-NVFP4
       provider: doubleword
       role: candidate
+      backend: flex
     - id: zai-org/GLM-5.2-FP8
       provider: doubleword
       role: candidate
+      backend: flex
     - id: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
       provider: doubleword
       role: candidate
+      backend: flex
     - id: deepseek-ai/DeepSeek-V4-Flash
       provider: doubleword
       role: candidate
+      backend: flex
 
 pricing_usd_per_million_tokens:
   openai/gpt-5.6-sol:

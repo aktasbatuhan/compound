@@ -41,6 +41,12 @@ export const ModelEntrySchema = z.looseObject({
   id: nonEmptyString,
   provider: nonEmptyString,
   role: nonEmptyString.optional(),
+  /**
+   * Which API surface serves this model. `flex` is Doubleword's background
+   * Responses route (`background=true, service_tier=flex`) used by the cheap
+   * candidates; `chat_completions` is the default OpenAI-compatible route.
+   */
+  backend: z.enum(["chat_completions", "flex"]).optional(),
 });
 
 export const ModelsSchema = z.looseObject({
