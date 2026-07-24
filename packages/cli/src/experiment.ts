@@ -100,6 +100,9 @@ export async function runExperimentCommand(
       experimentCapUsd,
       globalHardLimitUsd: controls.globalHardLimitUsd,
       dryRun: !wantsPaid,
+      ...(stringFlag(args.flags, "max") !== undefined
+        ? { maxCases: Number.parseInt(stringFlag(args.flags, "max") as string, 10) }
+        : {}),
     });
 
     const paid = wantsPaid;
