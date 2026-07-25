@@ -295,6 +295,11 @@ export const experimentResults = sqliteTable(
     score: real("score"),
     /** True if a judge abstained on this case (judge-graded tasks only). */
     judgeAbstained: integer("judge_abstained", { mode: "boolean" }).notNull().default(false),
+    /**
+     * Fingerprint of the completion this case produced, so a judge can fetch the
+     * exact cached output it graded (docs/judges-v1.md). Null for skipped cases.
+     */
+    completionFingerprint: text("completion_fingerprint"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
@@ -389,6 +394,58 @@ export const gateResults = sqliteTable(
 );
 
 export type GateResultRow = typeof gateResults.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Judge calibration (docs/judges-v1.md)
+// ---------------------------------------------------------------------------
+
+export const JUDGE_MODES = ["pointwise", "pairwise"] as const;
+export type JudgeMode = (typeof JUDGE_MODES)[number];
+
+/**
+ * A measured calibration of a judge against human labels, PINNED to the exact
+ * (task, judge_model, prompt_version, rubric_hash) it was measured on. Changing
+ * any pin field invalidates the calibration — the judge returns to uncalibrated
+ * until re-measured (docs/judges-v1.md, "Pin judge model + prompt versions").
+ * The latest row per pin is authoritative.
+ */
+export const judgeCalibrations = sqliteTable(
+  "judge_calibrations",
+  {
+    id: text("id").primaryKey(),
+    taskKey: text("task_key").notNull(),
+    judgeModel: text("judge_model").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    rubricHash: text("rubric_hash").notNull(),
+    mode: text("mode", { enum: JUDGE_MODES }).notNull(),
+    /** Cohen's kappa agreement with human labels, with its bootstrap CI. */
+    agreementKappa: real("agreement_kappa").notNull(),
+    kappaCiLo: real("kappa_ci_lo").notNull(),
+    kappaCiHi: real("kappa_ci_hi").notNull(),
+    /** Number of human-labelled calibration cases used. */
+    n: integer("n").notNull(),
+    /** Fraction of pairwise judgments that flipped on order swap (pairwise only). */
+    positionBiasRate: real("position_bias_rate").notNull().default(0),
+    /** The threshold this measurement was compared against. */
+    threshold: real("threshold").notNull(),
+    /** True iff agreement met the threshold: the judge may feed a gate. */
+    calibrated: integer("calibrated", { mode: "boolean" }).notNull(),
+    measuredAt: integer("measured_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    index("judge_calibrations_task_key_idx").on(table.taskKey),
+    index("judge_calibrations_pin_idx").on(
+      table.taskKey,
+      table.judgeModel,
+      table.promptVersion,
+      table.rubricHash,
+    ),
+  ],
+);
+
+export type JudgeCalibrationRow = typeof judgeCalibrations.$inferSelect;
 
 export const importBatchesRelations = relations(importBatches, ({ many }) => ({
   traces: many(traces),

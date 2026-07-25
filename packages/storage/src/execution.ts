@@ -223,6 +223,8 @@ export interface CaseResultInput {
   passed?: boolean;
   score?: number;
   judgeAbstained?: boolean;
+  /** Fingerprint of the completion this case produced (for later judge grading). */
+  completionFingerprint?: string;
 }
 
 /**
@@ -246,6 +248,7 @@ export function recordCaseResults(
         passed: r.passed ?? null,
         score: r.score ?? null,
         judgeAbstained: r.judgeAbstained ?? false,
+        completionFingerprint: r.completionFingerprint ?? null,
       })
       .onConflictDoUpdate({
         target: [experimentResults.experimentId, experimentResults.caseId],
@@ -254,10 +257,36 @@ export function recordCaseResults(
           passed: r.passed ?? null,
           score: r.score ?? null,
           judgeAbstained: r.judgeAbstained ?? false,
+          completionFingerprint: r.completionFingerprint ?? null,
         },
       })
       .run();
   }
+}
+
+/**
+ * Overwrite a case's grade with a judge's verdict: its score, whether it passed
+ * the judge's decision point, and whether the judge abstained (an uncalibrated
+ * judge always abstains, and the gate then excludes the case). Only the judgment
+ * fields change; status and the completion fingerprint are left intact.
+ */
+export function setCaseJudgment(
+  handle: CompoundDatabase,
+  experimentId: string,
+  caseId: string,
+  judgment: { score: number; passed: boolean; judgeAbstained: boolean },
+): void {
+  handle.db
+    .update(experimentResults)
+    .set({
+      score: judgment.score,
+      passed: judgment.passed,
+      judgeAbstained: judgment.judgeAbstained,
+    })
+    .where(
+      and(eq(experimentResults.experimentId, experimentId), eq(experimentResults.caseId, caseId)),
+    )
+    .run();
 }
 
 export function getExperimentResults(

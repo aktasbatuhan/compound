@@ -22,6 +22,7 @@ import {
 } from "@compound/storage";
 import { runExperimentCommand } from "./experiment";
 import { runGateCommand } from "./gate";
+import { runJudgeCommand } from "./judge";
 
 export interface CommandEnvironment {
   /** Where output goes; injected so tests can capture it. */
@@ -92,6 +93,8 @@ Usage:
   compound curate <task_key> [--db PATH]
   compound experiment <task_key> <model> [--partition P] [--paid --cap USD]
   compound gate <task_key> --candidate M --reference M --reason "..." [--margin 0.05] [--paid --cap USD]
+  compound judge calibrate <task_key> [--paid --cap USD]
+  compound judge grade <task_key> <experiment_id> [--paid --cap USD]
   compound status [--db PATH]
   compound serve [--port N] [--host HOST] [--db PATH] [--config PATH]
   compound help
@@ -276,6 +279,8 @@ export async function runCommand(
       return runExperimentCommand(args, env);
     case "gate":
       return runGateCommand(args, env);
+    case "judge":
+      return runJudgeCommand(args, env);
     default:
       env.write(`error: unknown command '${args.command}'\n\n${HELP_TEXT}`);
       return { exitCode: 2 };

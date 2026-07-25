@@ -11,6 +11,8 @@ bun run packages/cli/src/main.ts import export.jsonl --importer langfuse  # or -
 bun run packages/cli/src/main.ts curate support   # traces -> partitioned eval cases
 bun run packages/cli/src/main.ts experiment support <model>   # dry run; add --paid --cap USD
 bun run packages/cli/src/main.ts gate support --candidate M --reference M --reason "..."  # the verdict
+bun run packages/cli/src/main.ts judge calibrate support   # measure the judge vs human labels
+bun run packages/cli/src/main.ts judge grade support <experiment_id>   # judge a run's outputs
 bun run packages/cli/src/main.ts status
 bun run packages/cli/src/main.ts serve         # local API on 127.0.0.1:4319
 cd packages/dashboard && bun run dev           # dashboard on localhost:3000 (needs the API up)
@@ -33,14 +35,23 @@ meets gate / fails / insufficient data / judge abstained / no reliable improveme
 paired-bootstrap confidence interval, never a bare mean. Opening the sealed set requires a
 stated `--reason` (the firewall). The gate itself makes no provider calls; it decides over two
 runs, so a re-decision from cache is $0. Assertion-gradeable tasks are gateable today; fuzzy
-tasks wait on the judge (Step 4's remaining piece). See `docs/gate-decision-v1.md`.
+tasks become gateable through the judge. See `docs/gate-decision-v1.md`.
+
+`judge` grades free-text quality an assertion can't — but on **earned trust**: a judge feeds a
+gate only after `judge calibrate` measures its agreement with human labels (Cohen's κ, with a
+bootstrap CI) above the task's threshold, on the human-reviewed calibration partition. Until
+then it **abstains**, and the gate returns "judge abstained" rather than trust an untrusted
+opinion. Calibration is pinned to the judge's model, prompt version, and rubric; changing any of
+them requires re-calibrating. `judge grade` writes verdicts into the same per-case rows the gate
+reads, so a calibrated judge makes fuzzy tasks gateable. It reuses the ledger and cache, so it is
+money-safe and a re-grade is $0. See `docs/judges-v1.md`.
 
 Packages: `contract` (the portable trace contract), `config` (one `compound.yaml` schema
 shared with the Python engine), `storage` (SQLite/Drizzle), `ingest` (Langfuse + plain-JSON
 normalizers), `redaction` (pre-persistence), `pipeline` (ingest composition), `curation` (cases,
 provenance, sealed partitions), `assertions` (deterministic grading, incl. a `text_similarity`
 tier), `execution` (candidate runner, budget ledger, cache), `gate` (paired non-inferiority
-decision), `api` (Hono), `cli`.
+decision), `judge` (calibration-gated LLM judge), `api` (Hono), `cli`.
 
 Design docs: `docs/product-plan-20260722.md`, `docs/trace-contract-v1.md`,
 `docs/ingest-pipeline-v1.md`, `docs/curation-v1.md`, `docs/api-design-v1.md`,

@@ -38,10 +38,12 @@ import {
   getTraceByTraceId,
   type ImportBatchRow,
   InvalidPromotionError,
+  type JudgeCalibrationRow,
   listCases,
   listExperiments,
   listGateResults,
   listImportBatches,
+  listLatestCalibrations,
   listTraces,
   reviewCase,
   type StoredTrace,
@@ -150,6 +152,24 @@ function serializeGate(result: GateResultRow, spec: GateSpecRow) {
     candidate_experiment_id: result.candidateExperimentId,
     reference_experiment_id: result.referenceExperimentId,
     decided_at: result.decidedAt.toISOString(),
+  };
+}
+
+function serializeCalibration(row: JudgeCalibrationRow) {
+  return {
+    id: row.id,
+    task_key: row.taskKey,
+    judge_model: row.judgeModel,
+    prompt_version: row.promptVersion,
+    rubric_hash: row.rubricHash,
+    mode: row.mode,
+    agreement_kappa: row.agreementKappa,
+    kappa_ci: [row.kappaCiLo, row.kappaCiHi],
+    n: row.n,
+    position_bias_rate: row.positionBiasRate,
+    threshold: row.threshold,
+    calibrated: row.calibrated,
+    measured_at: row.measuredAt.toISOString(),
   };
 }
 
@@ -460,6 +480,16 @@ export function createApp({ db, config }: AppDependencies): Hono {
     const match = listGateResults(db, 1000).find((r) => r.result.id === id);
     if (match === undefined) throw notFound(`no gate result with id ${id}`, { id });
     return c.json(serializeGate(match.result, match.spec));
+  });
+
+  // --- judges --------------------------------------------------------------
+
+  // Read-only calibration status per task. Measuring a calibration is a paid
+  // CLI action (`compound judge calibrate`); this only reports the latest
+  // result and whether the judge may currently feed a gate.
+  app.get("/api/judges", (c) => {
+    const rows = listLatestCalibrations(db);
+    return c.json({ items: rows.map(serializeCalibration) });
   });
 
   return app;

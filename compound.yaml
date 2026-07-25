@@ -118,3 +118,12 @@ gate:
   metric: task_success
   max_regression: 0.02
   require_decision_test: true
+
+judges:
+  support:
+    model: anthropic/claude-opus-4.8
+    prompt_version: v1
+    rubric: "The response fully and correctly resolves the user's request, is accurate, and is polite. Score 1 only if it would satisfy the user; score 0 if it is wrong, evasive, or unhelpful."
+    mode: pointwise
+    calibration_threshold: 0.6
+    decision_point: 0.5

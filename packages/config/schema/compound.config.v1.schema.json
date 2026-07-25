@@ -554,6 +554,53 @@
           "additionalProperties": {}
         }
       }
+    },
+    "judges": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "prompt_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rubric": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "pointwise",
+              "pairwise"
+            ]
+          },
+          "calibration_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "decision_point": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "model",
+          "prompt_version",
+          "rubric",
+          "calibration_threshold"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [

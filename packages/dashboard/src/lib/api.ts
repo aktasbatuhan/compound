@@ -207,6 +207,23 @@ export interface GateResponse {
   decided_at: string;
 }
 
+/** The latest judge calibration for a task and whether it may feed a gate. */
+export interface JudgeCalibrationResponse {
+  id: string;
+  task_key: string;
+  judge_model: string;
+  prompt_version: string;
+  rubric_hash: string;
+  mode: "pointwise" | "pairwise";
+  agreement_kappa: number;
+  kappa_ci: [number, number];
+  n: number;
+  position_bias_rate: number;
+  threshold: number;
+  calibrated: boolean;
+  measured_at: string;
+}
+
 // --- request filter shapes -------------------------------------------------
 
 /**
@@ -271,6 +288,7 @@ export interface ApiClient {
   listImports(limit?: number, offset?: number): Promise<Page<ImportBatchResponse>>;
   listExperiments(filters?: ExperimentListFilters): Promise<Page<ExperimentResponse>>;
   listGates(taskKey?: string): Promise<{ items: GateResponse[] }>;
+  listJudges(): Promise<{ items: JudgeCalibrationResponse[] }>;
 }
 
 /**
@@ -357,5 +375,6 @@ export function createApiClient(baseUrl: string = apiBaseUrl()): ApiClient {
       request<Page<ExperimentResponse>>(`/api/experiments${buildQuery({ ...filters })}`),
     listGates: (taskKey) =>
       request<{ items: GateResponse[] }>(`/api/gates${buildQuery({ task_key: taskKey })}`),
+    listJudges: () => request<{ items: JudgeCalibrationResponse[] }>("/api/judges"),
   };
 }

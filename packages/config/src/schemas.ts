@@ -231,6 +231,33 @@ export const AssertionSchema = z.looseObject({
 export const AssertionsSchema = z.record(z.string(), z.array(AssertionSchema));
 
 // ---------------------------------------------------------------------------
+// Product section: judges (docs/judges-v1.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * One task's judge. The judge is trusted only after calibration against human
+ * labels meets `calibration_threshold`; below it, it abstains. The model,
+ * prompt_version and rubric are the PIN — changing any of them invalidates the
+ * calibration until it is re-measured.
+ */
+export const JudgeSchema = z.strictObject({
+  /** A model id that must resolve in `models`. */
+  model: nonEmptyString,
+  /** Bumped whenever the judge instructions change; part of the calibration pin. */
+  prompt_version: nonEmptyString,
+  /** The rubric text the judge scores against; part of the pin (hashed). */
+  rubric: nonEmptyString,
+  mode: z.enum(["pointwise", "pairwise"]).optional(),
+  /** Minimum human agreement (Cohen's kappa) to leave 'uncalibrated'. */
+  calibration_threshold: z.number().min(0).max(1),
+  /** Score at or above which the judge's verdict counts as a pass. Default 0.5. */
+  decision_point: z.number().min(0).max(1).optional(),
+});
+
+/** Per-task judges, keyed by task_key. */
+export const JudgesSchema = z.record(z.string(), JudgeSchema);
+
+// ---------------------------------------------------------------------------
 // Whole file
 // ---------------------------------------------------------------------------
 
@@ -257,6 +284,7 @@ export const CompoundConfigSchema = z.looseObject({
   redaction: RedactionSchema.optional(),
   ingest: IngestSchema.optional(),
   assertions: AssertionsSchema.optional(),
+  judges: JudgesSchema.optional(),
 });
 
 // ---------------------------------------------------------------------------

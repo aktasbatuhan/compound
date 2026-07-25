@@ -29,6 +29,13 @@
       "when": 1784980729562,
       "tag": "0003_fine_excalibur",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784982756784,
+      "tag": "0004_nostalgic_vector",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ export * from "./db";
 export * from "./execution";
 export * from "./gate";
 export * from "./import-batches";
+export * from "./judge";
 export * from "./pagination";
 export * from "./schema";
 export * from "./traces";

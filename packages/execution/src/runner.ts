@@ -59,6 +59,8 @@ export interface CaseRunResult {
   costUsd?: number;
   cached?: boolean;
   detail?: string;
+  /** Fingerprint of the completion produced, so a judge can grade it later. */
+  completionFingerprint?: string;
 }
 
 export interface RunExperimentResult {
@@ -224,6 +226,7 @@ export async function runExperiment(
         score: report.score,
         costUsd,
         cached,
+        completionFingerprint: fingerprint,
       });
     }
 
@@ -250,6 +253,9 @@ export async function runExperiment(
         status: r.status,
         ...(r.passed !== undefined ? { passed: r.passed } : {}),
         ...(r.score !== undefined ? { score: r.score } : {}),
+        ...(r.completionFingerprint !== undefined
+          ? { completionFingerprint: r.completionFingerprint }
+          : {}),
       })),
     );
 

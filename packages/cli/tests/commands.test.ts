@@ -295,6 +295,32 @@ describe("gate", () => {
   });
 });
 
+describe("judge", () => {
+  beforeAll(() => {
+    process.env.OPENROUTER_API_KEY ??= "test-openrouter-key";
+    process.env.DOUBLEWORD_API_KEY ??= "test-doubleword-key";
+  });
+
+  test("usage error without a subcommand", async () => {
+    const { env } = testEnvironment();
+    expect((await runCommand(["judge"], env)).exitCode).toBe(2);
+  });
+
+  test("errors clearly when no judge is configured for the task", async () => {
+    const { env, output } = testEnvironment();
+    const result = await runCommand(["judge", "calibrate", "no_such_task"], env);
+    expect(result.exitCode).toBe(1);
+    expect(output()).toContain("no judge configured");
+  });
+
+  test("a dry-run calibrate with no labelled cases stays uncalibrated, no calls", async () => {
+    const { env, output } = testEnvironment();
+    const result = await runCommand(["judge", "calibrate", "support"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("UNCALIBRATED");
+  });
+});
+
 describe("status", () => {
   test("reports an empty store honestly", async () => {
     const { env, output } = testEnvironment();
