@@ -7,6 +7,7 @@ __pycache__/
 artifacts/
 *.pyc
 
+*.db
 
 .claude/worktrees/
 
@@ -14,3 +15,12 @@ artifacts/
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Next.js (dashboard)
+.next/
+
+# Local-only design & planning docs — kept on disk, never published.
+# Only the top-level README.md is tracked among markdown.
+docs/
+SPEC.md
+packages/*/README.md
