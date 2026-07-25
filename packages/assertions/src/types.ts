@@ -5,6 +5,7 @@
  * and its own parameters — no network, no model, no cost.
  */
 import type { Message } from "@compound/contract";
+import type { SimilarityMetric } from "./similarity";
 
 export const ASSERTION_TYPES = [
   "valid_json",
@@ -18,6 +19,7 @@ export const ASSERTION_TYPES = [
   "tool_arg_equals",
   "max_length",
   "json_path_equals",
+  "text_similarity",
 ] as const;
 
 export type AssertionType = (typeof ASSERTION_TYPES)[number];
@@ -57,6 +59,17 @@ export type Assertion =
       type: "json_path_equals";
       path: string;
       value: unknown;
+      required?: boolean;
+      weight?: number;
+    }
+  | {
+      type: "text_similarity";
+      reference: string;
+      metric: SimilarityMetric;
+      pass_threshold: number;
+      /** Where to read text from; defaults to the output's text content. */
+      path?: string;
+      ignore_case?: boolean;
       required?: boolean;
       weight?: number;
     };

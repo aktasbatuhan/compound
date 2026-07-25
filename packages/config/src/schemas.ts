@@ -212,6 +212,7 @@ export const AssertionTypeSchema = z.enum([
   "tool_arg_equals",
   "max_length",
   "json_path_equals",
+  "text_similarity",
 ]);
 
 /**

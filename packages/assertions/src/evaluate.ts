@@ -6,6 +6,7 @@
  */
 import Ajv from "ajv";
 import { isAbsent, outputText, outputToolCalls, parsedOutput, resolvePath } from "./output";
+import { similarity } from "./similarity";
 import type { Assertion, AssertionReport, AssertionResult, AssertionSubject } from "./types";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -151,6 +152,25 @@ function evaluateOne(assertion: Assertion, subject: AssertionSubject): Outcome {
       return text.length <= assertion.max
         ? { passed: true, detail: `length ${text.length} ≤ ${assertion.max}` }
         : { passed: false, detail: `length ${text.length} > ${assertion.max}` };
+    }
+
+    case "text_similarity": {
+      let text: string | null;
+      if (assertion.path === undefined || assertion.path === "content") {
+        text = outputText(subject);
+      } else {
+        const value = resolvePath(subject, assertion.path);
+        if (isAbsent(value)) return { passed: false, detail: value.reason };
+        text = typeof value === "string" ? value : JSON.stringify(value);
+      }
+      if (text === null) return { passed: false, detail: "output has no text content" };
+      const cand = assertion.ignore_case ? text.toLowerCase() : text;
+      const ref = assertion.ignore_case ? assertion.reference.toLowerCase() : assertion.reference;
+      const score = similarity(assertion.metric, cand, ref);
+      const rounded = score.toFixed(3);
+      return score >= assertion.pass_threshold
+        ? { passed: true, detail: `${assertion.metric} ${rounded} ≥ ${assertion.pass_threshold}` }
+        : { passed: false, detail: `${assertion.metric} ${rounded} < ${assertion.pass_threshold}` };
     }
   }
 }

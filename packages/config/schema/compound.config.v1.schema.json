@@ -536,7 +536,8 @@
                 "tool_not_called",
                 "tool_arg_equals",
                 "max_length",
-                "json_path_equals"
+                "json_path_equals",
+                "text_similarity"
               ]
             },
             "required": {
