@@ -10,30 +10,42 @@ bun run --filter '@compound/cli' typecheck     # or: bun test packages
 bun run packages/cli/src/main.ts import export.jsonl --importer langfuse  # or --importer json
 bun run packages/cli/src/main.ts curate support   # traces -> partitioned eval cases
 bun run packages/cli/src/main.ts experiment support <model>   # dry run; add --paid --cap USD
+bun run packages/cli/src/main.ts gate support --candidate M --reference M --reason "..."  # the verdict
 bun run packages/cli/src/main.ts status
 bun run packages/cli/src/main.ts serve         # local API on 127.0.0.1:4319
 cd packages/dashboard && bun run dev           # dashboard on localhost:3000 (needs the API up)
 ```
 
 The dashboard (`@compound/dashboard`, Next.js) is a view over the API: a labeling/review
-workflow, cases, a task×model matrix, the diagnostic queue, and imports. It holds no data and
-re-implements no logic — set `COMPOUND_API_URL` to point it at a non-default API.
+workflow, cases, a task×model matrix with **gate verdicts**, a gate-decisions audit page, the
+diagnostic queue, and imports. It holds no data and re-implements no logic — set
+`COMPOUND_API_URL` to point it at a non-default API.
 
 `experiment` is money-safe by default: without `--paid` it makes zero provider calls and reports
 the estimated cost. `--paid` needs `budget.paid_runs_enabled: true`, a positive
 `budget.hard_limit_usd`, and a `--cap`. Every completion is cached, so a re-run is $0. Paid runs
-currently work against chat-completions providers (OpenRouter, OpenAI-compatible); the Flex
-Responses route for Doubleword's cheap candidates is the next provider addition.
+work against chat-completions providers (OpenRouter, OpenAI-compatible) and, via the Flex
+Responses route, Doubleword's cheap background candidates (`backend: flex`).
+
+`gate` is the payoff: it runs a candidate and a reference on a task's **sealed decision
+partition** and applies a **pre-declared** non-inferiority rule to emit one of five verdicts —
+meets gate / fails / insufficient data / judge abstained / no reliable improvement — with a
+paired-bootstrap confidence interval, never a bare mean. Opening the sealed set requires a
+stated `--reason` (the firewall). The gate itself makes no provider calls; it decides over two
+runs, so a re-decision from cache is $0. Assertion-gradeable tasks are gateable today; fuzzy
+tasks wait on the judge (Step 4's remaining piece). See `docs/gate-decision-v1.md`.
 
 Packages: `contract` (the portable trace contract), `config` (one `compound.yaml` schema
 shared with the Python engine), `storage` (SQLite/Drizzle), `ingest` (Langfuse + plain-JSON
 normalizers), `redaction` (pre-persistence), `pipeline` (ingest composition), `curation` (cases,
-provenance, sealed partitions), `assertions` (deterministic grading), `execution` (candidate
-runner, budget ledger, cache), `api` (Hono), `cli`.
+provenance, sealed partitions), `assertions` (deterministic grading, incl. a `text_similarity`
+tier), `execution` (candidate runner, budget ledger, cache), `gate` (paired non-inferiority
+decision), `api` (Hono), `cli`.
 
 Design docs: `docs/product-plan-20260722.md`, `docs/trace-contract-v1.md`,
 `docs/ingest-pipeline-v1.md`, `docs/curation-v1.md`, `docs/api-design-v1.md`,
-`docs/langfuse-import-mapping.md`.
+`docs/gate-decision-v1.md`, `docs/langfuse-import-mapping.md`,
+`docs/reference/openai-evals-graders-reference-20260725.md`.
 
 Note: the trace contract stays marked **draft** until a real Langfuse export imports
 losslessly. The ingest fixtures are synthetic, built from the documented schema.

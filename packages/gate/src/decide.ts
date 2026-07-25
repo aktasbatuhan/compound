@@ -1,0 +1,222 @@
+/**
+ * Decide a gate: pair the candidate and reference experiments case-by-case on
+ * the sealed decision partition, compute the paired bootstrap CI on the chosen
+ * metric, apply the pre-declared rule, and persist the verdict.
+ *
+ * The gate makes ZERO provider calls. It consumes two already-completed
+ * experiments; running them (money-safe, capped, cached) is the caller's job.
+ */
+import {
+  type CompoundDatabase,
+  createGateSpec,
+  type ExperimentResultRow,
+  type ExperimentRow,
+  type GateMetric,
+  type GateMode,
+  type GateResultRow,
+  type GateSpecRow,
+  getExperiment,
+  getExperimentResults,
+  recordGateResult,
+} from "@compound/storage";
+import { decideOutcome } from "./rule";
+import { type GateRule, hashRule } from "./spec";
+import { pairedBootstrapCi, seedFromString } from "./statistics";
+
+export interface DecideGateInput extends GateRule {
+  candidateExperimentId: string;
+  referenceExperimentId: string;
+  /** Required: the stated reason for opening the sealed partition. */
+  firewallReason: string;
+  bootstrapIterations?: number;
+}
+
+/** One case present in both runs, with each side's metric value. */
+export interface PairedCase {
+  caseId: string;
+  candidateScore: number;
+  referenceScore: number;
+  candidatePassed: boolean | null;
+  referencePassed: boolean | null;
+  diff: number;
+  abstained: boolean;
+}
+
+export interface DecideGateResult {
+  spec: GateSpecRow;
+  result: GateResultRow;
+  pairs: PairedCase[];
+}
+
+export class GateInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GateInputError";
+  }
+}
+
+function metricValue(row: ExperimentResultRow, metric: GateMetric): number {
+  if (metric === "pass_rate") return row.passed ? 1 : 0;
+  return row.score ?? 0;
+}
+
+function byCase(rows: ExperimentResultRow[]): Map<string, ExperimentResultRow> {
+  const m = new Map<string, ExperimentResultRow>();
+  for (const r of rows) m.set(r.caseId, r);
+  return m;
+}
+
+function assertComparable(
+  candidate: ExperimentRow,
+  reference: ExperimentRow,
+  rule: GateRule,
+): void {
+  if (candidate.partition !== "decision_test" || reference.partition !== "decision_test") {
+    throw new GateInputError(
+      "a gate decides only on the sealed decision_test partition; " +
+        `got candidate=${candidate.partition}, reference=${reference.partition}`,
+    );
+  }
+  if (candidate.taskKey !== rule.taskKey || reference.taskKey !== rule.taskKey) {
+    throw new GateInputError("candidate and reference experiments must match the rule's task_key");
+  }
+  if (candidate.status !== "completed" || reference.status !== "completed") {
+    throw new GateInputError("both experiments must be completed before a gate can decide");
+  }
+}
+
+/**
+ * Build the paired sample. A case contributes only if BOTH runs graded it
+ * (skipped/dry-run cases can't yield a difference). A case where either side's
+ * judge abstained is counted toward the abstention fraction and excluded from
+ * the diff sample.
+ */
+export function pairCases(
+  candidateRows: ExperimentResultRow[],
+  referenceRows: ExperimentResultRow[],
+  metric: GateMetric,
+): { pairs: PairedCase[]; abstainedCount: number; presentCount: number } {
+  const ref = byCase(referenceRows);
+  const pairs: PairedCase[] = [];
+  let abstainedCount = 0;
+  let presentCount = 0;
+
+  for (const c of candidateRows) {
+    const r = ref.get(c.caseId);
+    if (r === undefined) continue;
+    const bothGraded = c.status === "graded" && r.status === "graded";
+    const abstained = c.judgeAbstained || r.judgeAbstained;
+    if (!bothGraded && !abstained) continue; // not comparable (a skip on one side)
+    presentCount += 1;
+    if (abstained) {
+      abstainedCount += 1;
+      continue;
+    }
+    const candidateScore = metricValue(c, metric);
+    const referenceScore = metricValue(r, metric);
+    pairs.push({
+      caseId: c.caseId,
+      candidateScore,
+      referenceScore,
+      candidatePassed: c.passed,
+      referencePassed: r.passed,
+      diff: candidateScore - referenceScore,
+      abstained: false,
+    });
+  }
+  return { pairs, abstainedCount, presentCount };
+}
+
+export function decideGate(db: CompoundDatabase, input: DecideGateInput): DecideGateResult {
+  if (input.firewallReason.trim().length === 0) {
+    throw new GateInputError("a gate needs a firewall reason: state why the sealed set is opened");
+  }
+  if (input.mode === "non_inferiority" && input.margin <= 0) {
+    throw new GateInputError("non-inferiority requires a positive margin");
+  }
+
+  const candidate = getExperiment(db, input.candidateExperimentId);
+  const reference = getExperiment(db, input.referenceExperimentId);
+  if (candidate === null || reference === null) {
+    throw new GateInputError("candidate or reference experiment not found");
+  }
+  assertComparable(candidate, reference, input);
+
+  const rule: GateRule = {
+    taskKey: input.taskKey,
+    candidateModel: input.candidateModel,
+    referenceModel: input.referenceModel,
+    metric: input.metric,
+    mode: input.mode,
+    margin: input.margin,
+    confidence: input.confidence,
+    minCases: input.minCases,
+    judgeAbstainMax: input.judgeAbstainMax,
+  };
+  const specHash = hashRule(rule);
+
+  // Store the pre-declared rule (idempotent on hash) BEFORE deciding.
+  const spec = createGateSpec(db, {
+    specHash,
+    taskKey: rule.taskKey,
+    candidateModel: rule.candidateModel,
+    referenceModel: rule.referenceModel,
+    metric: rule.metric,
+    mode: rule.mode,
+    margin: rule.margin,
+    confidence: rule.confidence,
+    minCases: rule.minCases,
+    judgeAbstainMax: rule.judgeAbstainMax,
+    firewallReason: input.firewallReason,
+  });
+
+  const { pairs, abstainedCount, presentCount } = pairCases(
+    getExperimentResults(db, candidate.id),
+    getExperimentResults(db, reference.id),
+    rule.metric,
+  );
+
+  const diffs = pairs.map((p) => p.diff);
+  const ci = pairedBootstrapCi(
+    diffs,
+    rule.confidence,
+    seedFromString(specHash),
+    input.bootstrapIterations,
+  );
+  const judgeAbstainedFraction = presentCount > 0 ? abstainedCount / presentCount : 0;
+
+  const outcome = decideOutcome({
+    mode: rule.mode,
+    margin: rule.margin,
+    ciLo: ci.lo,
+    ciHi: ci.hi,
+    n: pairs.length,
+    minCases: rule.minCases,
+    judgeAbstainedFraction,
+    judgeAbstainMax: rule.judgeAbstainMax,
+  });
+
+  const candidateRate = pairs.length > 0 ? mean(pairs.map((p) => p.candidateScore)) : 0;
+  const referenceRate = pairs.length > 0 ? mean(pairs.map((p) => p.referenceScore)) : 0;
+
+  const result = recordGateResult(db, {
+    gateSpecId: spec.id,
+    candidateExperimentId: candidate.id,
+    referenceExperimentId: reference.id,
+    outcome,
+    delta: ci.point,
+    ciLo: ci.lo,
+    ciHi: ci.hi,
+    n: pairs.length,
+    candidateRate,
+    referenceRate,
+    judgeAbstainedFraction,
+  });
+
+  return { spec, result, pairs };
+}
+
+function mean(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  return xs.reduce((a, b) => a + b, 0) / xs.length;
+}

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -180,6 +180,14 @@ describe("curate", () => {
 });
 
 describe("experiment", () => {
+  // Provider resolution reads the key from the provider's api_key_env even for
+  // a dry run (the provider object is built but never called). Set dummy keys
+  // so these tests are hermetic and never depend on a developer's .env.
+  beforeAll(() => {
+    process.env.OPENROUTER_API_KEY ??= "test-openrouter-key";
+    process.env.DOUBLEWORD_API_KEY ??= "test-doubleword-key";
+  });
+
   async function importAndCurate(env: CommandEnvironment): Promise<void> {
     await withTempFile(EXPORT_JSON, async (path) => {
       await runCommand(["import", path, "--config", "compound.yaml"], env);
@@ -224,6 +232,66 @@ describe("experiment", () => {
     const result = await runCommand(["experiment", "support", "no-such-model"], env);
     expect(result.exitCode).toBe(1);
     expect(output()).toContain("not in models");
+  });
+});
+
+describe("gate", () => {
+  beforeAll(() => {
+    process.env.OPENROUTER_API_KEY ??= "test-openrouter-key";
+    process.env.DOUBLEWORD_API_KEY ??= "test-doubleword-key";
+  });
+
+  async function importAndCurate(env: CommandEnvironment): Promise<void> {
+    await withTempFile(EXPORT_JSON, async (path) => {
+      await runCommand(["import", path, "--config", "compound.yaml"], env);
+    });
+    await runCommand(["curate", "support"], env);
+  }
+
+  test("requires candidate, reference, and reason", async () => {
+    const { env } = testEnvironment();
+    expect((await runCommand(["gate", "support"], env)).exitCode).toBe(2);
+  });
+
+  test("refuses without a firewall reason", async () => {
+    const { env, output } = testEnvironment();
+    const result = await runCommand(
+      [
+        "gate",
+        "support",
+        "--candidate",
+        "zai-org/GLM-5.2-FP8",
+        "--reference",
+        "anthropic/claude-opus-4.8",
+      ],
+      env,
+    );
+    expect(result.exitCode).toBe(2);
+    expect(output()).toContain("--reason is required");
+  });
+
+  test("a dry run opens the seal, decides honestly, and makes no provider calls", async () => {
+    const { env, output } = testEnvironment();
+    await importAndCurate(env);
+    const result = await runCommand(
+      [
+        "gate",
+        "support",
+        "--candidate",
+        "zai-org/GLM-5.2-FP8",
+        "--reference",
+        "anthropic/claude-opus-4.8",
+        "--reason",
+        "smoke test of the gate path",
+      ],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("opening the sealed decision set");
+    expect(output()).toContain("GATE:");
+    // No cached completions on the sealed set in a dry run → an honest verdict,
+    // not a fabricated pass.
+    expect(output()).toContain("INSUFFICIENT DATA");
   });
 });
 

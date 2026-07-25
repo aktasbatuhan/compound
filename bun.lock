@@ -43,6 +43,7 @@
         "@compound/config": "workspace:*",
         "@compound/curation": "workspace:*",
         "@compound/execution": "workspace:*",
+        "@compound/gate": "workspace:*",
         "@compound/pipeline": "workspace:*",
         "@compound/storage": "workspace:*",
       },
@@ -106,6 +107,13 @@
       },
       "devDependencies": {
         "@compound/curation": "workspace:*",
+      },
+    },
+    "packages/gate": {
+      "name": "@compound/gate",
+      "version": "0.1.0",
+      "dependencies": {
+        "@compound/storage": "workspace:*",
       },
     },
     "packages/ingest": {
@@ -181,6 +189,8 @@
     "@compound/dashboard": ["@compound/dashboard@workspace:packages/dashboard"],
 
     "@compound/execution": ["@compound/execution@workspace:packages/execution"],
+
+    "@compound/gate": ["@compound/gate@workspace:packages/gate"],
 
     "@compound/ingest": ["@compound/ingest@workspace:packages/ingest"],
 

@@ -29,12 +29,18 @@ import {
   countTracesByDiagnosticReason,
   countTracesByTaskKey,
   countTracesByValidationClass,
+  type ExperimentRow,
+  type GateResultRow,
+  type GateSpecRow,
   getCase,
+  getGateResult,
   getImportBatch,
   getTraceByTraceId,
   type ImportBatchRow,
   InvalidPromotionError,
   listCases,
+  listExperiments,
+  listGateResults,
   listImportBatches,
   listTraces,
   reviewCase,
@@ -100,6 +106,50 @@ function serializeBatch(batch: ImportBatchRow) {
     // Drizzle stores `report` as a JSON column and hands it back parsed.
     report: batch.report,
     created_at: batch.createdAt.toISOString(),
+  };
+}
+
+function serializeExperiment(row: ExperimentRow) {
+  return {
+    id: row.id,
+    task_key: row.taskKey,
+    candidate_model: row.candidateModel,
+    provider: row.provider,
+    partition: row.partition,
+    status: row.status,
+    paid: row.paid,
+    // Drizzle stores `report` as a JSON column and hands it back parsed; it is
+    // null until the experiment finishes.
+    report: row.report ?? null,
+    started_at: row.startedAt.toISOString(),
+    completed_at: row.completedAt?.toISOString() ?? null,
+    created_at: row.createdAt.toISOString(),
+  };
+}
+
+function serializeGate(result: GateResultRow, spec: GateSpecRow) {
+  return {
+    id: result.id,
+    task_key: spec.taskKey,
+    candidate_model: spec.candidateModel,
+    reference_model: spec.referenceModel,
+    metric: spec.metric,
+    mode: spec.mode,
+    margin: spec.margin,
+    confidence: spec.confidence,
+    min_cases: spec.minCases,
+    // The stated reason the sealed set was opened — part of the lineage.
+    firewall_reason: spec.firewallReason,
+    outcome: result.outcome,
+    delta: result.delta,
+    ci: [result.ciLo, result.ciHi],
+    n: result.n,
+    candidate_rate: result.candidateRate,
+    reference_rate: result.referenceRate,
+    judge_abstained_fraction: result.judgeAbstainedFraction,
+    candidate_experiment_id: result.candidateExperimentId,
+    reference_experiment_id: result.referenceExperimentId,
+    decided_at: result.decidedAt.toISOString(),
   };
 }
 
@@ -360,6 +410,56 @@ export function createApp({ db, config }: AppDependencies): Hono {
       }
       throw error;
     }
+  });
+
+  // --- experiments ---------------------------------------------------------
+
+  // Read-only: the dashboard's model matrix shows what has been run. Launching a
+  // paid run stays a deliberate CLI action (docs/dashboard-v1.md), so there is
+  // no POST here.
+  app.get("/api/experiments", (c) => {
+    const query = new URL(c.req.url).searchParams;
+    const { limit, offset } = parsePageParams(query);
+    const filter = {
+      taskKey: query.get("task_key") ?? undefined,
+      candidateModel: query.get("candidate_model") ?? undefined,
+    };
+    const items = listExperiments(db, { ...filter, limit, offset });
+    // No dedicated count helper exists in storage (which this task must not
+    // change); the full filtered list gives an honest total. Experiment volume
+    // is small, so this is cheap.
+    const total = listExperiments(db, filter).length;
+    return c.json({
+      items: items.map(serializeExperiment),
+      total,
+      limit,
+      offset,
+    });
+  });
+
+  // --- gates ---------------------------------------------------------------
+
+  // Read-only: gate decisions are shown here, but DECIDING a gate opens the
+  // sealed decision set, which stays a deliberate CLI action (`compound gate`)
+  // requiring a stated reason. The sealed cases themselves are never returned —
+  // only the verdict, the delta, and its confidence interval.
+  app.get("/api/gates", (c) => {
+    const query = new URL(c.req.url).searchParams;
+    const { limit } = parsePageParams(query);
+    const taskKey = query.get("task_key") ?? undefined;
+    const rows = listGateResults(db, limit).filter(
+      (r) => taskKey === undefined || r.spec.taskKey === taskKey,
+    );
+    return c.json({ items: rows.map((r) => serializeGate(r.result, r.spec)) });
+  });
+
+  app.get("/api/gates/:id", (c) => {
+    const id = c.req.param("id");
+    const result = getGateResult(db, id);
+    if (result === null) throw notFound(`no gate result with id ${id}`, { id });
+    const match = listGateResults(db, 1000).find((r) => r.result.id === id);
+    if (match === undefined) throw notFound(`no gate result with id ${id}`, { id });
+    return c.json(serializeGate(match.result, match.spec));
   });
 
   return app;

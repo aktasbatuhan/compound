@@ -21,6 +21,7 @@ import {
   migrate,
 } from "@compound/storage";
 import { runExperimentCommand } from "./experiment";
+import { runGateCommand } from "./gate";
 
 export interface CommandEnvironment {
   /** Where output goes; injected so tests can capture it. */
@@ -90,6 +91,7 @@ Usage:
   compound import <file> [--importer langfuse] [--db PATH] [--config PATH] [--project-id ID]
   compound curate <task_key> [--db PATH]
   compound experiment <task_key> <model> [--partition P] [--paid --cap USD]
+  compound gate <task_key> --candidate M --reference M --reason "..." [--margin 0.05] [--paid --cap USD]
   compound status [--db PATH]
   compound serve [--port N] [--host HOST] [--db PATH] [--config PATH]
   compound help
@@ -272,6 +274,8 @@ export async function runCommand(
       return runStatusCommand(args, env);
     case "experiment":
       return runExperimentCommand(args, env);
+    case "gate":
+      return runGateCommand(args, env);
     default:
       env.write(`error: unknown command '${args.command}'\n\n${HELP_TEXT}`);
       return { exitCode: 2 };

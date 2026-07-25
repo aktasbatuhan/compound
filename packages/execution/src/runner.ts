@@ -18,6 +18,7 @@ import {
   finishExperiment,
   getCachedCompletion,
   listCases,
+  recordCaseResults,
   recordSpend,
   requireBudgetHeadroom,
 } from "@compound/storage";
@@ -239,6 +240,19 @@ export async function runExperiment(
       actual_cost_usd: actualCost,
       skip_reasons: skipReasons,
     };
+    // Persist per-case outcomes so a gate can pair candidate vs reference by
+    // case, and the dashboard can show run diffs (docs/gate-decision-v1.md).
+    recordCaseResults(
+      db,
+      experiment.id,
+      results.map((r) => ({
+        caseId: r.caseId,
+        status: r.status,
+        ...(r.passed !== undefined ? { passed: r.passed } : {}),
+        ...(r.score !== undefined ? { score: r.score } : {}),
+      })),
+    );
+
     finishExperiment(db, experiment.id, "completed", report);
     return { experimentId: experiment.id, report, results };
   } catch (error) {

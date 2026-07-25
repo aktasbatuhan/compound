@@ -13,8 +13,10 @@ import {
   type CompletionRow,
   completions,
   type ExperimentReport,
+  type ExperimentResultRow,
   type ExperimentRow,
   type ExperimentStatus,
+  experimentResults,
   experiments,
   spendRecords,
 } from "./schema";
@@ -211,6 +213,63 @@ export function finishExperiment(
 export function getExperiment(handle: CompoundDatabase, id: string): ExperimentRow | null {
   const [row] = handle.db.select().from(experiments).where(eq(experiments.id, id)).all();
   return row ?? null;
+}
+
+// --- per-case results ------------------------------------------------------
+
+export interface CaseResultInput {
+  caseId: string;
+  status: "graded" | "skipped" | "cache_miss_dry_run";
+  passed?: boolean;
+  score?: number;
+  judgeAbstained?: boolean;
+}
+
+/**
+ * Persist the per-case outcomes of an experiment so a gate can pair candidate
+ * and reference by `case_id`. Idempotent per (experiment, case): re-running an
+ * identical experiment overwrites its own rows rather than duplicating them.
+ */
+export function recordCaseResults(
+  handle: CompoundDatabase,
+  experimentId: string,
+  results: readonly CaseResultInput[],
+): void {
+  if (results.length === 0) return;
+  for (const r of results) {
+    handle.db
+      .insert(experimentResults)
+      .values({
+        experimentId,
+        caseId: r.caseId,
+        status: r.status,
+        passed: r.passed ?? null,
+        score: r.score ?? null,
+        judgeAbstained: r.judgeAbstained ?? false,
+      })
+      .onConflictDoUpdate({
+        target: [experimentResults.experimentId, experimentResults.caseId],
+        set: {
+          status: r.status,
+          passed: r.passed ?? null,
+          score: r.score ?? null,
+          judgeAbstained: r.judgeAbstained ?? false,
+        },
+      })
+      .run();
+  }
+}
+
+export function getExperimentResults(
+  handle: CompoundDatabase,
+  experimentId: string,
+): ExperimentResultRow[] {
+  return handle.db
+    .select()
+    .from(experimentResults)
+    .where(eq(experimentResults.experimentId, experimentId))
+    .orderBy(experimentResults.caseId)
+    .all();
 }
 
 export interface ListExperimentsFilter {

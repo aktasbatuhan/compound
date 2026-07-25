@@ -21,6 +21,7 @@
     "@compound/storage": "workspace:*",
     "@compound/curation": "workspace:*",
     "@compound/execution": "workspace:*",
-    "@compound/assertions": "workspace:*"
+    "@compound/assertions": "workspace:*",
+    "@compound/gate": "workspace:*"
   }
 }

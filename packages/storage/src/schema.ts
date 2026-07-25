@@ -15,7 +15,15 @@
  * preserved verbatim inside `payload`, which is the authoritative copy.
  */
 import { relations, sql } from "drizzle-orm";
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 /** Lifecycle of an import batch. */
 export const IMPORT_BATCH_STATUSES = ["running", "completed", "failed"] as const;
@@ -268,6 +276,119 @@ export interface ExperimentReport {
   error?: string;
   [key: string]: unknown;
 }
+
+// ---------------------------------------------------------------------------
+// Gate decision (docs/gate-decision-v1.md, Step 6)
+// ---------------------------------------------------------------------------
+
+/** Per-case outcome of one experiment, persisted so a gate can pair by case. */
+export const experimentResults = sqliteTable(
+  "experiment_results",
+  {
+    experimentId: text("experiment_id")
+      .notNull()
+      .references(() => experiments.id),
+    caseId: text("case_id").notNull(),
+    status: text("status", { enum: ["graded", "skipped", "cache_miss_dry_run"] }).notNull(),
+    /** Null unless status is `graded`. */
+    passed: integer("passed", { mode: "boolean" }),
+    score: real("score"),
+    /** True if a judge abstained on this case (judge-graded tasks only). */
+    judgeAbstained: integer("judge_abstained", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.experimentId, table.caseId] }),
+    index("experiment_results_experiment_id_idx").on(table.experimentId),
+  ],
+);
+
+export type ExperimentResultRow = typeof experimentResults.$inferSelect;
+
+export const GATE_METRICS = ["pass_rate", "mean_score"] as const;
+export type GateMetric = (typeof GATE_METRICS)[number];
+
+export const GATE_MODES = ["non_inferiority", "superiority"] as const;
+export type GateMode = (typeof GATE_MODES)[number];
+
+export const GATE_OUTCOMES = [
+  "meets_gate",
+  "fails_gate",
+  "insufficient_data",
+  "judge_abstained",
+  "no_reliable_improvement",
+] as const;
+export type GateOutcome = (typeof GATE_OUTCOMES)[number];
+
+/**
+ * A pre-declared decision rule, content-hashed BEFORE any decision-partition
+ * result exists (docs/gate-decision-v1.md, "Pre-declared rule"). `specHash` is
+ * unique: re-declaring the identical rule reuses the row.
+ */
+export const gateSpecs = sqliteTable(
+  "gate_specs",
+  {
+    id: text("id").primaryKey(),
+    specHash: text("spec_hash").notNull(),
+    taskKey: text("task_key").notNull(),
+    candidateModel: text("candidate_model").notNull(),
+    referenceModel: text("reference_model").notNull(),
+    metric: text("metric", { enum: GATE_METRICS }).notNull(),
+    mode: text("mode", { enum: GATE_MODES }).notNull(),
+    margin: real("margin").notNull(),
+    confidence: real("confidence").notNull(),
+    minCases: integer("min_cases").notNull(),
+    judgeAbstainMax: real("judge_abstain_max").notNull().default(0),
+    /** The stated reason for opening the sealed partition — required. */
+    firewallReason: text("firewall_reason").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    uniqueIndex("gate_specs_spec_hash_unique").on(table.specHash),
+    index("gate_specs_task_key_idx").on(table.taskKey),
+  ],
+);
+
+export type GateSpecRow = typeof gateSpecs.$inferSelect;
+
+/** The decided outcome of a gate: the verdict plus the number and its CI. */
+export const gateResults = sqliteTable(
+  "gate_results",
+  {
+    id: text("id").primaryKey(),
+    gateSpecId: text("gate_spec_id")
+      .notNull()
+      .references(() => gateSpecs.id),
+    candidateExperimentId: text("candidate_experiment_id")
+      .notNull()
+      .references(() => experiments.id),
+    referenceExperimentId: text("reference_experiment_id")
+      .notNull()
+      .references(() => experiments.id),
+    outcome: text("outcome", { enum: GATE_OUTCOMES }).notNull(),
+    /** Candidate-minus-reference point estimate on the chosen metric. */
+    delta: real("delta").notNull(),
+    ciLo: real("ci_lo").notNull(),
+    ciHi: real("ci_hi").notNull(),
+    n: integer("n").notNull(),
+    candidateRate: real("candidate_rate").notNull(),
+    referenceRate: real("reference_rate").notNull(),
+    judgeAbstainedFraction: real("judge_abstained_fraction").notNull().default(0),
+    decidedAt: integer("decided_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    index("gate_results_gate_spec_id_idx").on(table.gateSpecId),
+    index("gate_results_task_lookup_idx").on(table.candidateExperimentId),
+  ],
+);
+
+export type GateResultRow = typeof gateResults.$inferSelect;
 
 export const importBatchesRelations = relations(importBatches, ({ many }) => ({
   traces: many(traces),
