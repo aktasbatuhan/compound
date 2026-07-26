@@ -39,10 +39,12 @@ export async function runExperimentCommand(
   const modelId = args.positional[1];
   if (taskKey === undefined || modelId === undefined) {
     env.write(
-      "error: usage: compound experiment <task_key> <model> [--partition P] [--paid --cap N]",
+      "error: usage: compound experiment <task_key> <model> [--provider P] [--partition P] [--paid --cap N]",
     );
     return { exitCode: 2 };
   }
+
+  const providerOverride = stringFlag(args.flags, "provider");
 
   const partition = (stringFlag(args.flags, "partition") ??
     "optimizer_validation") as CasePartition;
@@ -55,7 +57,7 @@ export async function runExperimentCommand(
 
   let resolved: ReturnType<typeof resolveModel>;
   try {
-    resolved = resolveModel(config, modelId);
+    resolved = resolveModel(config, modelId, { provider: providerOverride });
   } catch (error) {
     if (error instanceof ExecutionConfigError) {
       env.write(`error: ${error.message}`);
@@ -107,6 +109,7 @@ export async function runExperimentCommand(
 
     const paid = wantsPaid;
     env.write(`experiment: ${modelId} on task ${taskKey} (${partition})`);
+    env.write(`  provider:     ${resolved.providerName}`);
     env.write(`  mode:         ${paid ? "PAID" : "dry run (no provider calls)"}`);
     env.write(`  cases:        ${report.cases_total ?? 0}`);
     env.write(`  graded:       ${report.cases_graded ?? 0}`);

@@ -34,7 +34,10 @@ describe("the repository's real compound.yaml", () => {
     expect(config.manifests_dir).toBe("benchmarks/manifests");
     expect(config.budget?.hard_limit_usd).toBe(25);
     expect(Object.keys(config.providers ?? {})).toContain("doubleword");
-    expect(config.models?.candidates?.length).toBe(4);
+    expect(config.models?.candidates?.length).toBe(5);
+    // The provider registry names each endpoint's wire protocol (issue #4).
+    expect(config.providers?.openai?.type).toBe("openai_compatible");
+    expect(config.providers?.doubleword?.type).toBe("flex");
     expect(config.flex_pricing_usd_per_million_tokens?.["deepseek-ai/DeepSeek-V4-Flash"]).toEqual({
       input: 0.07,
       output: 0.14,

@@ -198,6 +198,9 @@ export interface GateResponse {
   /** Set on an adoption gate: the optimized prompt under test. */
   candidate_prompt_hash: string | null;
   optimization_run_id: string | null;
+  /** Set on a provider-axis gate: which provider each side ran on. */
+  candidate_provider: string | null;
+  reference_provider: string | null;
   outcome: GateOutcome;
   delta: number;
   ci: [number, number];

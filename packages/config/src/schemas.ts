@@ -32,9 +32,29 @@ export const BudgetSchema = z.looseObject({
   smoke_cases_per_benchmark: z.int().nonnegative().optional(),
 });
 
+export const TokenPriceSchema = z.looseObject({
+  input: z.number().nonnegative(),
+  output: z.number().nonnegative(),
+});
+
+export const PricingTableSchema = z.record(z.string(), TokenPriceSchema);
+
+/**
+ * One provider endpoint in the registry. `type` names the wire protocol it
+ * speaks — a provider endpoint speaks exactly one — so the same model can be
+ * compared across providers (`experiment <task> <model> --provider X`). An
+ * endpoint may carry its OWN price table: identical weights cost differently per
+ * host, and the routing decision needs the right number. `openai_compatible`
+ * (the default) covers OpenAI itself and the many hosts that mirror its API
+ * (vLLM, Fireworks, Together, Groq, …); `flex` is Doubleword's async Responses
+ * route; `anthropic`/`google` are reserved for their native adapters.
+ */
 export const ProviderSchema = z.looseObject({
   base_url: z.url(),
   api_key_env: nonEmptyString,
+  type: z.enum(["openai_compatible", "flex", "anthropic", "google"]).optional(),
+  /** Per-provider price overrides, keyed by model id; falls back to the global table. */
+  pricing_usd_per_million_tokens: PricingTableSchema.optional(),
 });
 
 export const ModelEntrySchema = z.looseObject({
@@ -53,13 +73,6 @@ export const ModelsSchema = z.looseObject({
   frontier: z.array(ModelEntrySchema).optional(),
   candidates: z.array(ModelEntrySchema).optional(),
 });
-
-export const TokenPriceSchema = z.looseObject({
-  input: z.number().nonnegative(),
-  output: z.number().nonnegative(),
-});
-
-export const PricingTableSchema = z.record(z.string(), TokenPriceSchema);
 
 /**
  * Partition sizes per benchmark. The sealed-decision firewall lives in the

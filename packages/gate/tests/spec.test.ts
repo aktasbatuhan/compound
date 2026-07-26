@@ -31,3 +31,32 @@ describe("gate rule hashing with an optimized-prompt candidate", () => {
     expect(a).not.toBe(b);
   });
 });
+
+describe("gate rule hashing with the provider axis", () => {
+  test("absent/null providers leave the baseline hash unchanged", () => {
+    expect(hashRule({ ...BASE, candidateProvider: null, referenceProvider: null })).toBe(
+      hashRule(BASE),
+    );
+    expect(canonicalizeRule(BASE)).not.toContain("candidate_provider");
+  });
+
+  test("naming a provider makes it a DIFFERENT declared rule", () => {
+    const onA = { ...BASE, candidateProvider: "together" };
+    expect(hashRule(onA)).not.toBe(hashRule(BASE));
+    expect(canonicalizeRule(onA)).toContain("candidate_provider");
+  });
+
+  test("the same model on two providers are two different rules", () => {
+    const onA = hashRule({
+      ...BASE,
+      candidateProvider: "together",
+      referenceProvider: "openrouter",
+    });
+    const onB = hashRule({
+      ...BASE,
+      candidateProvider: "fireworks",
+      referenceProvider: "openrouter",
+    });
+    expect(onA).not.toBe(onB);
+  });
+});

@@ -354,6 +354,13 @@ export const gateSpecs = sqliteTable(
     candidatePromptHash: text("candidate_prompt_hash"),
     /** Provenance: the optimization artifact whose prompt was under test. */
     optimizationRunId: text("optimization_run_id").references(() => optimizationRuns.id),
+    /**
+     * The providers each side ran on, when a provider was named (the provider
+     * axis). Part of the rule when set, so "model M on A" vs "model M on B" is a
+     * distinct declaration. Null means the model's default provider.
+     */
+    candidateProvider: text("candidate_provider"),
+    referenceProvider: text("reference_provider"),
     /** The stated reason for opening the sealed partition — required. */
     firewallReason: text("firewall_reason").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })

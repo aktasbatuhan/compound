@@ -155,6 +155,8 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
     minCases: input.minCases,
     judgeAbstainMax: input.judgeAbstainMax,
     candidatePromptHash: input.candidatePromptHash ?? null,
+    candidateProvider: input.candidateProvider ?? null,
+    referenceProvider: input.referenceProvider ?? null,
   };
   const specHash = hashRule(rule);
 
@@ -174,6 +176,8 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
     ...(input.optimizationRunId !== undefined
       ? { optimizationRunId: input.optimizationRunId }
       : {}),
+    ...(rule.candidateProvider != null ? { candidateProvider: rule.candidateProvider } : {}),
+    ...(rule.referenceProvider != null ? { referenceProvider: rule.referenceProvider } : {}),
     firewallReason: input.firewallReason,
   });
 

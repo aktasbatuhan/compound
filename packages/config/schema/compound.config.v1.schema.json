@@ -55,6 +55,39 @@
           "api_key_env": {
             "type": "string",
             "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "openai_compatible",
+              "flex",
+              "anthropic",
+              "google"
+            ]
+          },
+          "pricing_usd_per_million_tokens": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "output": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "input",
+                "output"
+              ],
+              "additionalProperties": {}
+            }
           }
         },
         "required": [

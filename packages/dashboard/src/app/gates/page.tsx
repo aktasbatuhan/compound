@@ -53,7 +53,11 @@ export default async function GatesPage() {
                     <td>{gateBadge(gate.outcome)}</td>
                     <td>
                       <div>
-                        {gate.candidate_model} {(gate.candidate_rate * 100).toFixed(0)}%
+                        {gate.candidate_model}
+                        {gate.candidate_provider !== null ? (
+                          <span className="muted"> @{gate.candidate_provider}</span>
+                        ) : null}{" "}
+                        {(gate.candidate_rate * 100).toFixed(0)}%
                         {gate.optimization_run_id !== null ? (
                           <span
                             className="muted"
@@ -66,7 +70,9 @@ export default async function GatesPage() {
                         ) : null}
                       </div>
                       <div className="muted">
-                        {gate.reference_model} {(gate.reference_rate * 100).toFixed(0)}%
+                        {gate.reference_model}
+                        {gate.reference_provider !== null ? ` @${gate.reference_provider}` : ""}{" "}
+                        {(gate.reference_rate * 100).toFixed(0)}%
                       </div>
                     </td>
                     <td>{pp(gate.delta)}</td>

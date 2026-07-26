@@ -26,6 +26,13 @@ export interface GateRule {
    * plain "model M", so an adoption gate never reuses a baseline gate's spec.
    */
   candidatePromptHash?: string | null;
+  /**
+   * The provider each side ran on, when named (the provider axis). Part of the
+   * rule identity so "model M on A" vs "model M on B" is a distinct declaration
+   * and never collides with a same-model baseline gate.
+   */
+  candidateProvider?: string | null;
+  referenceProvider?: string | null;
 }
 
 /**
@@ -49,6 +56,10 @@ export function canonicalizeRule(rule: GateRule): string {
     ...(rule.candidatePromptHash != null
       ? [["candidate_prompt_hash", rule.candidatePromptHash]]
       : []),
+    // Only present when a provider was named, so every default-provider hash is
+    // unchanged.
+    ...(rule.candidateProvider != null ? [["candidate_provider", rule.candidateProvider]] : []),
+    ...(rule.referenceProvider != null ? [["reference_provider", rule.referenceProvider]] : []),
   ]);
 }
 

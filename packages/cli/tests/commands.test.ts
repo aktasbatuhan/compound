@@ -385,6 +385,32 @@ describe("gate", () => {
     // A different rule than a baseline gate over the same models would declare.
     expect(decided?.spec.candidatePromptHash).not.toBeNull();
   });
+
+  test("--candidate-provider runs the model on the override and records it on the rule", async () => {
+    const { env, output, db } = testEnvironment();
+    await importAndCurate(env);
+    const result = await runCommand(
+      [
+        "gate",
+        "support",
+        "--candidate",
+        "zai-org/GLM-5.2-FP8",
+        "--candidate-provider",
+        "openrouter",
+        "--reference",
+        "anthropic/claude-opus-4.8",
+        "--reason",
+        "provider-axis: GLM on openrouter vs opus",
+      ],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    // The candidate resolved onto the override provider (chat), shown in output.
+    expect(output()).toContain("zai-org/GLM-5.2-FP8 @openrouter");
+
+    const [decided] = listGateResults(db, 1);
+    expect(decided?.spec.candidateProvider).toBe("openrouter");
+  });
 });
 
 describe("grade-batch", () => {

@@ -148,6 +148,9 @@ function serializeGate(result: GateResultRow, spec: GateSpecRow) {
     // Set on an adoption gate: the optimized prompt under test and its artifact.
     candidate_prompt_hash: spec.candidatePromptHash,
     optimization_run_id: spec.optimizationRunId,
+    // Set on a provider-axis gate: which provider each side ran on.
+    candidate_provider: spec.candidateProvider,
+    reference_provider: spec.referenceProvider,
     outcome: result.outcome,
     delta: result.delta,
     ci: [result.ciLo, result.ciHi],

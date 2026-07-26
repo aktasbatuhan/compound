@@ -13,9 +13,18 @@ providers:
   openrouter:
     base_url: https://openrouter.ai/api/v1
     api_key_env: OPENROUTER_API_KEY
+    type: openai_compatible
   doubleword:
     base_url: https://api.doubleword.ai/v1
     api_key_env: DOUBLEWORD_API_KEY
+    type: flex
+  # OpenAI direct (issue #10). openai_compatible, so no adapter code — the same
+  # HttpProvider that serves OpenRouter serves it. Any host that mirrors this API
+  # (vLLM, Fireworks, Together, Groq, Cerebras, …) is one more provider block.
+  openai:
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    type: openai_compatible
 
 models:
   frontier:
@@ -42,6 +51,9 @@ models:
       provider: doubleword
       role: candidate
       backend: flex
+    - id: gpt-4o-mini
+      provider: openai
+      role: candidate
 
 pricing_usd_per_million_tokens:
   openai/gpt-5.6-sol:
@@ -56,6 +68,9 @@ pricing_usd_per_million_tokens:
   nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4:
     input: 0.50
     output: 2.50
+  gpt-4o-mini:
+    input: 0.15
+    output: 0.60
 
 # Doubleword's Responses API service_tier=flex uses the published async rates.
 # Keep these separate from the synchronous/default route prices above.

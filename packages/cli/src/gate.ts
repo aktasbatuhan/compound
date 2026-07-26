@@ -56,7 +56,7 @@ export async function runGateCommand(
       'error: usage: compound gate <task_key> --candidate M --reference M --reason "..." ' +
         "[--margin 0.05] [--confidence 0.95] [--min-cases 20] [--metric pass_rate|mean_score] " +
         "[--mode non_inferiority|superiority] [--prompt-artifact <optimization_run_id>] " +
-        "[--paid --cap USD]",
+        "[--provider P | --candidate-provider P --reference-provider P] [--paid --cap USD]",
     );
     return { exitCode: 2 };
   }
@@ -77,11 +77,16 @@ export async function runGateCommand(
   const config = loadConfig(stringFlag(args.flags, "config") ?? DEFAULT_CONFIG_PATH);
   const assertions = (config.assertions?.[taskKey] ?? []) as Assertion[];
 
+  // The provider axis: --provider applies to both sides; per-side flags win.
+  const bothProvider = stringFlag(args.flags, "provider");
+  const candidateProvider = stringFlag(args.flags, "candidate-provider") ?? bothProvider;
+  const referenceProvider = stringFlag(args.flags, "reference-provider") ?? bothProvider;
+
   let candidate: ReturnType<typeof resolveModel>;
   let reference: ReturnType<typeof resolveModel>;
   try {
-    candidate = resolveModel(config, candidateModel);
-    reference = resolveModel(config, referenceModel);
+    candidate = resolveModel(config, candidateModel, { provider: candidateProvider });
+    reference = resolveModel(config, referenceModel, { provider: referenceProvider });
   } catch (error) {
     if (error instanceof ExecutionConfigError) {
       env.write(`error: ${error.message}`);
@@ -195,14 +200,21 @@ export async function runGateCommand(
       referenceExperimentId: referenceRun.experimentId,
       ...(candidatePromptHash !== undefined ? { candidatePromptHash } : {}),
       ...(promptArtifactId !== undefined ? { optimizationRunId: promptArtifactId } : {}),
+      ...(candidateProvider !== undefined ? { candidateProvider } : {}),
+      ...(referenceProvider !== undefined ? { referenceProvider } : {}),
     });
 
     const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
     env.write("");
     env.write(`GATE: ${OUTCOME_LABEL[result.outcome] ?? result.outcome}`);
     env.write(`  task:        ${taskKey}   metric: ${metric}   mode: ${mode}`);
-    env.write(`  candidate:   ${candidateModel}   ${pct(result.candidateRate)}`);
-    env.write(`  reference:   ${referenceModel}   ${pct(result.referenceRate)}`);
+    const onProvider = (r: ReturnType<typeof resolveModel>) => ` @${r.providerName}`;
+    env.write(
+      `  candidate:   ${candidateModel}${onProvider(candidate)}   ${pct(result.candidateRate)}`,
+    );
+    env.write(
+      `  reference:   ${referenceModel}${onProvider(reference)}   ${pct(result.referenceRate)}`,
+    );
     env.write(
       `  delta:       ${result.delta >= 0 ? "+" : ""}${(result.delta * 100).toFixed(1)}pp ` +
         `(candidate − reference)`,

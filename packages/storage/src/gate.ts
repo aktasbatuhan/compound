@@ -33,6 +33,9 @@ export interface CreateGateSpecInput {
   candidatePromptHash?: string;
   /** The optimization artifact that supplied the prompt (provenance). */
   optimizationRunId?: string;
+  /** The provider each side ran on, when named (the provider axis). */
+  candidateProvider?: string;
+  referenceProvider?: string;
   firewallReason: string;
 }
 
@@ -63,6 +66,8 @@ export function createGateSpec(handle: CompoundDatabase, input: CreateGateSpecIn
       judgeAbstainMax: input.judgeAbstainMax,
       candidatePromptHash: input.candidatePromptHash ?? null,
       optimizationRunId: input.optimizationRunId ?? null,
+      candidateProvider: input.candidateProvider ?? null,
+      referenceProvider: input.referenceProvider ?? null,
       firewallReason: input.firewallReason,
     })
     .run();

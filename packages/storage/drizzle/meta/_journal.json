@@ -50,6 +50,13 @@
       "when": 1785097172513,
       "tag": "0006_ambiguous_roughhouse",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1785099169740,
+      "tag": "0007_sudden_meltdown",
+      "breakpoints": true
     }
   ]
 }
