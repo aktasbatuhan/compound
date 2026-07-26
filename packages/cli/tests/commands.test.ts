@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDatabase, migrate } from "@compound/storage";
+import { createDatabase, listGateResults, migrate, recordOptimizationRun } from "@compound/storage";
 import { type CommandEnvironment, parseArgs, runCommand } from "../src/commands";
 
 const EXPORT_JSON = JSON.stringify([
@@ -292,6 +292,98 @@ describe("gate", () => {
     // No cached completions on the sealed set in a dry run → an honest verdict,
     // not a fabricated pass.
     expect(output()).toContain("INSUFFICIENT DATA");
+  });
+
+  test("--prompt-artifact must name a stored optimization run", async () => {
+    const { env, output } = testEnvironment();
+    await importAndCurate(env);
+    const result = await runCommand(
+      [
+        "gate",
+        "support",
+        "--candidate",
+        "zai-org/GLM-5.2-FP8",
+        "--reference",
+        "anthropic/claude-opus-4.8",
+        "--reason",
+        "adoption attempt",
+        "--prompt-artifact",
+        "nope-no-such-artifact",
+      ],
+      env,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(output()).toContain("not found");
+  });
+
+  test("--prompt-artifact refuses an artifact from a different task", async () => {
+    const { env, output, db } = testEnvironment();
+    await importAndCurate(env);
+    const artifact = recordOptimizationRun(db, {
+      taskKey: "some_other_task",
+      candidateModel: "zai-org/GLM-5.2-FP8",
+      seedPrompt: "seed",
+      optimizedPrompt: "optimized",
+      beforeValScore: 0.5,
+      afterValScore: 0.9,
+      valCases: 4,
+      reflectionCalls: 1,
+    });
+    const result = await runCommand(
+      [
+        "gate",
+        "support",
+        "--candidate",
+        "zai-org/GLM-5.2-FP8",
+        "--reference",
+        "anthropic/claude-opus-4.8",
+        "--reason",
+        "adoption attempt",
+        "--prompt-artifact",
+        artifact.id,
+      ],
+      env,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(output()).toContain("belongs to task");
+  });
+
+  test("an adoption re-gate records the artifact and prompt hash on the declared rule", async () => {
+    const { env, output, db } = testEnvironment();
+    await importAndCurate(env);
+    const artifact = recordOptimizationRun(db, {
+      taskKey: "support",
+      candidateModel: "zai-org/GLM-5.2-FP8",
+      seedPrompt: "seed prompt",
+      optimizedPrompt: "You are the optimized support assistant.",
+      beforeValScore: 0.5,
+      afterValScore: 0.9,
+      valCases: 4,
+      reflectionCalls: 1,
+    });
+    const result = await runCommand(
+      [
+        "gate",
+        "support",
+        "--candidate",
+        "zai-org/GLM-5.2-FP8",
+        "--reference",
+        "anthropic/claude-opus-4.8",
+        "--reason",
+        "adoption re-gate of the optimized prompt",
+        "--prompt-artifact",
+        artifact.id,
+      ],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain(`optimized prompt under test: artifact ${artifact.id}`);
+
+    const [decided] = listGateResults(db, 1);
+    expect(decided?.spec.optimizationRunId).toBe(artifact.id);
+    expect(decided?.spec.candidatePromptHash).toStartWith("sha256:");
+    // A different rule than a baseline gate over the same models would declare.
+    expect(decided?.spec.candidatePromptHash).not.toBeNull();
   });
 });
 

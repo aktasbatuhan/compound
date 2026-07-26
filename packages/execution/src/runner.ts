@@ -37,6 +37,12 @@ export interface RunExperimentOptions {
   /** Guard: running against the sealed set is refused without this. */
   allowDecisionTest?: boolean;
   params?: Record<string, unknown>;
+  /**
+   * Replace each case's system message with this prompt (adoption re-gates:
+   * run the candidate WITH an optimized prompt). Applied before fingerprinting,
+   * so overridden completions never collide with the baseline prompt's cache.
+   */
+  systemPromptOverride?: string;
   providerRevision?: string;
   /**
    * Money controls. Paid calls happen only when `paidRunsEnabled` is true,
@@ -102,12 +108,20 @@ function requestForCase(
   candidateModel: string,
   input: unknown,
   params: Record<string, unknown> | undefined,
+  systemPromptOverride?: string,
 ): CompletionRequest {
   const record = (input ?? {}) as { input?: Message[]; tools_available?: unknown[] | null };
   const tools = record.tools_available ?? null;
+  let messages = record.input ?? [];
+  if (systemPromptOverride !== undefined && messages.length > 0) {
+    messages = [
+      { role: "system", content: systemPromptOverride },
+      ...messages.filter((m) => m.role !== "system"),
+    ];
+  }
   return {
     model: candidateModel,
-    messages: record.input ?? [],
+    messages,
     ...(tools && tools.length > 0 ? { tools: tools.map(toOpenAiTool) } : {}),
     ...(params ? { params } : {}),
   };
@@ -157,7 +171,12 @@ export async function runExperiment(
     let actualCost = 0;
 
     for (const stored of cases) {
-      const request = requestForCase(options.candidateModel, stored.input, options.params);
+      const request = requestForCase(
+        options.candidateModel,
+        stored.input,
+        options.params,
+        options.systemPromptOverride,
+      );
       if (request.messages.length === 0) {
         skipped += 1;
         skipReasons.empty_input = (skipReasons.empty_input ?? 0) + 1;

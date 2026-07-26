@@ -29,6 +29,10 @@ export interface CreateGateSpecInput {
   confidence: number;
   minCases: number;
   judgeAbstainMax: number;
+  /** Content hash of an optimized candidate prompt under test; absent for a baseline gate. */
+  candidatePromptHash?: string;
+  /** The optimization artifact that supplied the prompt (provenance). */
+  optimizationRunId?: string;
   firewallReason: string;
 }
 
@@ -57,6 +61,8 @@ export function createGateSpec(handle: CompoundDatabase, input: CreateGateSpecIn
       confidence: input.confidence,
       minCases: input.minCases,
       judgeAbstainMax: input.judgeAbstainMax,
+      candidatePromptHash: input.candidatePromptHash ?? null,
+      optimizationRunId: input.optimizationRunId ?? null,
       firewallReason: input.firewallReason,
     })
     .run();

@@ -144,6 +144,9 @@ function serializeGate(result: GateResultRow, spec: GateSpecRow) {
     min_cases: spec.minCases,
     // The stated reason the sealed set was opened — part of the lineage.
     firewall_reason: spec.firewallReason,
+    // Set on an adoption gate: the optimized prompt under test and its artifact.
+    candidate_prompt_hash: spec.candidatePromptHash,
+    optimization_run_id: spec.optimizationRunId,
     outcome: result.outcome,
     delta: result.delta,
     ci: [result.ciLo, result.ciHi],

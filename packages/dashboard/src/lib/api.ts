@@ -195,6 +195,9 @@ export interface GateResponse {
   confidence: number;
   min_cases: number;
   firewall_reason: string;
+  /** Set on an adoption gate: the optimized prompt under test. */
+  candidate_prompt_hash: string | null;
+  optimization_run_id: string | null;
   outcome: GateOutcome;
   delta: number;
   ci: [number, number];

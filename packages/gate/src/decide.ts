@@ -28,6 +28,8 @@ export interface DecideGateInput extends GateRule {
   referenceExperimentId: string;
   /** Required: the stated reason for opening the sealed partition. */
   firewallReason: string;
+  /** Provenance for an adoption gate: the optimization artifact under test. */
+  optimizationRunId?: string;
   bootstrapIterations?: number;
 }
 
@@ -152,6 +154,7 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
     confidence: input.confidence,
     minCases: input.minCases,
     judgeAbstainMax: input.judgeAbstainMax,
+    candidatePromptHash: input.candidatePromptHash ?? null,
   };
   const specHash = hashRule(rule);
 
@@ -167,6 +170,10 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
     confidence: rule.confidence,
     minCases: rule.minCases,
     judgeAbstainMax: rule.judgeAbstainMax,
+    ...(rule.candidatePromptHash != null ? { candidatePromptHash: rule.candidatePromptHash } : {}),
+    ...(input.optimizationRunId !== undefined
+      ? { optimizationRunId: input.optimizationRunId }
+      : {}),
     firewallReason: input.firewallReason,
   });
 

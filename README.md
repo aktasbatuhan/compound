@@ -53,7 +53,12 @@ prompt on the task's train/val cases — **never the sealed set**. Grading never
 languages: the Python adapter calls back into the one TS grader (`compound grade-batch`), so
 `@compound/assertions` stays the single source of truth. The result is stored as an artifact with
 before/after validation scores; it is a **proposal** — adopting it means re-gating it on the
-sealed set plus a human approval. See `docs/optimization-v1.md`.
+sealed set plus a human approval. That adoption step is
+`compound gate <task> --candidate M --prompt-artifact <optimization_run_id> --reason "..."`:
+the candidate runs with the optimized prompt (the reference untouched), the prompt's content
+hash joins the pre-declared rule — so an adoption gate is a different declaration than the
+baseline gate, never a quiet edit of it — and the verdict records which artifact was under
+test. See `docs/optimization-v1.md`.
 
 Packages: `contract` (the portable trace contract), `config` (one `compound.yaml` schema
 shared with the Python engine), `storage` (SQLite/Drizzle), `ingest` (Langfuse + plain-JSON

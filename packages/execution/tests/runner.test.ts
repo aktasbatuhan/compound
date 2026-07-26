@@ -335,3 +335,109 @@ describe("runExperiment grading", () => {
     expect(report.pass_rate).toBe(1);
   });
 });
+
+describe("runExperiment systemPromptOverride (adoption re-gates)", () => {
+  /** Seed traces whose input already has a system message, then curate. */
+  function seedCasesWithSystem(taskKey: string, n: number): void {
+    const batch = createImportBatch(db, {
+      importer: "test",
+      importerVersion: "1",
+      sourceFingerprint: `${taskKey}-sys-${n}`,
+    });
+    const records = [];
+    for (let i = 0; i < n; i += 1) {
+      const raw = {
+        schema: "compound.trace",
+        schema_version: 1,
+        trace_id: `t-sys-${taskKey}-${i}`,
+        task_key: taskKey,
+        started_at: "2026-07-24T10:00:00Z",
+        source: { importer: "test", importer_version: "1", source_ids: {} },
+        steps: [
+          {
+            type: "model_call",
+            step_id: "s1",
+            model: "gpt-4o",
+            input: [
+              { role: "system", content: "original baseline prompt" },
+              { role: "user", content: `question ${i}` },
+            ],
+            output: { role: "assistant", content: "answer" },
+            usage: { input_tokens: 5, output_tokens: 2 },
+            started_at: "2026-07-24T10:00:00Z",
+            ended_at: "2026-07-24T10:00:01Z",
+          },
+        ],
+        focal_step_id: "s1",
+        permissions: { judging: true, optimization: true, fine_tuning: false },
+        redactions: [],
+      };
+      const record = traceRecordFromValidation(validate(raw), `hash-sys-${taskKey}-${i}`);
+      if (record !== null) records.push(record);
+    }
+    insertTraces(db, batch.id, records);
+    curateTask(db, { taskKey });
+  }
+
+  const OVERRIDE = "You are the optimized prompt.";
+
+  test("replaces the case's system message with the override, keeping the rest", async () => {
+    seedCasesWithSystem("support", 12);
+    const provider = new MockProvider('{"ok":true}');
+    await runExperiment(db, {
+      taskKey: "support",
+      candidateModel: "cheap-model",
+      provider,
+      providerName: "mock",
+      price: PRICE,
+      assertions: ASSERTIONS,
+      partition: "optimization_train",
+      systemPromptOverride: OVERRIDE,
+      paidRunsEnabled: true,
+      experimentCapUsd: 5,
+      globalHardLimitUsd: 5,
+    });
+
+    expect(provider.calls.length).toBeGreaterThan(0);
+    for (const call of provider.calls) {
+      const systems = call.messages.filter((m) => m.role === "system");
+      expect(systems).toHaveLength(1);
+      expect(systems[0]?.content).toBe(OVERRIDE);
+      // The user turn survives untouched.
+      expect(call.messages.some((m) => m.role === "user")).toBe(true);
+    }
+  });
+
+  test("an overridden run never reuses the baseline prompt's cache (and vice versa)", async () => {
+    seedCasesWithSystem("support", 12);
+    const run = (provider: MockProvider, override?: string) =>
+      runExperiment(db, {
+        taskKey: "support",
+        candidateModel: "cheap-model",
+        provider,
+        providerName: "mock",
+        price: PRICE,
+        assertions: ASSERTIONS,
+        partition: "optimization_train",
+        ...(override !== undefined ? { systemPromptOverride: override } : {}),
+        paidRunsEnabled: true,
+        experimentCapUsd: 5,
+        globalHardLimitUsd: 5,
+      });
+
+    const baseline = new MockProvider('{"ok":true}');
+    await run(baseline);
+    expect(baseline.calls.length).toBeGreaterThan(0);
+
+    // Different prompt → different fingerprint → real calls, not cache hits.
+    const overridden = new MockProvider('{"ok":true}');
+    await run(overridden, OVERRIDE);
+    expect(overridden.calls.length).toBe(baseline.calls.length);
+
+    // Same override again → served fully from cache, $0.
+    const cached = new MockProvider('{"ok":true}');
+    const { report } = await run(cached, OVERRIDE);
+    expect(cached.calls).toHaveLength(0);
+    expect(report.cache_hits).toBe(baseline.calls.length);
+  });
+});

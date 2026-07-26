@@ -346,6 +346,14 @@ export const gateSpecs = sqliteTable(
     confidence: real("confidence").notNull(),
     minCases: integer("min_cases").notNull(),
     judgeAbstainMax: real("judge_abstain_max").notNull().default(0),
+    /**
+     * When the candidate ran with an optimized prompt, its content hash — part
+     * of the pre-declared rule, so "model M with prompt P" is a different rule
+     * than plain "model M". Null for a baseline gate.
+     */
+    candidatePromptHash: text("candidate_prompt_hash"),
+    /** Provenance: the optimization artifact whose prompt was under test. */
+    optimizationRunId: text("optimization_run_id").references(() => optimizationRuns.id),
     /** The stated reason for opening the sealed partition — required. */
     firewallReason: text("firewall_reason").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })

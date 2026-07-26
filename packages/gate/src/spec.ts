@@ -20,6 +20,12 @@ export interface GateRule {
   confidence: number;
   minCases: number;
   judgeAbstainMax: number;
+  /**
+   * When the candidate runs with an optimized prompt, its content hash. Part of
+   * the rule identity: "model M with prompt P" is a different declaration than
+   * plain "model M", so an adoption gate never reuses a baseline gate's spec.
+   */
+  candidatePromptHash?: string | null;
 }
 
 /**
@@ -39,6 +45,10 @@ export function canonicalizeRule(rule: GateRule): string {
     ["confidence", rule.confidence],
     ["min_cases", rule.minCases],
     ["judge_abstain_max", rule.judgeAbstainMax],
+    // Only present for an adoption gate, so every baseline hash is unchanged.
+    ...(rule.candidatePromptHash != null
+      ? [["candidate_prompt_hash", rule.candidatePromptHash]]
+      : []),
   ]);
 }
 

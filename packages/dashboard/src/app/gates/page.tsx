@@ -54,6 +54,16 @@ export default async function GatesPage() {
                     <td>
                       <div>
                         {gate.candidate_model} {(gate.candidate_rate * 100).toFixed(0)}%
+                        {gate.optimization_run_id !== null ? (
+                          <span
+                            className="muted"
+                            style={{ fontSize: 12 }}
+                            title={`optimized prompt under test: artifact ${gate.optimization_run_id}`}
+                          >
+                            {" "}
+                            · optimized prompt
+                          </span>
+                        ) : null}
                       </div>
                       <div className="muted">
                         {gate.reference_model} {(gate.reference_rate * 100).toFixed(0)}%

@@ -186,8 +186,10 @@ export function runOptimizeCommand(args: ParsedArgs, env: CommandEnvironment): C
       `  validation score: ${pct(result.before_val_score)} -> ${pct(result.after_val_score)} (${result.val_cases} cases)`,
     );
     env.write(`  reflection calls: ${result.reflection_calls}`);
+    env.write("  the optimized prompt is a PROPOSAL — re-gate it before adopting:");
     env.write(
-      "  the optimized prompt is a PROPOSAL — re-gate it on the sealed set before adopting.",
+      `  compound gate ${taskKey} --candidate ${candidateModel} --reference <M> ` +
+        `--prompt-artifact ${run.id} --reason "adoption re-gate"`,
     );
     return { exitCode: 0 };
   } finally {

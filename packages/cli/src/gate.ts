@@ -8,6 +8,7 @@
  * so the gate can only decide when both runs' completions are already cached
  * (a re-decision then costs $0).
  */
+import { createHash } from "node:crypto";
 import type { Assertion } from "@compound/assertions";
 import { loadConfig } from "@compound/config";
 import {
@@ -17,7 +18,7 @@ import {
   runExperiment,
 } from "@compound/execution";
 import { decideGate, GateInputError } from "@compound/gate";
-import type { GateMetric, GateMode } from "@compound/storage";
+import { type GateMetric, type GateMode, getOptimizationRun } from "@compound/storage";
 import type { CommandEnvironment, CommandResult, ParsedArgs } from "./commands";
 import { DEFAULT_CONFIG_PATH, DEFAULT_DATABASE_PATH } from "./commands";
 
@@ -54,7 +55,8 @@ export async function runGateCommand(
     env.write(
       'error: usage: compound gate <task_key> --candidate M --reference M --reason "..." ' +
         "[--margin 0.05] [--confidence 0.95] [--min-cases 20] [--metric pass_rate|mean_score] " +
-        "[--mode non_inferiority|superiority] [--paid --cap USD]",
+        "[--mode non_inferiority|superiority] [--prompt-artifact <optimization_run_id>] " +
+        "[--paid --cap USD]",
     );
     return { exitCode: 2 };
   }
@@ -108,8 +110,44 @@ export async function runGateCommand(
   }
 
   const db = env.openDatabase(stringFlag(args.flags, "db") ?? DEFAULT_DATABASE_PATH);
+
+  // Adoption re-gate: run the candidate WITH an optimized prompt from a stored
+  // optimization artifact. The prompt joins the pre-declared rule (its hash),
+  // and the reference always runs untouched.
+  const promptArtifactId = stringFlag(args.flags, "prompt-artifact");
+  let promptOverride: string | undefined;
+  let candidatePromptHash: string | undefined;
+  if (promptArtifactId !== undefined) {
+    const artifact = getOptimizationRun(db, promptArtifactId);
+    if (artifact === null) {
+      env.write(`error: optimization artifact '${promptArtifactId}' not found`);
+      db.close();
+      return { exitCode: 1 };
+    }
+    if (artifact.taskKey !== taskKey) {
+      env.write(
+        `error: optimization artifact '${promptArtifactId}' belongs to task ` +
+          `'${artifact.taskKey}', not '${taskKey}'`,
+      );
+      db.close();
+      return { exitCode: 1 };
+    }
+    if (artifact.candidateModel !== candidateModel) {
+      env.write(
+        `warning: artifact prompt was optimized for '${artifact.candidateModel}', ` +
+          `gating '${candidateModel}' with it anyway`,
+      );
+    }
+    promptOverride = artifact.optimizedPrompt;
+    candidatePromptHash = `sha256:${createHash("sha256").update(artifact.optimizedPrompt).digest("hex")}`;
+  }
+
   const maxCases = stringFlag(args.flags, "max");
-  const runOne = (resolved: ReturnType<typeof resolveModel>, model: string) =>
+  const runOne = (
+    resolved: ReturnType<typeof resolveModel>,
+    model: string,
+    systemPromptOverride?: string,
+  ) =>
     runExperiment(db, {
       taskKey,
       candidateModel: model,
@@ -123,12 +161,16 @@ export async function runGateCommand(
       experimentCapUsd,
       globalHardLimitUsd: controls.globalHardLimitUsd,
       dryRun: !wantsPaid,
+      ...(systemPromptOverride !== undefined ? { systemPromptOverride } : {}),
       ...(maxCases !== undefined ? { maxCases: Number.parseInt(maxCases, 10) } : {}),
     });
 
   try {
     env.write(`opening the sealed decision set for '${taskKey}': ${reason}`);
-    const candidateRun = await runOne(candidate, candidateModel);
+    if (promptArtifactId !== undefined) {
+      env.write(`optimized prompt under test: artifact ${promptArtifactId}`);
+    }
+    const candidateRun = await runOne(candidate, candidateModel, promptOverride);
     const referenceRun = await runOne(reference, referenceModel);
 
     if ((candidateRun.report.cases_graded ?? 0) === 0 && !wantsPaid) {
@@ -151,6 +193,8 @@ export async function runGateCommand(
       firewallReason: reason,
       candidateExperimentId: candidateRun.experimentId,
       referenceExperimentId: referenceRun.experimentId,
+      ...(candidatePromptHash !== undefined ? { candidatePromptHash } : {}),
+      ...(promptArtifactId !== undefined ? { optimizationRunId: promptArtifactId } : {}),
     });
 
     const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
