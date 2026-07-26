@@ -46,6 +46,9 @@ export function createDatabase(options: CreateDatabaseOptions = {}): CompoundDat
   sqlite.exec("PRAGMA foreign_keys = ON;");
   if (path !== ":memory:") {
     sqlite.exec("PRAGMA journal_mode = WAL;");
+    // A second connection (e.g. the grade-batch subprocess an `optimize` run
+    // spawns while this one is open) should wait briefly for a lock, not fail.
+    sqlite.exec("PRAGMA busy_timeout = 5000;");
   }
   const db = drizzle(sqlite, { schema });
   const handle: CompoundDatabase = {

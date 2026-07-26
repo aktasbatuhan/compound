@@ -16,6 +16,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "@compound/config";
+import { type JudgeConfig, judgeTrust } from "@compound/judge";
 import { assessEligibility } from "@compound/optimize";
 import { listCases, listGateResults, recordOptimizationRun } from "@compound/storage";
 import type { CommandEnvironment, CommandResult, ParsedArgs } from "./commands";
@@ -41,6 +42,23 @@ function resolveEndpoint(
   const provider = config.providers?.[entry.provider];
   if (provider === undefined) return { error: `provider '${entry.provider}' is not configured` };
   return { base_url: provider.base_url, api_key_env: provider.api_key_env };
+}
+
+function resolveJudgeConfig(
+  config: ReturnType<typeof loadConfig>,
+  taskKey: string,
+): JudgeConfig | null {
+  const raw = config.judges?.[taskKey];
+  if (raw === undefined) return null;
+  return {
+    taskKey,
+    model: raw.model,
+    promptVersion: raw.prompt_version,
+    rubric: raw.rubric,
+    mode: raw.mode ?? "pointwise",
+    calibrationThreshold: raw.calibration_threshold,
+    decisionPoint: raw.decision_point ?? 0.5,
+  };
 }
 
 function toOpenAiTools(tools: unknown[] | null | undefined): unknown[] {
@@ -75,12 +93,48 @@ export function runOptimizeCommand(args: ParsedArgs, env: CommandEnvironment): C
 
   const candidateEp = resolveEndpoint(config, candidateModel);
   const reflectionEp = resolveEndpoint(config, reflectionModel);
-  if ("error" in candidateEp) return env.write(`error: ${candidateEp.error}`), { exitCode: 1 };
-  if ("error" in reflectionEp) return env.write(`error: ${reflectionEp.error}`), { exitCode: 1 };
+  if ("error" in candidateEp) {
+    env.write(`error: ${candidateEp.error}`);
+    return { exitCode: 1 };
+  }
+  if ("error" in reflectionEp) {
+    env.write(`error: ${reflectionEp.error}`);
+    return { exitCode: 1 };
+  }
 
   const configPath = stringFlag(args.flags, "config") ?? DEFAULT_CONFIG_PATH;
-  const db = env.openDatabase(stringFlag(args.flags, "db") ?? DEFAULT_DATABASE_PATH);
+  const dbPath = stringFlag(args.flags, "db") ?? DEFAULT_DATABASE_PATH;
+  const db = env.openDatabase(dbPath);
   try {
+    // Fuzzy task? If a judge is configured, GEPA must grade through it — and it
+    // may only do so on earned trust. Refuse up front (with exactly what unblocks
+    // it) rather than launch a run that grade-batch would reject mid-flight.
+    const judge = resolveJudgeConfig(config, taskKey);
+    const cap = stringFlag(args.flags, "cap");
+    if (judge !== null) {
+      const trust = judgeTrust(db, judge);
+      if (!trust.calibrated) {
+        env.write(
+          `not optimizing: task '${taskKey}' is judge-graded but the judge is not calibrated.`,
+        );
+        env.write(`  ${trust.reason}`);
+        env.write(
+          "  label more judge_calibration cases, run `compound judge calibrate`, then retry.",
+        );
+        return { exitCode: 1 };
+      }
+      if (args.flags.paid !== true || cap === undefined || !(Number.parseFloat(cap) > 0)) {
+        env.write(
+          `error: judge-graded optimization spends judge tokens — pass --paid --cap <usd> ` +
+            `(judge: ${judge.model}).`,
+        );
+        return { exitCode: 1 };
+      }
+      env.write(
+        `judge-graded task: grading via calibrated judge ${judge.model} (${trust.reason}).`,
+      );
+    }
+
     // Eligibility: only optimize a gap worth closing (unless forced).
     let eligibilityReason = "forced";
     if (args.flags.force !== true) {
@@ -135,6 +189,9 @@ export function runOptimizeCommand(args: ParsedArgs, env: CommandEnvironment): C
       valset: val.map(toJobCase),
       max_metric_calls: maxCalls,
       reflection_minibatch_size: 3,
+      // The single grader the Python adapter shells back to. For a judge-graded
+      // task it grades on the calibrated judge, so pass the money-safe judge
+      // controls and the same db that holds its calibration + cache.
       grade_cmd: [
         "bun",
         "run",
@@ -143,6 +200,7 @@ export function runOptimizeCommand(args: ParsedArgs, env: CommandEnvironment): C
         "-",
         "--config",
         configPath,
+        ...(judge !== null ? ["--judge", "--db", dbPath, "--paid", "--cap", cap as string] : []),
       ],
       run_dir: join(workDir, "gepa"),
       output: outPath,

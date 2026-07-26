@@ -387,6 +387,77 @@ describe("gate", () => {
   });
 });
 
+describe("grade-batch", () => {
+  beforeAll(() => {
+    process.env.OPENROUTER_API_KEY ??= "test-openrouter-key";
+    process.env.DOUBLEWORD_API_KEY ??= "test-doubleword-key";
+  });
+
+  const batch = (taskKey: string) =>
+    JSON.stringify({
+      task_key: taskKey,
+      items: [{ case_id: "c1", output: { role: "assistant", content: "hello there" } }],
+    });
+
+  test("assertion-only grading (no --judge) prints per-item scores", async () => {
+    const { env, output } = testEnvironment();
+    await withTempFile(batch("support"), async (path) => {
+      const result = await runCommand(["grade-batch", path, "--config", "compound.yaml"], env);
+      expect(result.exitCode).toBe(0);
+    });
+    const parsed = JSON.parse(output());
+    expect(parsed.items).toHaveLength(1);
+    expect(parsed.items[0].case_id).toBe("c1");
+    expect(typeof parsed.items[0].score).toBe("number");
+  });
+
+  test("--judge on a task with no judge configured is a clear error", async () => {
+    const { env, output } = testEnvironment();
+    await withTempFile(batch("data_processing"), async (path) => {
+      const result = await runCommand(
+        ["grade-batch", path, "--judge", "--config", "compound.yaml"],
+        env,
+      );
+      expect(result.exitCode).toBe(1);
+    });
+    expect(output()).toContain("no judge configured");
+  });
+
+  test("--judge REFUSES an uncalibrated judge rather than emit weak scores", async () => {
+    const { env, output } = testEnvironment();
+    await withTempFile(batch("support"), async (path) => {
+      const result = await runCommand(
+        ["grade-batch", path, "--judge", "--config", "compound.yaml"],
+        env,
+      );
+      // Exit 3 = judge refusal (distinct from usage/other errors).
+      expect(result.exitCode).toBe(3);
+    });
+    expect(output()).toContain("not calibrated");
+    expect(output()).toContain("judge calibrate");
+  });
+});
+
+describe("optimize", () => {
+  beforeAll(() => {
+    process.env.OPENROUTER_API_KEY ??= "test-openrouter-key";
+    process.env.DOUBLEWORD_API_KEY ??= "test-doubleword-key";
+  });
+
+  test("refuses a judge-graded task whose judge is not calibrated, naming what unblocks it", async () => {
+    const { env, output } = testEnvironment();
+    // 'support' is judge-graded in compound.yaml; a fresh db has no calibration.
+    const result = await runCommand(
+      ["optimize", "support", "--candidate", "zai-org/GLM-5.2-FP8", "--config", "compound.yaml"],
+      env,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(output()).toContain("not optimizing");
+    expect(output()).toContain("not calibrated");
+    expect(output()).toContain("judge calibrate");
+  });
+});
+
 describe("telemetry", () => {
   test("reports honestly when nothing has run", async () => {
     const { env, output } = testEnvironment();
