@@ -24,3 +24,6 @@ dist/
 docs/
 SPEC.md
 packages/*/README.md
+
+# Local Langfuse experiment harness (real-trace generation) — not published
+langfuse-demo/

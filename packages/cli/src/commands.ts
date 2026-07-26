@@ -8,7 +8,7 @@
  */
 import { readFileSync } from "node:fs";
 import { loadConfig } from "@compound/config";
-import { curateTask } from "@compound/curation";
+import { curateTask, type PartitionRatios } from "@compound/curation";
 import { runImport, SUPPORTED_IMPORTERS } from "@compound/pipeline";
 import {
   type CompoundDatabase,
@@ -90,7 +90,7 @@ export const HELP_TEXT = `compound — turn production traces into gated optimiz
 
 Usage:
   compound import <file> [--importer langfuse] [--db PATH] [--config PATH] [--project-id ID]
-  compound curate <task_key> [--db PATH]
+  compound curate <task_key> [--split train:val:cal:dec] [--db PATH]
   compound experiment <task_key> <model> [--partition P] [--paid --cap USD]
   compound gate <task_key> --candidate M --reference M --reason "..." [--margin 0.05] [--paid --cap USD]
   compound judge calibrate <task_key> [--paid --cap USD]
@@ -176,6 +176,22 @@ export function runImportCommand(args: ParsedArgs, env: CommandEnvironment): Com
   }
 }
 
+/** Parse `--split train:val:cal:dec` into partition ratios (any non-negative numbers). */
+function parseSplit(value: string): PartitionRatios {
+  const parts = value.split(":").map((p) => Number.parseFloat(p.trim()));
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n) || n < 0)) {
+    throw new Error(
+      `--split must be four non-negative numbers "train:val:cal:dec", got "${value}"`,
+    );
+  }
+  return {
+    optimization_train: parts[0] as number,
+    optimizer_validation: parts[1] as number,
+    judge_calibration: parts[2] as number,
+    decision_test: parts[3] as number,
+  };
+}
+
 export function runCurateCommand(args: ParsedArgs, env: CommandEnvironment): CommandResult {
   const taskKey = args.positional[0];
   if (taskKey === undefined) {
@@ -183,9 +199,20 @@ export function runCurateCommand(args: ParsedArgs, env: CommandEnvironment): Com
     return { exitCode: 2 };
   }
 
+  const splitFlag = stringFlag(args.flags, "split");
+  let ratios: PartitionRatios | undefined;
+  if (splitFlag !== undefined) {
+    try {
+      ratios = parseSplit(splitFlag);
+    } catch (error) {
+      env.write(`error: ${error instanceof Error ? error.message : error}`);
+      return { exitCode: 2 };
+    }
+  }
+
   const db = env.openDatabase(stringFlag(args.flags, "db") ?? DEFAULT_DATABASE_PATH);
   try {
-    const report = curateTask(db, { taskKey });
+    const report = curateTask(db, { taskKey, ...(ratios ? { ratios } : {}) });
     env.write(`curated task ${taskKey}`);
     env.write(`  traces scanned:  ${report.tracesScanned}`);
     env.write(`  cases created:   ${report.casesCreated}`);

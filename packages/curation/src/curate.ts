@@ -99,31 +99,23 @@ export function curateTask(db: CompoundDatabase, options: CurateOptions): Curate
       input: extracted.input,
       expected: extracted.expected,
     });
-
-    report.byPartition[partition] = (report.byPartition[partition] ?? 0) + 1;
-    report.byProvenance[extracted.provenance] =
-      (report.byProvenance[extracted.provenance] ?? 0) + 1;
   }
 
   const result = insertCases(db, records);
   report.casesCreated = result.inserted;
   report.duplicates = result.duplicates;
 
-  // byPartition/byProvenance above count extraction attempts; correct them to
-  // reflect only newly created cases so the report is not inflated by dupes.
-  if (result.duplicates > 0) {
-    const createdHashes = new Set(
-      records
-        .filter((record) => result.insertedCaseIds.includes(record.caseId))
-        .map((record) => record.contentHash),
-    );
-    report.byPartition = {};
-    report.byProvenance = {};
-    for (const record of records) {
-      if (!createdHashes.has(record.contentHash)) continue;
-      report.byPartition[record.partition] = (report.byPartition[record.partition] ?? 0) + 1;
-      report.byProvenance[record.provenance] = (report.byProvenance[record.provenance] ?? 0) + 1;
-    }
+  // Count byPartition/byProvenance over the cases ACTUALLY inserted — one per
+  // created case. Counting over all `records` would double-count a created case
+  // alongside every content-duplicate that collapsed into it.
+  const inserted = new Set(result.insertedCaseIds);
+  const counted = new Set<string>();
+  for (const record of records) {
+    // Count each inserted case once — content-duplicates share a caseId.
+    if (!inserted.has(record.caseId) || counted.has(record.caseId)) continue;
+    counted.add(record.caseId);
+    report.byPartition[record.partition] = (report.byPartition[record.partition] ?? 0) + 1;
+    report.byProvenance[record.provenance] = (report.byProvenance[record.provenance] ?? 0) + 1;
   }
 
   return report;

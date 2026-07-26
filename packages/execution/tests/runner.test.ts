@@ -115,6 +115,60 @@ describe("runExperiment money-safety", () => {
     expect(report.estimated_cost_usd ?? 0).toBeGreaterThan(0);
   });
 
+  test("re-wraps contract tools into the OpenAI function envelope for the provider", async () => {
+    // Seed one trace whose focal step exposes a tool in the CONTRACT shape
+    // ({name, description, parameters}) — the shape ingest normalizes to.
+    const batch = createImportBatch(db, { importer: "test", importerVersion: "1", sourceFingerprint: "tools" });
+    const raw = {
+      schema: "compound.trace",
+      schema_version: 1,
+      trace_id: "t-tools-1",
+      task_key: "toolt",
+      started_at: "2026-07-24T10:00:00Z",
+      source: { importer: "test", importer_version: "1", source_ids: {} },
+      steps: [
+        {
+          type: "model_call",
+          step_id: "s1",
+          model: "gpt-4o",
+          input: [{ role: "user", content: "dispute it" }],
+          tools_available: [
+            { name: "dispute_charge", description: "d", parameters: { type: "object", properties: {} } },
+          ],
+          output: { role: "assistant", content: "answer" },
+          usage: { input_tokens: 5, output_tokens: 2 },
+          started_at: "2026-07-24T10:00:00Z",
+          ended_at: "2026-07-24T10:00:01Z",
+        },
+      ],
+      focal_step_id: "s1",
+      permissions: { judging: true, optimization: true, fine_tuning: false },
+      redactions: [],
+    };
+    const record = traceRecordFromValidation(validate(raw), "hash-tools-1");
+    if (record !== null) insertTraces(db, batch.id, [record]);
+    curateTask(db, { taskKey: "toolt" });
+
+    const provider = new MockProvider('{"ok":true}');
+    await runExperiment(db, {
+      taskKey: "toolt",
+      candidateModel: "cheap",
+      provider,
+      providerName: "mock",
+      price: PRICE,
+      assertions: ASSERTIONS,
+      partition: "optimization_train",
+      paidRunsEnabled: true,
+      experimentCapUsd: 1,
+      globalHardLimitUsd: 1,
+    });
+
+    // The provider must receive the function envelope, not the bare contract tool.
+    const tools = provider.calls[0]?.tools as Array<{ type?: string; function?: { name?: string } }>;
+    expect(tools?.[0]?.type).toBe("function");
+    expect(tools?.[0]?.function?.name).toBe("dispute_charge");
+  });
+
   test("paid calls stay off unless enabled with a positive cap", async () => {
     seedCases("support", 5);
     const provider = new MockProvider('{"ok":true}');

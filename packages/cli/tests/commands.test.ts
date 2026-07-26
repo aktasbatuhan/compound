@@ -321,6 +321,27 @@ describe("judge", () => {
   });
 });
 
+describe("curate --split", () => {
+  test("a decision-heavy split lands more cases in decision_test", async () => {
+    const { env, output } = testEnvironment();
+    await withTempFile(EXPORT_JSON, async (path) => {
+      await runCommand(["import", path, "--config", "compound.yaml"], env);
+    });
+    // One trace only in the fixture, so just assert the split is accepted and the
+    // command reports its partitions (the ratio math is unit-tested in curation).
+    const result = await runCommand(["curate", "support", "--split", "5:10:35:50"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("partitions");
+  });
+
+  test("rejects a malformed split", async () => {
+    const { env, output } = testEnvironment();
+    const result = await runCommand(["curate", "support", "--split", "1:2:3"], env);
+    expect(result.exitCode).toBe(2);
+    expect(output()).toContain("--split must be four");
+  });
+});
+
 describe("status", () => {
   test("reports an empty store honestly", async () => {
     const { env, output } = testEnvironment();

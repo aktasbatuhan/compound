@@ -86,16 +86,29 @@ export function isPaidEnabled(options: RunExperimentOptions): boolean {
   );
 }
 
+/**
+ * The trace contract stores tools UNWRAPPED (`{name, description, parameters}`),
+ * but the OpenAI/OpenRouter chat API needs the function envelope
+ * (`{type:"function", function:{…}}`). Re-wrap here so a candidate actually
+ * receives the tools; without this the model gets malformed tools, ignores them,
+ * and emits a text tool call the assertions can't see.
+ */
+function toOpenAiTool(tool: unknown): unknown {
+  if (tool !== null && typeof tool === "object" && "function" in tool) return tool;
+  return { type: "function", function: tool };
+}
+
 function requestForCase(
   candidateModel: string,
   input: unknown,
   params: Record<string, unknown> | undefined,
 ): CompletionRequest {
   const record = (input ?? {}) as { input?: Message[]; tools_available?: unknown[] | null };
+  const tools = record.tools_available ?? null;
   return {
     model: candidateModel,
     messages: record.input ?? [],
-    ...(record.tools_available ? { tools: record.tools_available } : {}),
+    ...(tools && tools.length > 0 ? { tools: tools.map(toOpenAiTool) } : {}),
     ...(params ? { params } : {}),
   };
 }

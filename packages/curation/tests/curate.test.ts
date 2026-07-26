@@ -98,6 +98,22 @@ describe("curateTask", () => {
     expect(partitionsAfter).toEqual(partitionsBefore);
   });
 
+  test("byPartition counts only created cases, never inflated by content-duplicates", () => {
+    // Six traces, three distinct content hashes → three cases, three duplicates.
+    for (let i = 0; i < 3; i += 1) {
+      seedTrace(`langfuse:a-${i}`, "support", `q${i}`, `dup-hash-${i}`);
+      seedTrace(`langfuse:b-${i}`, "support", `q${i}`, `dup-hash-${i}`);
+    }
+    const report = curateTask(db, { taskKey: "support" });
+    expect(report.casesCreated).toBe(3);
+    expect(report.duplicates).toBe(3);
+    // The bug: byPartition summed to 6 (each case counted with its duplicate).
+    const partitionTotal = Object.values(report.byPartition).reduce((a, b) => a + b, 0);
+    expect(partitionTotal).toBe(report.casesCreated);
+    const provenanceTotal = Object.values(report.byProvenance).reduce((a, b) => a + b, 0);
+    expect(provenanceTotal).toBe(report.casesCreated);
+  });
+
   test("only curates the requested task", () => {
     seedTrace("langfuse:a", "support", "q", "h-a");
     seedTrace("langfuse:b", "billing", "q", "h-b");
