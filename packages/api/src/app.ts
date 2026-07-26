@@ -49,6 +49,7 @@ import {
   type OptimizationRunRow,
   reviewCase,
   type StoredTrace,
+  telemetryRollup,
   UnknownCaseError,
 } from "@compound/storage";
 import { Hono } from "hono";
@@ -521,6 +522,31 @@ export function createApp({ db, config }: AppDependencies): Hono {
   app.get("/api/optimizations", (c) => {
     const taskKey = new URL(c.req.url).searchParams.get("task_key") ?? undefined;
     return c.json({ items: listOptimizationRuns(db, taskKey).map(serializeOptimization) });
+  });
+
+  // --- telemetry -----------------------------------------------------------
+
+  // The operational rollup beside the gate's quality verdict: per task x model
+  // x provider, aggregated from the completion cache (each completion counted
+  // once). TPS uses full request latency, queueing included.
+  app.get("/api/telemetry", (c) => {
+    const taskKey = new URL(c.req.url).searchParams.get("task_key") ?? undefined;
+    const items = telemetryRollup(db, taskKey).map((g) => ({
+      task_key: g.taskKey,
+      model: g.model,
+      provider: g.provider,
+      completions: g.completions,
+      latency_p50_ms: g.latencyP50Ms,
+      latency_p95_ms: g.latencyP95Ms,
+      mean_cost_usd: g.meanCostUsd,
+      total_cost_usd: g.totalCostUsd,
+      mean_input_tokens: g.meanInputTokens,
+      mean_output_tokens: g.meanOutputTokens,
+      total_input_tokens: g.totalInputTokens,
+      total_output_tokens: g.totalOutputTokens,
+      output_tps: g.outputTps,
+    }));
+    return c.json({ items });
   });
 
   return app;

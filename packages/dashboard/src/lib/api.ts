@@ -227,6 +227,23 @@ export interface JudgeCalibrationResponse {
   measured_at: string;
 }
 
+/** Operational rollup for one task x model x provider group. */
+export interface TelemetryResponse {
+  task_key: string;
+  model: string;
+  provider: string;
+  completions: number;
+  latency_p50_ms: number;
+  latency_p95_ms: number;
+  mean_cost_usd: number;
+  total_cost_usd: number;
+  mean_input_tokens: number;
+  mean_output_tokens: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  output_tps: number;
+}
+
 /** A stored GEPA optimization run (a proposed prompt improvement). */
 export interface OptimizationResponse {
   id: string;
@@ -309,6 +326,7 @@ export interface ApiClient {
   listGates(taskKey?: string): Promise<{ items: GateResponse[] }>;
   listJudges(): Promise<{ items: JudgeCalibrationResponse[] }>;
   listOptimizations(taskKey?: string): Promise<{ items: OptimizationResponse[] }>;
+  listTelemetry(taskKey?: string): Promise<{ items: TelemetryResponse[] }>;
 }
 
 /**
@@ -400,5 +418,7 @@ export function createApiClient(baseUrl: string = apiBaseUrl()): ApiClient {
       request<{ items: OptimizationResponse[] }>(
         `/api/optimizations${buildQuery({ task_key: taskKey })}`,
       ),
+    listTelemetry: (taskKey) =>
+      request<{ items: TelemetryResponse[] }>(`/api/telemetry${buildQuery({ task_key: taskKey })}`),
   };
 }

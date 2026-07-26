@@ -8,3 +8,4 @@ export * from "./optimize";
 export * from "./pagination";
 export * from "./schema";
 export * from "./traces";
+export * from "./telemetry";

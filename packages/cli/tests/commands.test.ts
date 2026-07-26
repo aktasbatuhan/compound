@@ -387,6 +387,20 @@ describe("gate", () => {
   });
 });
 
+describe("telemetry", () => {
+  test("reports honestly when nothing has run", async () => {
+    const { env, output } = testEnvironment();
+    expect((await runCommand(["telemetry"], env)).exitCode).toBe(0);
+    expect(output()).toContain("no telemetry yet");
+  });
+
+  test("--json returns an empty items array, not prose", async () => {
+    const { env, output } = testEnvironment();
+    expect((await runCommand(["telemetry", "--json"], env)).exitCode).toBe(0);
+    expect(JSON.parse(output())).toEqual({ items: [] });
+  });
+});
+
 describe("judge", () => {
   beforeAll(() => {
     process.env.OPENROUTER_API_KEY ??= "test-openrouter-key";

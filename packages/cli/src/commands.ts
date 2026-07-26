@@ -25,6 +25,7 @@ import { runGateCommand } from "./gate";
 import { runGradeBatchCommand } from "./grade-batch";
 import { runJudgeCommand } from "./judge";
 import { runOptimizeCommand } from "./optimize";
+import { runTelemetryCommand } from "./telemetry";
 
 export interface CommandEnvironment {
   /** Where output goes; injected so tests can capture it. */
@@ -98,6 +99,7 @@ Usage:
   compound judge calibrate <task_key> [--paid --cap USD]
   compound judge grade <task_key> <experiment_id> [--paid --cap USD]
   compound optimize <task_key> --candidate M [--reflection M] [--max-calls N] [--force]
+  compound telemetry [task_key] [--json] [--db PATH]
   compound status [--db PATH]
   compound serve [--port N] [--host HOST] [--db PATH] [--config PATH]
   compound help
@@ -315,6 +317,8 @@ export async function runCommand(
       return runGradeBatchCommand(args, env);
     case "optimize":
       return runOptimizeCommand(args, env);
+    case "telemetry":
+      return runTelemetryCommand(args, env);
     default:
       env.write(`error: unknown command '${args.command}'\n\n${HELP_TEXT}`);
       return { exitCode: 2 };
