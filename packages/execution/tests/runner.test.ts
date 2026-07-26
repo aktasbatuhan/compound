@@ -118,7 +118,11 @@ describe("runExperiment money-safety", () => {
   test("re-wraps contract tools into the OpenAI function envelope for the provider", async () => {
     // Seed one trace whose focal step exposes a tool in the CONTRACT shape
     // ({name, description, parameters}) — the shape ingest normalizes to.
-    const batch = createImportBatch(db, { importer: "test", importerVersion: "1", sourceFingerprint: "tools" });
+    const batch = createImportBatch(db, {
+      importer: "test",
+      importerVersion: "1",
+      sourceFingerprint: "tools",
+    });
     const raw = {
       schema: "compound.trace",
       schema_version: 1,
@@ -133,7 +137,11 @@ describe("runExperiment money-safety", () => {
           model: "gpt-4o",
           input: [{ role: "user", content: "dispute it" }],
           tools_available: [
-            { name: "dispute_charge", description: "d", parameters: { type: "object", properties: {} } },
+            {
+              name: "dispute_charge",
+              description: "d",
+              parameters: { type: "object", properties: {} },
+            },
           ],
           output: { role: "assistant", content: "answer" },
           usage: { input_tokens: 5, output_tokens: 2 },
@@ -164,7 +172,10 @@ describe("runExperiment money-safety", () => {
     });
 
     // The provider must receive the function envelope, not the bare contract tool.
-    const tools = provider.calls[0]?.tools as Array<{ type?: string; function?: { name?: string } }>;
+    const tools = provider.calls[0]?.tools as Array<{
+      type?: string;
+      function?: { name?: string };
+    }>;
     expect(tools?.[0]?.type).toBe("function");
     expect(tools?.[0]?.function?.name).toBe("dispute_charge");
   });

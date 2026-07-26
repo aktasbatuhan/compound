@@ -27,12 +27,20 @@ export interface FlexProviderConfig {
   fetchImpl?: typeof fetch;
 }
 
+type ToolCall = NonNullable<Message["tool_calls"]>[number];
+
 interface ResponsePayload {
   id?: string;
   status?: string;
   output_text?: string;
   output?: Array<{
+    type?: string;
     content?: Array<{ type?: string; text?: string }>;
+    // Responses-API function-call item fields.
+    id?: string;
+    call_id?: string;
+    name?: string;
+    arguments?: string;
   }>;
   usage?: {
     input_tokens?: number;
@@ -42,6 +50,86 @@ interface ResponsePayload {
   };
   model?: string;
   error?: { message?: string } | null;
+}
+
+interface ChatToolShape {
+  type?: string;
+  function?: { name?: string; description?: string; parameters?: unknown };
+  name?: string;
+  description?: string;
+  parameters?: unknown;
+}
+
+/**
+ * The runner produces tools in chat-completions shape
+ * (`{type:"function", function:{name,description,parameters}}`), but the
+ * Responses API flattens the function fields to the top level. Convert here.
+ */
+export function toResponsesTools(tools: readonly unknown[]): unknown[] {
+  return tools.map((raw) => {
+    const t = raw as ChatToolShape;
+    const fn = t.function ?? t;
+    return {
+      type: "function",
+      name: fn.name,
+      description: fn.description,
+      parameters: fn.parameters,
+    };
+  });
+}
+
+function parseArgs(raw: string | undefined): ToolCall["arguments"] {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed !== null && typeof parsed === "object" ? parsed : { _raw: raw };
+  } catch {
+    return { _raw: raw };
+  }
+}
+
+/**
+ * Extract tool calls from a Responses payload. Prefers structured
+ * `function_call` output items; falls back to parsing `<tool_call>{…}` blocks
+ * that some served models (e.g. GLM) emit as plain text when they don't produce
+ * a structured item.
+ */
+export function responsesToolCalls(payload: ResponsePayload): ToolCall[] {
+  const calls: ToolCall[] = [];
+  for (const item of payload.output ?? []) {
+    if (
+      (item.type === "function_call" || item.type === "tool_call") &&
+      typeof item.name === "string"
+    ) {
+      calls.push({
+        id: item.call_id ?? item.id ?? "",
+        name: item.name,
+        arguments: parseArgs(item.arguments),
+      });
+    }
+  }
+  if (calls.length > 0) return calls;
+
+  // Text fallback: <tool_call>{"name": "...", "arguments": {...}}</tool_call>
+  const text = responsesOutputText(payload);
+  const re = /<tool_call>\s*(\{[\s\S]*?\})\s*(?:<\/tool_call>|$)/g;
+  let match: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop
+  while ((match = re.exec(text)) !== null) {
+    try {
+      const obj = JSON.parse(match[1] as string) as { name?: string; arguments?: unknown };
+      if (typeof obj.name === "string") {
+        const args =
+          obj.arguments !== null && typeof obj.arguments === "object"
+            ? (obj.arguments as ToolCall["arguments"])
+            : {};
+        calls.push({ id: "", name: obj.name, arguments: args });
+      }
+    } catch {
+      // A malformed block yields no tool call rather than a guess.
+    }
+  }
+  return calls;
 }
 
 /** Concatenate Responses-API output text (direct field or output items). */
@@ -114,7 +202,12 @@ export class FlexProvider implements Provider {
       );
     }
 
-    const output: Message = { role: "assistant", content: responsesOutputText(payload) };
+    const toolCalls = responsesToolCalls(payload);
+    const text = responsesOutputText(payload);
+    const output: Message =
+      toolCalls.length > 0
+        ? { role: "assistant", content: text.length > 0 ? text : null, tool_calls: toolCalls }
+        : { role: "assistant", content: text };
     return {
       output,
       usage: responsesUsage(payload),
@@ -132,6 +225,9 @@ export class FlexProvider implements Provider {
       input: request.messages,
       background: true,
       service_tier: this.serviceTier,
+      ...(request.tools && request.tools.length > 0
+        ? { tools: toResponsesTools(request.tools), tool_choice: "auto" }
+        : {}),
       ...(typeof request.params?.max_tokens === "number"
         ? { max_output_tokens: request.params.max_tokens }
         : {}),
