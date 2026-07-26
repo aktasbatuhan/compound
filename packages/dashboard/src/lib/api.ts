@@ -224,6 +224,22 @@ export interface JudgeCalibrationResponse {
   measured_at: string;
 }
 
+/** A stored GEPA optimization run (a proposed prompt improvement). */
+export interface OptimizationResponse {
+  id: string;
+  task_key: string;
+  candidate_model: string;
+  seed_prompt: string;
+  optimized_prompt: string;
+  before_val_score: number;
+  after_val_score: number;
+  val_cases: number;
+  reflection_calls: number;
+  eligibility_reason: string | null;
+  cost_usd: number;
+  created_at: string;
+}
+
 // --- request filter shapes -------------------------------------------------
 
 /**
@@ -289,6 +305,7 @@ export interface ApiClient {
   listExperiments(filters?: ExperimentListFilters): Promise<Page<ExperimentResponse>>;
   listGates(taskKey?: string): Promise<{ items: GateResponse[] }>;
   listJudges(): Promise<{ items: JudgeCalibrationResponse[] }>;
+  listOptimizations(taskKey?: string): Promise<{ items: OptimizationResponse[] }>;
 }
 
 /**
@@ -376,5 +393,9 @@ export function createApiClient(baseUrl: string = apiBaseUrl()): ApiClient {
     listGates: (taskKey) =>
       request<{ items: GateResponse[] }>(`/api/gates${buildQuery({ task_key: taskKey })}`),
     listJudges: () => request<{ items: JudgeCalibrationResponse[] }>("/api/judges"),
+    listOptimizations: (taskKey) =>
+      request<{ items: OptimizationResponse[] }>(
+        `/api/optimizations${buildQuery({ task_key: taskKey })}`,
+      ),
   };
 }

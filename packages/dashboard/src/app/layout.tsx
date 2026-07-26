@@ -12,6 +12,7 @@ const NAV = [
   { href: "/matrix", label: "Model matrix" },
   { href: "/gates", label: "Gates" },
   { href: "/judges", label: "Judges" },
+  { href: "/optimizations", label: "Optimizations" },
   { href: "/traces", label: "Traces" },
   { href: "/imports", label: "Imports" },
 ];

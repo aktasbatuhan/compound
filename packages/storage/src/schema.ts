@@ -447,6 +447,40 @@ export const judgeCalibrations = sqliteTable(
 
 export type JudgeCalibrationRow = typeof judgeCalibrations.$inferSelect;
 
+// ---------------------------------------------------------------------------
+// Optimization artifacts (docs/optimization-v1.md, Step 7)
+// ---------------------------------------------------------------------------
+
+/**
+ * One GEPA optimization run: the seed prompt improved into an optimized prompt,
+ * with before/after validation scores and full provenance. The optimized prompt
+ * is a PROPOSAL — adopting it is a separate, gated step (re-gate on the sealed
+ * set + human approval). Optimization never self-certifies.
+ */
+export const optimizationRuns = sqliteTable(
+  "optimization_runs",
+  {
+    id: text("id").primaryKey(),
+    taskKey: text("task_key").notNull(),
+    candidateModel: text("candidate_model").notNull(),
+    seedPrompt: text("seed_prompt").notNull(),
+    optimizedPrompt: text("optimized_prompt").notNull(),
+    beforeValScore: real("before_val_score").notNull(),
+    afterValScore: real("after_val_score").notNull(),
+    valCases: integer("val_cases").notNull(),
+    reflectionCalls: integer("reflection_calls").notNull().default(0),
+    /** Why this run was run: the eligibility reason (or "forced"). */
+    eligibilityReason: text("eligibility_reason"),
+    costUsd: real("cost_usd").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [index("optimization_runs_task_key_idx").on(table.taskKey)],
+);
+
+export type OptimizationRunRow = typeof optimizationRuns.$inferSelect;
+
 export const importBatchesRelations = relations(importBatches, ({ many }) => ({
   traces: many(traces),
 }));

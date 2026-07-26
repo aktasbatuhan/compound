@@ -23,6 +23,8 @@
     "@compound/execution": "workspace:*",
     "@compound/assertions": "workspace:*",
     "@compound/gate": "workspace:*",
-    "@compound/judge": "workspace:*"
+    "@compound/judge": "workspace:*",
+    "@compound/contract": "workspace:*",
+    "@compound/optimize": "workspace:*"
   }
 }

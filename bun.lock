@@ -41,10 +41,12 @@
         "@compound/api": "workspace:*",
         "@compound/assertions": "workspace:*",
         "@compound/config": "workspace:*",
+        "@compound/contract": "workspace:*",
         "@compound/curation": "workspace:*",
         "@compound/execution": "workspace:*",
         "@compound/gate": "workspace:*",
         "@compound/judge": "workspace:*",
+        "@compound/optimize": "workspace:*",
         "@compound/pipeline": "workspace:*",
         "@compound/storage": "workspace:*",
       },
@@ -133,6 +135,13 @@
         "@compound/storage": "workspace:*",
       },
     },
+    "packages/optimize": {
+      "name": "@compound/optimize",
+      "version": "0.1.0",
+      "dependencies": {
+        "@compound/storage": "workspace:*",
+      },
+    },
     "packages/pipeline": {
       "name": "@compound/pipeline",
       "version": "0.1.0",
@@ -205,6 +214,8 @@
     "@compound/ingest": ["@compound/ingest@workspace:packages/ingest"],
 
     "@compound/judge": ["@compound/judge@workspace:packages/judge"],
+
+    "@compound/optimize": ["@compound/optimize@workspace:packages/optimize"],
 
     "@compound/pipeline": ["@compound/pipeline@workspace:packages/pipeline"],
 

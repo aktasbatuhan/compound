@@ -44,7 +44,9 @@ import {
   listGateResults,
   listImportBatches,
   listLatestCalibrations,
+  listOptimizationRuns,
   listTraces,
+  type OptimizationRunRow,
   reviewCase,
   type StoredTrace,
   UnknownCaseError,
@@ -170,6 +172,23 @@ function serializeCalibration(row: JudgeCalibrationRow) {
     threshold: row.threshold,
     calibrated: row.calibrated,
     measured_at: row.measuredAt.toISOString(),
+  };
+}
+
+function serializeOptimization(row: OptimizationRunRow) {
+  return {
+    id: row.id,
+    task_key: row.taskKey,
+    candidate_model: row.candidateModel,
+    seed_prompt: row.seedPrompt,
+    optimized_prompt: row.optimizedPrompt,
+    before_val_score: row.beforeValScore,
+    after_val_score: row.afterValScore,
+    val_cases: row.valCases,
+    reflection_calls: row.reflectionCalls,
+    eligibility_reason: row.eligibilityReason,
+    cost_usd: row.costUsd,
+    created_at: row.createdAt.toISOString(),
   };
 }
 
@@ -490,6 +509,15 @@ export function createApp({ db, config }: AppDependencies): Hono {
   app.get("/api/judges", (c) => {
     const rows = listLatestCalibrations(db);
     return c.json({ items: rows.map(serializeCalibration) });
+  });
+
+  // --- optimizations -------------------------------------------------------
+
+  // Read-only: GEPA runs are launched from the CLI (`compound optimize`); this
+  // surfaces the stored proposals with their before/after validation scores.
+  app.get("/api/optimizations", (c) => {
+    const taskKey = new URL(c.req.url).searchParams.get("task_key") ?? undefined;
+    return c.json({ items: listOptimizationRuns(db, taskKey).map(serializeOptimization) });
   });
 
   return app;

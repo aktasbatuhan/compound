@@ -46,12 +46,22 @@ them requires re-calibrating. `judge grade` writes verdicts into the same per-ca
 reads, so a calibrated judge makes fuzzy tasks gateable. It reuses the ledger and cache, so it is
 money-safe and a re-grade is $0. See `docs/judges-v1.md`.
 
+`optimize` closes a gap without switching models: when a candidate is behind but within a
+closable band (eligibility-checked against the gate result), `compound optimize <task>
+--candidate M` drives the **real GEPA library** (Python) to improve the candidate's system
+prompt on the task's train/val cases — **never the sealed set**. Grading never forks across
+languages: the Python adapter calls back into the one TS grader (`compound grade-batch`), so
+`@compound/assertions` stays the single source of truth. The result is stored as an artifact with
+before/after validation scores; it is a **proposal** — adopting it means re-gating it on the
+sealed set plus a human approval. See `docs/optimization-v1.md`.
+
 Packages: `contract` (the portable trace contract), `config` (one `compound.yaml` schema
 shared with the Python engine), `storage` (SQLite/Drizzle), `ingest` (Langfuse + plain-JSON
 normalizers), `redaction` (pre-persistence), `pipeline` (ingest composition), `curation` (cases,
 provenance, sealed partitions), `assertions` (deterministic grading, incl. a `text_similarity`
 tier), `execution` (candidate runner, budget ledger, cache), `gate` (paired non-inferiority
-decision), `judge` (calibration-gated LLM judge), `api` (Hono), `cli`.
+decision), `judge` (calibration-gated LLM judge), `optimize` (GEPA eligibility + orchestration),
+`api` (Hono), `cli`. The Python engine (`src/compound/`) holds GEPA and the benchmark stack.
 
 Design docs: `docs/product-plan-20260722.md`, `docs/trace-contract-v1.md`,
 `docs/ingest-pipeline-v1.md`, `docs/curation-v1.md`, `docs/api-design-v1.md`,

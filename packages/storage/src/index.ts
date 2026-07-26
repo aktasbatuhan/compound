@@ -4,6 +4,7 @@ export * from "./execution";
 export * from "./gate";
 export * from "./import-batches";
 export * from "./judge";
+export * from "./optimize";
 export * from "./pagination";
 export * from "./schema";
 export * from "./traces";

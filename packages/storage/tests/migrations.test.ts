@@ -34,6 +34,7 @@ describe("migrations", () => {
     expect(names).toContain("gate_specs");
     expect(names).toContain("gate_results");
     expect(names).toContain("judge_calibrations");
+    expect(names).toContain("optimization_runs");
     handle.close();
   });
 
@@ -56,6 +57,7 @@ describe("migrations", () => {
       "gate_specs_task_key_idx",
       "judge_calibrations_pin_idx",
       "judge_calibrations_task_key_idx",
+      "optimization_runs_task_key_idx",
       "spend_records_experiment_id_idx",
       "spend_records_fingerprint_unique",
       "traces_content_hash_idx",

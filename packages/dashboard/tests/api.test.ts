@@ -79,6 +79,13 @@ describe("createApiClient — URLs and methods", () => {
     expect(calls[0]?.url).toBe(`${BASE}/api/judges`);
   });
 
+  test("listOptimizations hits /api/optimizations", async () => {
+    const calls = mockFetch({ items: [] });
+    const api = createApiClient(BASE);
+    await api.listOptimizations();
+    expect(calls[0]?.url).toBe(`${BASE}/api/optimizations`);
+  });
+
   test("omits undefined filter params", async () => {
     const calls = mockFetch({ items: [], total: 0, limit: 100, offset: 0 });
     const api = createApiClient(BASE);
