@@ -63,6 +63,12 @@ export interface RunExperimentOptions {
    */
   transportOverride?: string;
   /**
+   * The route being run (issue #8). `flex` reserves extra cap headroom per call
+   * (FLEX_REQUEST_RESERVE_USD) because an async reasoning request can out-spend
+   * its token estimate. Defaults to chat_completions.
+   */
+  transport?: "chat_completions" | "flex";
+  /**
    * Money controls. Paid calls happen only when `paidRunsEnabled` is true,
    * `globalHardLimitUsd > 0`, and `experimentCapUsd > 0`. Otherwise the run is
    * a dry run: cache hits are served, but no provider call is ever made.
@@ -99,6 +105,16 @@ export class DecisionPartitionRefusedError extends Error {
     this.name = "DecisionPartitionRefusedError";
   }
 }
+
+/**
+ * Extra cap headroom reserved per FLEX request, on top of the token-based
+ * estimate (issue #8). A flex/background reasoning model can emit reasoning
+ * tokens BEYOND `max_tokens` — all billed at the output rate — so the naive
+ * estimate can under-count. This cushion is applied to the pre-call cap CHECK
+ * only; the reported estimate and the recorded spend stay the real numbers, so
+ * budgeting is conservative without misreporting cost.
+ */
+export const FLEX_REQUEST_RESERVE_USD = 0.02;
 
 /** Paid calls happen only when every money precondition is met. */
 export function isPaidEnabled(options: RunExperimentOptions): boolean {
@@ -237,10 +253,14 @@ export async function runExperiment(
         continue;
       } else {
         const estimate = estimateCost(request, options.price);
+        // Flex reserves extra headroom for reasoning-token overrun; the check is
+        // conservative while the reported estimate stays the real projection.
+        const reservation =
+          options.transport === "flex" ? estimate + FLEX_REQUEST_RESERVE_USD : estimate;
         // Enforce BOTH caps before spending a cent.
         requireBudgetHeadroom(db, {
           fingerprint,
-          estimatedCost: estimate,
+          estimatedCost: reservation,
           experimentId: experiment.id,
           experimentCapUsd: options.experimentCapUsd as number,
           globalHardLimitUsd: options.globalHardLimitUsd as number,

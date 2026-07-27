@@ -101,7 +101,7 @@ export const KNOWN_PROVIDERS: readonly KnownProvider[] = [
     apiKeyEnv: "DOUBLEWORD_API_KEY",
     type: "flex",
     tools: "yes",
-    note: "Async Responses API (service_tier=flex): submit-then-poll, flex pricing.",
+    note: "Async Responses API (service_tier=flex): submit-then-poll, flex pricing. Each flex request reserves ~$0.02 extra cap headroom for reasoning-token overrun; also serves plain chat (compound experiment --transport chat_completions).",
   },
   {
     name: "self_hosted",

@@ -451,6 +451,49 @@ describe("runExperiment wireModel (per-provider wire ids, #19)", () => {
   });
 });
 
+describe("runExperiment flex cap reservation (#8)", () => {
+  test("a flex run reserves extra headroom that the same chat run does not", async () => {
+    seedCases("support", 10);
+    // One call's token estimate is ~$0.008 (4096 output tokens @ $2/M). A $0.01
+    // cap admits it as chat, but the +$0.02 flex reserve pushes it over.
+    const chat = new MockProvider('{"ok":true}');
+    await runExperiment(db, {
+      taskKey: "support",
+      candidateModel: "m-chat",
+      provider: chat,
+      providerName: "mock",
+      price: PRICE,
+      assertions: ASSERTIONS,
+      partition: "optimization_train",
+      paidRunsEnabled: true,
+      experimentCapUsd: 0.01,
+      globalHardLimitUsd: 25,
+      maxCases: 1,
+    });
+    expect(chat.calls).toHaveLength(1);
+
+    // Same estimate, but transport: flex adds the reserve → over the same cap.
+    const flex = new MockProvider('{"ok":true}');
+    await expect(
+      runExperiment(db, {
+        taskKey: "support",
+        candidateModel: "m-flex", // distinct id so it can't reuse the chat cache
+        provider: flex,
+        providerName: "mock",
+        price: PRICE,
+        assertions: ASSERTIONS,
+        partition: "optimization_train",
+        transport: "flex",
+        paidRunsEnabled: true,
+        experimentCapUsd: 0.01,
+        globalHardLimitUsd: 25,
+        maxCases: 1,
+      }),
+    ).rejects.toBeInstanceOf(BudgetExceededError);
+    expect(flex.calls).toHaveLength(0);
+  });
+});
+
 describe("runExperiment systemPromptOverride (adoption re-gates)", () => {
   /** Seed traces whose input already has a system message, then curate. */
   function seedCasesWithSystem(taskKey: string, n: number): void {

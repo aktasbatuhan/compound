@@ -110,6 +110,7 @@ export async function runExperimentCommand(
       provider: resolved.provider,
       providerName: resolved.providerName,
       price: resolved.price,
+      transport: resolved.transport,
       ...(resolved.transportOverride !== undefined
         ? { transportOverride: resolved.transportOverride }
         : {}),

@@ -212,6 +212,7 @@ export async function runGateCommand(
       provider: resolved.provider,
       providerName: resolved.providerName,
       price: resolved.price,
+      transport: resolved.transport,
       assertions,
       partition: "decision_test",
       allowDecisionTest: true,
