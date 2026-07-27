@@ -26,6 +26,7 @@ import { runGradeBatchCommand } from "./grade-batch";
 import { runInitCommand } from "./init";
 import { runJudgeCommand } from "./judge";
 import { runOptimizeCommand } from "./optimize";
+import { runProvidersCommand } from "./providers";
 import { runSuggestAssertionsCommand } from "./suggest";
 import { runTelemetryCommand } from "./telemetry";
 import { runValidateCommand } from "./validate";
@@ -97,6 +98,7 @@ export const HELP_TEXT = `compound — turn production traces into gated optimiz
 Usage:
   compound init [--config PATH] [--db PATH] [--force]
   compound validate [--config PATH]
+  compound providers [name]                        (known providers; a name prints a paste-ready block)
   compound import <file> [--importer langfuse] [--db PATH] [--config PATH] [--project-id ID]
   compound curate <task_key> [--split train:val:cal:dec] [--db PATH]
   compound suggest-assertions <task_key> [--db PATH] [--config PATH]
@@ -312,6 +314,8 @@ export async function runCommand(
       return runInitCommand(args, env);
     case "validate":
       return runValidateCommand(args, env);
+    case "providers":
+      return runProvidersCommand(args, env);
     case "import":
       return runImportCommand(args, env);
     case "curate":

@@ -11,7 +11,7 @@
  * The advisory checks live here, not in the shared validator, so the Python
  * engine's contract for compound.yaml is unchanged.
  */
-import { type CompoundConfig, ConfigError, loadConfig } from "@compound/config";
+import { type CompoundConfig, ConfigError, knownProvider, loadConfig } from "@compound/config";
 import type { CommandEnvironment, CommandResult, ParsedArgs } from "./commands";
 import { DEFAULT_CONFIG_PATH } from "./commands";
 
@@ -77,9 +77,12 @@ function advisoryWarnings(config: CompoundConfig): string[] {
   for (const model of allModels(config)) {
     if (model.id === undefined) continue;
     if (model.provider !== undefined && !providerNames.has(model.provider)) {
+      // If the undeclared name is a KNOWN provider, point at the paste block.
+      const known = knownProvider(model.provider)
+        ? ` — run: compound providers ${model.provider}`
+        : ` (declared: ${[...providerNames].join(", ") || "none"})`;
       warnings.push(
-        `model '${model.id}' names provider '${model.provider}', which is not under providers: ` +
-          `(declared: ${[...providerNames].join(", ") || "none"})`,
+        `model '${model.id}' names provider '${model.provider}', which is not under providers:${known}`,
       );
     }
     if (!hasPrice(config, model.id, model.provider)) {

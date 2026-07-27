@@ -174,6 +174,69 @@ describe("validate", () => {
       rmSync(path, { force: true });
     }
   });
+
+  test("points at `compound providers <name>` when the undeclared provider is a known one", async () => {
+    const { env, output } = testEnvironment();
+    const path = join(tmpdir(), `compound-known-${crypto.randomUUID()}.yaml`);
+    writeFileSync(
+      path,
+      [
+        "version: 1",
+        "artifacts_dir: a",
+        "manifests_dir: m",
+        "benchmarks: {}",
+        "providers:",
+        "  openrouter:",
+        "    base_url: https://openrouter.ai/api/v1",
+        "    api_key_env: OPENROUTER_API_KEY",
+        "models:",
+        "  candidates:",
+        "    - id: llama-3.3-70b",
+        "      provider: groq",
+        "      role: candidate",
+        "pricing_usd_per_million_tokens:",
+        "  llama-3.3-70b: { input: 0.59, output: 0.79 }",
+        "",
+      ].join("\n"),
+    );
+    try {
+      const result = await runCommand(["validate", "--config", path], env);
+      expect(result.exitCode).toBe(0);
+      expect(output()).toContain("run: compound providers groq");
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+});
+
+describe("providers", () => {
+  test("lists the known providers with base_url, env, and tool support", async () => {
+    const { env, output } = testEnvironment();
+    const result = await runCommand(["providers"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("groq");
+    expect(output()).toContain("https://api.groq.com/openai/v1");
+    expect(output()).toContain("GROQ_API_KEY");
+    // Anthropic/Google are called out as not-yet-supported, not silently absent.
+    expect(output()).toContain("anthropic and google");
+  });
+
+  test("a name emits a paste-ready providers block", async () => {
+    const { env, output } = testEnvironment();
+    const result = await runCommand(["providers", "fireworks"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("providers:");
+    expect(output()).toContain("  fireworks:");
+    expect(output()).toContain("api_key_env: FIREWORKS_API_KEY");
+  });
+
+  test("an unknown provider name is a helpful error", async () => {
+    const { env, output } = testEnvironment();
+    const result = await runCommand(["providers", "nope"], env);
+    expect(result.exitCode).toBe(1);
+    expect(output()).toContain("no known provider 'nope'");
+    expect(output()).toContain("self_hosted");
+  });
 });
 
 describe("import", () => {
