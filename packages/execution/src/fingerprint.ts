@@ -28,6 +28,13 @@ export interface FingerprintInput {
   request: CompletionRequest;
   /** Provider revision/version, so a provider change invalidates the cache. */
   providerRevision?: string;
+  /**
+   * A non-native transport (issue #8), present only when the run was forced off
+   * the provider's default route (e.g. a flex host over plain chat). Undefined
+   * for a native-transport run, which keeps the pre-existing identity so warm
+   * caches still hit.
+   */
+  transportOverride?: string;
 }
 
 /**
@@ -44,6 +51,9 @@ export function completionFingerprint(input: FingerprintInput, trial = 0): strin
     messages: input.request.messages,
     tools: input.request.tools ?? null,
     params: input.request.params ?? null,
+    // Present only for a forced non-native transport, so a native run's identity
+    // (and its warm cache) is unchanged; a chat-vs-flex override never collides.
+    ...(input.transportOverride !== undefined ? { transport: input.transportOverride } : {}),
     // Trial 0 keeps the base identity so it reuses any legacy cache entry.
     ...(trial > 0 ? { trial } : {}),
   };

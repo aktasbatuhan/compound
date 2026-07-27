@@ -28,6 +28,16 @@ interface ResolvedModel {
    * telemetry identity — only this wire id changes per provider.
    */
   wireModel: string;
+  /** The resolved transport actually used (for display). */
+  transport: Transport;
+  /**
+   * Set only when the transport was OVERRIDDEN away from the provider's native
+   * one (issue #8) — e.g. running a flex host over plain chat. It joins the
+   * completion fingerprint so a chat run and a flex run on the same host never
+   * collide in the cache; the native transport contributes nothing, so every
+   * existing (native) cache entry keeps hitting.
+   */
+  transportOverride?: string;
 }
 
 export interface ResolveModelOptions {
@@ -37,11 +47,32 @@ export interface ResolveModelOptions {
    * provider must exist in `providers`.
    */
   provider?: string;
+  /**
+   * Force the transport for this run (issue #8). A flex host also speaks plain
+   * chat, so `--transport chat_completions` runs a Doubleword model over the
+   * synchronous route for a queue-free comparison. A chat-only host cannot be
+   * pushed to flex — that is refused. Omitted → the provider's native transport.
+   */
+  transport?: Transport;
   env?: NodeJS.ProcessEnv;
 }
 
 /** chat_completions | flex, derived from the provider's `type` or the model's `backend`. */
 type Transport = "chat_completions" | "flex";
+
+/**
+ * Which transports a provider can actually speak. A flex host (Doubleword's
+ * Responses API) ALSO serves plain chat completions, so it supports both; an
+ * openai_compatible host serves only chat. This is what makes chat-vs-flex
+ * selectable on the same Doubleword registry entry (issue #8).
+ */
+function supportedTransports(
+  providerType: string | undefined,
+  nativeTransport: Transport,
+): Set<Transport> {
+  if (providerType === "flex") return new Set<Transport>(["flex", "chat_completions"]);
+  return new Set<Transport>([nativeTransport]);
+}
 
 function transportFor(
   providerType: string | undefined,
@@ -98,17 +129,34 @@ export function resolveModel(
     );
   }
 
-  const transport = transportFor(
-    (providerConfig as { type?: string }).type,
-    (entry as { backend?: string }).backend,
-  );
+  const providerType = (providerConfig as { type?: string }).type;
+  const nativeTransport = transportFor(providerType, (entry as { backend?: string }).backend);
+  // A per-run transport override (issue #8): allowed only to a transport the
+  // endpoint can actually speak, so a chat-only host is never pushed to flex.
+  let transport = nativeTransport;
+  if (options.transport !== undefined && options.transport !== nativeTransport) {
+    if (!supportedTransports(providerType, nativeTransport).has(options.transport)) {
+      throw new ExecutionConfigError(
+        `provider '${providerName}' (type ${providerType ?? "unset"}) cannot serve transport ` +
+          `'${options.transport}'; it speaks ${nativeTransport}`,
+      );
+    }
+    transport = options.transport;
+  }
+  // Only a non-native transport joins the fingerprint; the native one keeps the
+  // existing identity so warm caches still hit (see ResolvedModel.transportOverride).
+  const transportOverride = transport === nativeTransport ? undefined : transport;
 
   // Price: the provider's own table first (identical weights cost differently
   // per host), then the matching global table. Flex and chat prices are kept
-  // separate because the async route is billed differently.
-  const providerPricing = (
-    providerConfig as { pricing_usd_per_million_tokens?: Record<string, TokenPrice> }
-  ).pricing_usd_per_million_tokens;
+  // separate because the async route is billed differently. A provider's own
+  // table describes its NATIVE transport, so when the transport is overridden we
+  // ignore it and bill on the global transport-specific table instead (#8).
+  const providerPricing =
+    transportOverride === undefined
+      ? (providerConfig as { pricing_usd_per_million_tokens?: Record<string, TokenPrice> })
+          .pricing_usd_per_million_tokens
+      : undefined;
   const globalTable =
     transport === "flex"
       ? config.flex_pricing_usd_per_million_tokens
@@ -141,6 +189,8 @@ export function resolveModel(
     providerName,
     price: { input: priceEntry.input, output: priceEntry.output },
     wireModel,
+    transport,
+    ...(transportOverride !== undefined ? { transportOverride } : {}),
   };
 }
 

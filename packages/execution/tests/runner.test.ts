@@ -400,6 +400,39 @@ describe("runExperiment wireModel (per-provider wire ids, #19)", () => {
     expect(second.calls.length).toBe(first.calls.length);
   });
 
+  test("a transport override does not reuse a native run's cache (#8)", async () => {
+    seedCases("support", 6);
+    // Native run (no override) warms the cache.
+    const native = new MockProvider('{"ok":true}');
+    await runExperiment(db, {
+      taskKey: "support",
+      candidateModel: "glm",
+      provider: native,
+      providerName: "doubleword",
+      price: PRICE,
+      assertions: ASSERTIONS,
+      partition: "optimization_train",
+      ...paid,
+    });
+    expect(native.calls.length).toBeGreaterThan(0);
+
+    // Same model/provider/messages but a forced non-native transport → distinct
+    // fingerprint → real calls, not cache hits.
+    const overridden = new MockProvider('{"ok":true}');
+    await runExperiment(db, {
+      taskKey: "support",
+      candidateModel: "glm",
+      provider: overridden,
+      providerName: "doubleword",
+      price: PRICE,
+      assertions: ASSERTIONS,
+      partition: "optimization_train",
+      transportOverride: "chat_completions",
+      ...paid,
+    });
+    expect(overridden.calls.length).toBe(native.calls.length);
+  });
+
   test("wireModel defaults to the logical id (unchanged behavior)", async () => {
     seedCases("support", 3);
     const provider = new MockProvider('{"ok":true}');

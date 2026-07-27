@@ -57,6 +57,12 @@ export interface RunExperimentOptions {
   systemPromptOverride?: string;
   providerRevision?: string;
   /**
+   * A forced non-native transport (issue #8), joined to the fingerprint so a
+   * chat run and a flex run on the same host never share a cache entry. Undefined
+   * for a native-transport run (the common case), which keeps warm caches valid.
+   */
+  transportOverride?: string;
+  /**
    * Money controls. Paid calls happen only when `paidRunsEnabled` is true,
    * `globalHardLimitUsd > 0`, and `experimentCapUsd > 0`. Otherwise the run is
    * a dry run: cache hits are served, but no provider call is ever made.
@@ -202,6 +208,7 @@ export async function runExperiment(
         provider: options.providerName,
         request,
         providerRevision: options.providerRevision,
+        transportOverride: options.transportOverride,
       });
 
       let response: CompletionResponse;

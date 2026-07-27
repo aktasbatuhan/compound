@@ -39,12 +39,22 @@ export async function runExperimentCommand(
   const modelId = args.positional[1];
   if (taskKey === undefined || modelId === undefined) {
     env.write(
-      "error: usage: compound experiment <task_key> <model> [--provider P] [--partition P] [--paid --cap N]",
+      "error: usage: compound experiment <task_key> <model> [--provider P] " +
+        "[--transport chat_completions|flex] [--partition P] [--paid --cap N]",
     );
     return { exitCode: 2 };
   }
 
   const providerOverride = stringFlag(args.flags, "provider");
+  const transportOverride = stringFlag(args.flags, "transport");
+  if (
+    transportOverride !== undefined &&
+    transportOverride !== "chat_completions" &&
+    transportOverride !== "flex"
+  ) {
+    env.write("error: --transport must be one of: chat_completions, flex");
+    return { exitCode: 2 };
+  }
 
   const partition = (stringFlag(args.flags, "partition") ??
     "optimizer_validation") as CasePartition;
@@ -57,7 +67,12 @@ export async function runExperimentCommand(
 
   let resolved: ReturnType<typeof resolveModel>;
   try {
-    resolved = resolveModel(config, modelId, { provider: providerOverride });
+    resolved = resolveModel(config, modelId, {
+      provider: providerOverride,
+      ...(transportOverride !== undefined
+        ? { transport: transportOverride as "chat_completions" | "flex" }
+        : {}),
+    });
   } catch (error) {
     if (error instanceof ExecutionConfigError) {
       env.write(`error: ${error.message}`);
@@ -95,6 +110,9 @@ export async function runExperimentCommand(
       provider: resolved.provider,
       providerName: resolved.providerName,
       price: resolved.price,
+      ...(resolved.transportOverride !== undefined
+        ? { transportOverride: resolved.transportOverride }
+        : {}),
       // The config schema is loose on assertion params (the engine owns the
       // exact shapes); the engine validates per-type at evaluation.
       assertions: (config.assertions?.[taskKey] ?? []) as Assertion[],
@@ -111,6 +129,7 @@ export async function runExperimentCommand(
     const paid = wantsPaid;
     env.write(`experiment: ${modelId} on task ${taskKey} (${partition})`);
     env.write(`  provider:     ${resolved.providerName}`);
+    env.write(`  transport:    ${resolved.transport}`);
     env.write(`  mode:         ${paid ? "PAID" : "dry run (no provider calls)"}`);
     env.write(`  cases:        ${report.cases_total ?? 0}`);
     env.write(`  graded:       ${report.cases_graded ?? 0}`);

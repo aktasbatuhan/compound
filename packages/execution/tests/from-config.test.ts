@@ -125,6 +125,41 @@ describe("resolveModel — the provider axis", () => {
   });
 });
 
+describe("resolveModel — per-experiment transport selection (#8)", () => {
+  test("a flex host runs its native flex transport by default, no override tag", () => {
+    const r = resolveModel(CONFIG, "glm-5.2", { env: ENV });
+    expect(r.transport).toBe("flex");
+    expect(r.provider).toBeInstanceOf(FlexProvider);
+    expect(r.transportOverride).toBeUndefined();
+  });
+
+  test("a flex host can be forced onto plain chat, priced from the chat table", () => {
+    const r = resolveModel(CONFIG, "glm-5.2", { transport: "chat_completions", env: ENV });
+    expect(r.transport).toBe("chat_completions");
+    expect(r.provider).toBeInstanceOf(HttpProvider);
+    // chat table price, not flex.
+    expect(r.price).toEqual({ input: 1.4, output: 4.4 });
+    // Non-native transport → an override tag joins the fingerprint.
+    expect(r.transportOverride).toBe("chat_completions");
+  });
+
+  test("a chat-only host cannot be pushed to flex — refused, not silently wrong", () => {
+    expect(() =>
+      resolveModel(CONFIG, "glm-5.2", { provider: "together", transport: "flex", env: ENV }),
+    ).toThrow(/cannot serve transport 'flex'/);
+  });
+
+  test("asking a chat host for chat is a no-op override (no tag)", () => {
+    const r = resolveModel(CONFIG, "glm-5.2", {
+      provider: "openrouter",
+      transport: "chat_completions",
+      env: ENV,
+    });
+    expect(r.transport).toBe("chat_completions");
+    expect(r.transportOverride).toBeUndefined();
+  });
+});
+
 describe("resolveModel — per-provider wire ids (#19)", () => {
   test("sends the declared alias to the provider while keeping the logical id as price key", () => {
     // The entry's default provider (together) has a wire-id alias.

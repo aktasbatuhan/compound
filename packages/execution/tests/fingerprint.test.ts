@@ -20,6 +20,16 @@ describe("completionFingerprint", () => {
     expect(completionFingerprint(base)).toBe(completionFingerprint(base));
   });
 
+  test("a transport override changes the hash, but its absence keeps the legacy identity (#8)", () => {
+    const original = completionFingerprint(base);
+    // Backward compat: no override tag → byte-identical to a pre-#8 fingerprint.
+    expect(completionFingerprint({ ...base, transportOverride: undefined })).toBe(original);
+    // A forced non-native transport → distinct, so chat and flex never collide.
+    const overridden = completionFingerprint({ ...base, transportOverride: "chat_completions" });
+    expect(overridden).not.toBe(original);
+    expect(completionFingerprint({ ...base, transportOverride: "flex" })).not.toBe(overridden);
+  });
+
   test("changes with model, params, provider, or revision", () => {
     const original = completionFingerprint(base);
     expect(completionFingerprint({ ...base, provider: "doubleword" })).not.toBe(original);
