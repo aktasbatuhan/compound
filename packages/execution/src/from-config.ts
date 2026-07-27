@@ -21,6 +21,13 @@ interface ResolvedModel {
   provider: Provider;
   providerName: string;
   price: TokenPrice;
+  /**
+   * The id to SEND to this provider. Equals the logical id unless the model
+   * entry declares a `provider_ids` alias for the chosen provider (issue #19).
+   * The logical id (the caller's `modelId`) remains the storage/fingerprint/
+   * telemetry identity — only this wire id changes per provider.
+   */
+  wireModel: string;
 }
 
 export interface ResolveModelOptions {
@@ -124,10 +131,16 @@ export function resolveModel(
       ? new FlexProvider({ name: providerName, baseUrl: providerConfig.base_url, apiKey })
       : new HttpProvider({ name: providerName, baseUrl: providerConfig.base_url, apiKey });
 
+  // The wire id sent to this provider: a declared per-provider alias, else the
+  // logical id. Price stays keyed by the logical id (what the user declares).
+  const providerIds = (entry as { provider_ids?: Record<string, string> }).provider_ids;
+  const wireModel = providerIds?.[providerName] ?? modelId;
+
   return {
     provider,
     providerName,
     price: { input: priceEntry.input, output: priceEntry.output },
+    wireModel,
   };
 }
 

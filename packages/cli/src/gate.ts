@@ -208,6 +208,7 @@ export async function runGateCommand(
     runExperiment(db, {
       taskKey,
       candidateModel: model,
+      wireModel: resolved.wireModel,
       provider: resolved.provider,
       providerName: resolved.providerName,
       price: resolved.price,

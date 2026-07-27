@@ -123,6 +123,16 @@
                   "chat_completions",
                   "flex"
                 ]
+              },
+              "provider_ids": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             },
             "required": [
@@ -155,6 +165,16 @@
                   "chat_completions",
                   "flex"
                 ]
+              },
+              "provider_ids": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             },
             "required": [

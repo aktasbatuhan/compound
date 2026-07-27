@@ -67,6 +67,15 @@ export const ModelEntrySchema = z.looseObject({
    * candidates; `chat_completions` is the default OpenAI-compatible route.
    */
   backend: z.enum(["chat_completions", "flex"]).optional(),
+  /**
+   * Per-provider wire ids for the SAME logical model, when providers disagree on
+   * the id for identical weights (e.g. OpenAI `gpt-4o-mini` vs OpenRouter
+   * `openai/gpt-4o-mini`). Keyed by provider name → the id sent to that provider.
+   * `id` stays the LOGICAL identity for storage, the completion fingerprint, and
+   * telemetry grouping, so the same model on two providers still compares as one
+   * model across two rows (issue #19). Providers not listed here use `id` as-is.
+   */
+  provider_ids: z.record(z.string(), nonEmptyString).optional(),
 });
 
 export const ModelsSchema = z.looseObject({

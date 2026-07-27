@@ -54,6 +54,12 @@ models:
     - id: gpt-4o-mini
       provider: openai
       role: candidate
+      # Same weights, different id per host (issue #19): the logical id
+      # `gpt-4o-mini` stays the storage/telemetry identity, while each provider
+      # receives its own wire id. Lets one entry gate OpenAI-direct vs OpenRouter.
+      provider_ids:
+        openai: gpt-4o-mini
+        openrouter: openai/gpt-4o-mini
 
 pricing_usd_per_million_tokens:
   openai/gpt-5.6-sol:

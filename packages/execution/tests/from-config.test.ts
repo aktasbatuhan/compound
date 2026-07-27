@@ -36,9 +36,19 @@ const CONFIG = {
     candidates: [
       // Default provider is doubleword (flex); backend records that default.
       { id: "glm-5.2", provider: "doubleword", role: "candidate", backend: "flex" },
+      // Same logical model, different wire id per provider (issue #19).
+      {
+        id: "gpt-4o-mini",
+        provider: "together",
+        role: "candidate",
+        provider_ids: { together: "openai/gpt-4o-mini" },
+      },
     ],
   },
-  pricing_usd_per_million_tokens: { "glm-5.2": { input: 1.4, output: 4.4 } },
+  pricing_usd_per_million_tokens: {
+    "glm-5.2": { input: 1.4, output: 4.4 },
+    "gpt-4o-mini": { input: 0.15, output: 0.6 },
+  },
   flex_pricing_usd_per_million_tokens: { "glm-5.2": { input: 0.7, output: 2.25 } },
 } as unknown as CompoundConfig;
 
@@ -55,6 +65,8 @@ describe("resolveModel — the provider axis", () => {
     expect(r.providerName).toBe("doubleword");
     expect(r.provider).toBeInstanceOf(FlexProvider);
     expect(r.price).toEqual({ input: 0.7, output: 2.25 });
+    // No provider_ids alias → the wire id is just the logical id.
+    expect(r.wireModel).toBe("glm-5.2");
   });
 
   test("--provider override runs the SAME model on another provider", () => {
@@ -110,5 +122,23 @@ describe("resolveModel — the provider axis", () => {
     expect(() => resolveModel(noPrice, "glm-5.2", { provider: "together", env: ENV })).toThrow(
       /refusing to run without a price/,
     );
+  });
+});
+
+describe("resolveModel — per-provider wire ids (#19)", () => {
+  test("sends the declared alias to the provider while keeping the logical id as price key", () => {
+    // The entry's default provider (together) has a wire-id alias.
+    const r = resolveModel(CONFIG, "gpt-4o-mini", { env: ENV });
+    expect(r.providerName).toBe("together");
+    expect(r.wireModel).toBe("openai/gpt-4o-mini");
+    // Price is looked up by the LOGICAL id, so it resolves regardless of alias.
+    expect(r.price).toEqual({ input: 0.15, output: 0.6 });
+  });
+
+  test("a provider with no alias falls back to the logical id as the wire id", () => {
+    // openrouter is not listed in provider_ids → wire id == logical id.
+    const r = resolveModel(CONFIG, "gpt-4o-mini", { provider: "openrouter", env: ENV });
+    expect(r.providerName).toBe("openrouter");
+    expect(r.wireModel).toBe("gpt-4o-mini");
   });
 });

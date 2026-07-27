@@ -9,6 +9,7 @@ import {
   createImportBatch,
   insertTraces,
   migrate,
+  telemetryRollup,
   totalSpendUsd,
   traceRecordFromValidation,
 } from "@compound/storage";
@@ -333,6 +334,87 @@ describe("runExperiment grading", () => {
       globalHardLimitUsd: 25,
     });
     expect(report.pass_rate).toBe(1);
+  });
+});
+
+describe("runExperiment wireModel (per-provider wire ids, #19)", () => {
+  const paid = { paidRunsEnabled: true, experimentCapUsd: 5, globalHardLimitUsd: 25 } as const;
+
+  test("sends the wire id to the provider but records the LOGICAL id for grouping", async () => {
+    seedCases("support", 3);
+    const provider = new MockProvider('{"ok":true}');
+    await runExperiment(db, {
+      taskKey: "support",
+      candidateModel: "gpt-4o-mini", // logical identity
+      wireModel: "openai/gpt-4o-mini", // what the provider is actually sent
+      provider,
+      providerName: "openrouter",
+      price: PRICE,
+      assertions: ASSERTIONS,
+      partition: "optimization_train",
+      ...paid,
+    });
+
+    // The provider received the wire id.
+    expect(provider.calls.length).toBeGreaterThan(0);
+    expect(provider.calls.every((c) => c.model === "openai/gpt-4o-mini")).toBe(true);
+
+    // Telemetry groups by the LOGICAL id, so the same model on another provider
+    // would land in a sibling row under the same model name — not a new model.
+    const rollup = telemetryRollup(db, "support");
+    expect(rollup.map((g) => g.model)).toContain("gpt-4o-mini");
+    expect(rollup.some((g) => g.model === "openai/gpt-4o-mini")).toBe(false);
+  });
+
+  test("the wire id feeds the fingerprint: a different wire id does not reuse the cache", async () => {
+    seedCases("support", 4);
+    // Same provider, same logical model, DIFFERENT wire id — isolates the wire
+    // id's effect on the cache key from the provider's.
+    const first = new MockProvider('{"ok":true}');
+    await runExperiment(db, {
+      taskKey: "support",
+      candidateModel: "gpt-4o-mini",
+      wireModel: "gpt-4o-mini",
+      provider: first,
+      providerName: "mock",
+      price: PRICE,
+      assertions: ASSERTIONS,
+      partition: "optimization_train",
+      ...paid,
+    });
+    expect(first.calls.length).toBeGreaterThan(0);
+
+    const second = new MockProvider('{"ok":true}');
+    await runExperiment(db, {
+      taskKey: "support",
+      candidateModel: "gpt-4o-mini",
+      wireModel: "openai/gpt-4o-mini",
+      provider: second,
+      providerName: "mock",
+      price: PRICE,
+      assertions: ASSERTIONS,
+      partition: "optimization_train",
+      ...paid,
+    });
+    // A new wire id → new fingerprint → real calls, not cache hits.
+    expect(second.calls.length).toBe(first.calls.length);
+  });
+
+  test("wireModel defaults to the logical id (unchanged behavior)", async () => {
+    seedCases("support", 3);
+    const provider = new MockProvider('{"ok":true}');
+    await runExperiment(db, {
+      taskKey: "support",
+      candidateModel: "cheap-model",
+      // wireModel omitted
+      provider,
+      providerName: "mock",
+      price: PRICE,
+      assertions: ASSERTIONS,
+      partition: "optimization_train",
+      ...paid,
+    });
+    expect(provider.calls.every((c) => c.model === "cheap-model")).toBe(true);
   });
 });
 

@@ -91,6 +91,7 @@ export async function runExperimentCommand(
     const { report } = await runExperiment(db, {
       taskKey,
       candidateModel: modelId,
+      wireModel: resolved.wireModel,
       provider: resolved.provider,
       providerName: resolved.providerName,
       price: resolved.price,

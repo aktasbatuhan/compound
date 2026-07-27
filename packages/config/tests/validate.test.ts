@@ -43,6 +43,13 @@ describe("the repository's real compound.yaml", () => {
       output: 0.14,
     });
     expect(config.gate?.metric).toBe("task_success");
+    // Per-provider wire ids (issue #19): the same logical model carries a
+    // different id per host, so one entry can gate OpenAI-direct vs OpenRouter.
+    const gptMini = config.models?.candidates?.find((m) => m.id === "gpt-4o-mini");
+    expect(gptMini?.provider_ids).toEqual({
+      openai: "gpt-4o-mini",
+      openrouter: "openai/gpt-4o-mini",
+    });
   });
 
   test("carries no product sections yet, and does not need to", () => {

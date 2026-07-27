@@ -27,7 +27,19 @@ import type { CompletionRequest, CompletionResponse, Provider } from "./provider
 
 export interface RunExperimentOptions {
   taskKey: string;
+  /**
+   * The LOGICAL model id: the identity recorded on the experiment, the
+   * completion row, and every telemetry/gate grouping. Stable across providers.
+   */
   candidateModel: string;
+  /**
+   * The id actually SENT to the provider (issue #19). Defaults to
+   * `candidateModel`; differs only when a `provider_ids` alias is in play, e.g.
+   * logical `gpt-4o-mini` sent to OpenRouter as `openai/gpt-4o-mini`. It feeds
+   * `request.model` and therefore the completion fingerprint (the cache key must
+   * reflect the real call), while storage identity stays on `candidateModel`.
+   */
+  wireModel?: string;
   provider: Provider;
   providerName: string;
   price: TokenPrice;
@@ -170,9 +182,11 @@ export async function runExperiment(
     let estimatedCost = 0;
     let actualCost = 0;
 
+    // The provider receives the wire id; storage keeps the logical id (#19).
+    const wireModel = options.wireModel ?? options.candidateModel;
     for (const stored of cases) {
       const request = requestForCase(
-        options.candidateModel,
+        wireModel,
         stored.input,
         options.params,
         options.systemPromptOverride,
