@@ -2,7 +2,13 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDatabase, listGateResults, migrate, recordOptimizationRun } from "@compound/storage";
+import {
+  createDatabase,
+  insertCases,
+  listGateResults,
+  migrate,
+  recordOptimizationRun,
+} from "@compound/storage";
 import { type CommandEnvironment, parseArgs, runCommand } from "../src/commands";
 import { configGateMetric, verdictExitCode } from "../src/gate";
 
@@ -451,6 +457,69 @@ describe("eval (CI gate)", () => {
     expect(result.exitCode).toBe(2);
     expect(output()).toContain("CI gate check");
     expect(output()).toContain("eval verdict: INSUFFICIENT DATA (exit 2)");
+  });
+});
+
+describe("suggest-assertions", () => {
+  /** Seed `count` accepted cases whose output calls `tool`, in a partition. */
+  function seedToolCases(
+    db: ReturnType<typeof createDatabase>,
+    tool: string,
+    count: number,
+    partition: "optimizer_validation" | "decision_test",
+  ): void {
+    const records = Array.from({ length: count }, (_, i) => ({
+      caseId: `case-${partition}-${tool}-${i}`,
+      taskKey: "support",
+      sourceTraceId: `tr-${partition}-${i}`,
+      contentHash: `hash-${partition}-${tool}-${i}`,
+      provenance: "observed_output" as const,
+      partition,
+      input: { input: [{ role: "user", content: "help" }] },
+      expected: {
+        role: "assistant",
+        content: null,
+        tool_calls: [{ id: `c${i}`, name: tool, arguments: {} }],
+      },
+    }));
+    insertCases(db, records);
+  }
+
+  test("reports when a task has no cases", async () => {
+    const { env, output } = testEnvironment();
+    const result = await runCommand(["suggest-assertions", "support"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("no curated cases");
+  });
+
+  test("proposes a tool_called assertion with support and paste-ready YAML", async () => {
+    const { env, output, db } = testEnvironment();
+    seedToolCases(db, "dispute_charge", 5, "optimizer_validation");
+    const result = await runCommand(
+      ["suggest-assertions", "support", "--config", "compound.yaml"],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("tool_called 'dispute_charge'");
+    expect(output()).toContain("5/5 accepted outputs call 'dispute_charge'");
+    // The paste block is real YAML the user can drop under assertions.support.
+    expect(output()).toContain("- type: tool_called");
+    expect(output()).toContain('name: "dispute_charge"');
+  });
+
+  test("never mines the sealed decision set", async () => {
+    const { env, output, db } = testEnvironment();
+    // Non-sealed cases all call `refund`; the sealed set calls `secret_tool`.
+    seedToolCases(db, "refund", 4, "optimizer_validation");
+    seedToolCases(db, "secret_tool", 4, "decision_test");
+    const result = await runCommand(
+      ["suggest-assertions", "support", "--config", "compound.yaml"],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("refund");
+    // A suggestion derived from the held-out set would leak it.
+    expect(output()).not.toContain("secret_tool");
   });
 });
 

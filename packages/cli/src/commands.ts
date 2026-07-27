@@ -25,6 +25,7 @@ import { runEvalCommand, runGateCommand } from "./gate";
 import { runGradeBatchCommand } from "./grade-batch";
 import { runJudgeCommand } from "./judge";
 import { runOptimizeCommand } from "./optimize";
+import { runSuggestAssertionsCommand } from "./suggest";
 import { runTelemetryCommand } from "./telemetry";
 
 export interface CommandEnvironment {
@@ -94,6 +95,7 @@ export const HELP_TEXT = `compound — turn production traces into gated optimiz
 Usage:
   compound import <file> [--importer langfuse] [--db PATH] [--config PATH] [--project-id ID]
   compound curate <task_key> [--split train:val:cal:dec] [--db PATH]
+  compound suggest-assertions <task_key> [--db PATH] [--config PATH]
   compound experiment <task_key> <model> [--partition P] [--paid --cap USD]
   compound gate <task_key> --candidate M --reference M --reason "..." [--margin 0.05] [--paid --cap USD]
   compound eval <task_key> --candidate M --reference M [--reason "..."]   (CI gate: exit 0 meets / 1 regresses / 2 undecidable)
@@ -322,6 +324,8 @@ export async function runCommand(
       return runOptimizeCommand(args, env);
     case "telemetry":
       return runTelemetryCommand(args, env);
+    case "suggest-assertions":
+      return runSuggestAssertionsCommand(args, env);
     default:
       env.write(`error: unknown command '${args.command}'\n\n${HELP_TEXT}`);
       return { exitCode: 2 };
