@@ -21,7 +21,7 @@ import {
   migrate,
 } from "@compound/storage";
 import { runExperimentCommand } from "./experiment";
-import { runGateCommand } from "./gate";
+import { runEvalCommand, runGateCommand } from "./gate";
 import { runGradeBatchCommand } from "./grade-batch";
 import { runJudgeCommand } from "./judge";
 import { runOptimizeCommand } from "./optimize";
@@ -96,6 +96,7 @@ Usage:
   compound curate <task_key> [--split train:val:cal:dec] [--db PATH]
   compound experiment <task_key> <model> [--partition P] [--paid --cap USD]
   compound gate <task_key> --candidate M --reference M --reason "..." [--margin 0.05] [--paid --cap USD]
+  compound eval <task_key> --candidate M --reference M [--reason "..."]   (CI gate: exit 0 meets / 1 regresses / 2 undecidable)
   compound judge calibrate <task_key> [--paid --cap USD]
   compound judge grade <task_key> <experiment_id> [--paid --cap USD]
   compound optimize <task_key> --candidate M [--reflection M] [--max-calls N] [--force]
@@ -311,6 +312,8 @@ export async function runCommand(
       return runExperimentCommand(args, env);
     case "gate":
       return runGateCommand(args, env);
+    case "eval":
+      return runEvalCommand(args, env);
     case "judge":
       return runJudgeCommand(args, env);
     case "grade-batch":

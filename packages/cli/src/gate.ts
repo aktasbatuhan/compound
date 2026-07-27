@@ -42,24 +42,70 @@ const OUTCOME_LABEL: Record<string, string> = {
   no_reliable_improvement: "NO RELIABLE IMPROVEMENT",
 };
 
+/**
+ * CI exit code for a verdict, used only in `eval` mode (see runEvalCommand).
+ * 0 = the candidate cleared the bar; 1 = it did not; 2 = the gate could not
+ * decide (too few paired cases, or the judge abstained) — a distinct code so
+ * CI can tell "regressed" from "couldn't tell yet".
+ */
+export function verdictExitCode(outcome: string): number {
+  switch (outcome) {
+    case "meets_gate":
+      return 0;
+    case "fails_gate":
+    case "no_reliable_improvement":
+      return 1;
+    default:
+      // insufficient_data, judge_abstained, or anything unrecognized.
+      return 2;
+  }
+}
+
+/** The config's free-form gate metric ("task_success") mapped to a decidable one. */
+export function configGateMetric(raw: string | undefined): GateMetric | undefined {
+  if (raw === "pass_rate" || raw === "mean_score") return raw;
+  // "task_success" and other binary-success labels decide on the pass rate.
+  if (raw !== undefined) return "pass_rate";
+  return undefined;
+}
+
+export interface GateCommandOptions {
+  /**
+   * In `eval` mode the exit code reflects the VERDICT (0 meets / 1 fails /
+   * 2 undecidable) so a gate can sit in CI. The plain `gate` command instead
+   * exits 0 whenever the decision was produced — the verdict is the output,
+   * not the process status.
+   */
+  exitOnVerdict?: boolean;
+  /** Fall back to `config.gate` (metric, max_regression) for unset flags. */
+  useConfigDefaults?: boolean;
+  /** A standing reason to open the seal with when `--reason` is omitted. */
+  defaultReason?: string;
+}
+
 export async function runGateCommand(
   args: ParsedArgs,
   env: CommandEnvironment,
+  opts: GateCommandOptions = {},
 ): Promise<CommandResult> {
   const taskKey = args.positional[0];
   const candidateModel = stringFlag(args.flags, "candidate");
   const referenceModel = stringFlag(args.flags, "reference");
-  const reason = stringFlag(args.flags, "reason");
+  const command = opts.exitOnVerdict ? "eval" : "gate";
 
   if (taskKey === undefined || candidateModel === undefined || referenceModel === undefined) {
     env.write(
-      'error: usage: compound gate <task_key> --candidate M --reference M --reason "..." ' +
+      `error: usage: compound ${command} <task_key> --candidate M --reference M --reason "..." ` +
         "[--margin 0.05] [--confidence 0.95] [--min-cases 20] [--metric pass_rate|mean_score] " +
         "[--mode non_inferiority|superiority] [--prompt-artifact <optimization_run_id>] " +
         "[--provider P | --candidate-provider P --reference-provider P] [--paid --cap USD]",
     );
     return { exitCode: 2 };
   }
+
+  // The seal is only opened with a stated reason. In `eval` mode a standing
+  // reason (defaultReason) stands in so a CI job need not invent one each run.
+  const reason = stringFlag(args.flags, "reason") ?? opts.defaultReason;
   if (reason === undefined || reason.trim().length === 0) {
     env.write(
       "error: --reason is required — the sealed decision set is only opened with a stated reason",
@@ -67,15 +113,21 @@ export async function runGateCommand(
     return { exitCode: 2 };
   }
 
-  const metric = (stringFlag(args.flags, "metric") ?? "pass_rate") as GateMetric;
+  const config = loadConfig(stringFlag(args.flags, "config") ?? DEFAULT_CONFIG_PATH);
+  const assertions = (config.assertions?.[taskKey] ?? []) as Assertion[];
+
+  // In `eval` mode, unset metric/margin fall back to the declared gate policy
+  // in compound.yaml, so the CI bar lives in config rather than the command line.
+  const configGate = opts.useConfigDefaults ? config.gate : undefined;
+  const metric = (stringFlag(args.flags, "metric") ??
+    configGateMetric(configGate?.metric) ??
+    "pass_rate") as GateMetric;
   const mode = (stringFlag(args.flags, "mode") ?? "non_inferiority") as GateMode;
-  const margin = numberFlag(args.flags, "margin", mode === "superiority" ? 0 : 0.05);
+  const marginDefault = configGate?.max_regression ?? (mode === "superiority" ? 0 : 0.05);
+  const margin = numberFlag(args.flags, "margin", marginDefault);
   const confidence = numberFlag(args.flags, "confidence", 0.95);
   const minCases = numberFlag(args.flags, "min-cases", 20);
   const judgeAbstainMax = numberFlag(args.flags, "judge-abstain-max", 0);
-
-  const config = loadConfig(stringFlag(args.flags, "config") ?? DEFAULT_CONFIG_PATH);
-  const assertions = (config.assertions?.[taskKey] ?? []) as Assertion[];
 
   // The provider axis: --provider applies to both sides; per-side flags win.
   const bothProvider = stringFlag(args.flags, "provider");
@@ -240,15 +292,46 @@ export async function runGateCommand(
         );
       }
     }
+
+    if (opts.exitOnVerdict) {
+      const code = verdictExitCode(result.outcome);
+      env.write(
+        `\neval verdict: ${OUTCOME_LABEL[result.outcome] ?? result.outcome} (exit ${code})`,
+      );
+      return { exitCode: code };
+    }
     return { exitCode: 0 };
   } catch (error) {
     if (error instanceof GateInputError) {
       env.write(`error: ${error.message}`);
       return { exitCode: 1 };
     }
-    env.write(`error: gate failed: ${error instanceof Error ? error.message : error}`);
+    env.write(`error: ${command} failed: ${error instanceof Error ? error.message : error}`);
     return { exitCode: 1 };
   } finally {
     db.close();
   }
+}
+
+/**
+ * `compound eval <task_key> --candidate M --reference M` — the CI entry point.
+ *
+ * It is the SAME sealed non-inferiority decision as `gate`, with two changes for
+ * automation: the process exit code reflects the verdict (0 meets / 1 regresses /
+ * 2 undecidable), and the metric and margin default from the `gate:` policy in
+ * compound.yaml so the bar lives in version control, not in a CI script.
+ *
+ * A note on the seal: running this on every PR does re-examine the held-out set,
+ * which weakens its statistical guarantee over time. It is meant as a release
+ * gate on a candidate you intend to adopt, not a per-commit check.
+ */
+export async function runEvalCommand(
+  args: ParsedArgs,
+  env: CommandEnvironment,
+): Promise<CommandResult> {
+  return runGateCommand(args, env, {
+    exitOnVerdict: true,
+    useConfigDefaults: true,
+    defaultReason: "CI gate check",
+  });
 }

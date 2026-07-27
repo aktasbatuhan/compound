@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDatabase, listGateResults, migrate, recordOptimizationRun } from "@compound/storage";
 import { type CommandEnvironment, parseArgs, runCommand } from "../src/commands";
+import { configGateMetric, verdictExitCode } from "../src/gate";
 
 const EXPORT_JSON = JSON.stringify([
   {
@@ -410,6 +411,64 @@ describe("gate", () => {
 
     const [decided] = listGateResults(db, 1);
     expect(decided?.spec.candidateProvider).toBe("openrouter");
+  });
+});
+
+describe("eval (CI gate)", () => {
+  beforeAll(() => {
+    process.env.OPENROUTER_API_KEY ??= "test-openrouter-key";
+    process.env.DOUBLEWORD_API_KEY ??= "test-doubleword-key";
+  });
+
+  async function importAndCurate(env: CommandEnvironment): Promise<void> {
+    await withTempFile(EXPORT_JSON, async (path) => {
+      await runCommand(["import", path, "--config", "compound.yaml"], env);
+    });
+    await runCommand(["curate", "support"], env);
+  }
+
+  test("usage error (missing candidate/reference) exits 2", async () => {
+    const { env } = testEnvironment();
+    expect((await runCommand(["eval", "support"], env)).exitCode).toBe(2);
+  });
+
+  test("needs no --reason: a standing CI reason opens the seal", async () => {
+    const { env, output } = testEnvironment();
+    await importAndCurate(env);
+    const result = await runCommand(
+      [
+        "eval",
+        "support",
+        "--candidate",
+        "zai-org/GLM-5.2-FP8",
+        "--reference",
+        "anthropic/claude-opus-4.8",
+      ],
+      env,
+    );
+    // No cached completions on the sealed set → the gate cannot decide, and the
+    // CI exit code says so (2 = undecidable), never a fabricated pass.
+    expect(result.exitCode).toBe(2);
+    expect(output()).toContain("CI gate check");
+    expect(output()).toContain("eval verdict: INSUFFICIENT DATA (exit 2)");
+  });
+});
+
+describe("verdictExitCode / configGateMetric", () => {
+  test("the verdict maps to a CI exit code: 0 meets, 1 regresses, 2 undecidable", () => {
+    expect(verdictExitCode("meets_gate")).toBe(0);
+    expect(verdictExitCode("fails_gate")).toBe(1);
+    expect(verdictExitCode("no_reliable_improvement")).toBe(1);
+    expect(verdictExitCode("insufficient_data")).toBe(2);
+    expect(verdictExitCode("judge_abstained")).toBe(2);
+    expect(verdictExitCode("anything_unrecognized")).toBe(2);
+  });
+
+  test("the config's free-form gate metric maps to a decidable one", () => {
+    expect(configGateMetric("task_success")).toBe("pass_rate");
+    expect(configGateMetric("pass_rate")).toBe("pass_rate");
+    expect(configGateMetric("mean_score")).toBe("mean_score");
+    expect(configGateMetric(undefined)).toBeUndefined();
   });
 });
 
