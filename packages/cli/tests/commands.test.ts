@@ -92,6 +92,90 @@ describe("help", () => {
   });
 });
 
+describe("init", () => {
+  test("scaffolds a compound.yaml that is itself valid, and refuses to clobber it", async () => {
+    const { env, output } = testEnvironment();
+    const path = join(tmpdir(), `compound-init-${crypto.randomUUID()}.yaml`);
+    try {
+      const written = await runCommand(["init", "--config", path], env);
+      expect(written.exitCode).toBe(0);
+      expect(output()).toContain(`wrote ${path}`);
+
+      // The scaffold must pass our own validator — a starter file that fails
+      // validation would be a broken first impression.
+      const { env: v, output: vOut } = testEnvironment();
+      const validated = await runCommand(["validate", "--config", path], v);
+      expect(validated.exitCode).toBe(0);
+      expect(vOut()).toContain("valid:");
+
+      // Refuses to overwrite without --force; --force overwrites.
+      const clobber = await runCommand(["init", "--config", path], env);
+      expect(clobber.exitCode).toBe(1);
+      expect(output()).toContain("already exists");
+      const forced = await runCommand(["init", "--config", path, "--force"], env);
+      expect(forced.exitCode).toBe(0);
+      expect(output()).toContain("overwritten");
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+});
+
+describe("validate", () => {
+  test("the repo's real compound.yaml is valid", async () => {
+    const { env, output } = testEnvironment();
+    const result = await runCommand(["validate", "--config", "compound.yaml"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("valid: compound.yaml");
+  });
+
+  test("a schema-invalid config exits 1 with a path-qualified issue", async () => {
+    const { env, output } = testEnvironment();
+    const path = join(tmpdir(), `compound-bad-${crypto.randomUUID()}.yaml`);
+    writeFileSync(path, "version: 1\nartifacts_dir: a\nmanifests_dir: m\n");
+    try {
+      const result = await runCommand(["validate", "--config", path], env);
+      expect(result.exitCode).toBe(1);
+      expect(output()).toContain("invalid:");
+      expect(output()).toContain("benchmarks");
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
+  test("warns (but stays valid) when a model names an undeclared provider with no price", async () => {
+    const { env, output } = testEnvironment();
+    const path = join(tmpdir(), `compound-warn-${crypto.randomUUID()}.yaml`);
+    writeFileSync(
+      path,
+      [
+        "version: 1",
+        "artifacts_dir: a",
+        "manifests_dir: m",
+        "benchmarks: {}",
+        "providers:",
+        "  openrouter:",
+        "    base_url: https://openrouter.ai/api/v1",
+        "    api_key_env: OPENROUTER_API_KEY",
+        "models:",
+        "  candidates:",
+        "    - id: foo/bar",
+        "      provider: nonesuch",
+        "      role: candidate",
+        "",
+      ].join("\n"),
+    );
+    try {
+      const result = await runCommand(["validate", "--config", path], env);
+      expect(result.exitCode).toBe(0);
+      expect(output()).toContain("not under providers:");
+      expect(output()).toContain("has no price");
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+});
+
 describe("import", () => {
   test("imports a file and reports concrete counts", async () => {
     const { env, output } = testEnvironment();

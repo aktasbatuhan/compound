@@ -23,10 +23,12 @@ import {
 import { runExperimentCommand } from "./experiment";
 import { runEvalCommand, runGateCommand } from "./gate";
 import { runGradeBatchCommand } from "./grade-batch";
+import { runInitCommand } from "./init";
 import { runJudgeCommand } from "./judge";
 import { runOptimizeCommand } from "./optimize";
 import { runSuggestAssertionsCommand } from "./suggest";
 import { runTelemetryCommand } from "./telemetry";
+import { runValidateCommand } from "./validate";
 
 export interface CommandEnvironment {
   /** Where output goes; injected so tests can capture it. */
@@ -93,6 +95,8 @@ function stringFlag(flags: ParsedArgs["flags"], name: string): string | undefine
 export const HELP_TEXT = `compound — turn production traces into gated optimization evidence
 
 Usage:
+  compound init [--config PATH] [--db PATH] [--force]
+  compound validate [--config PATH]
   compound import <file> [--importer langfuse] [--db PATH] [--config PATH] [--project-id ID]
   compound curate <task_key> [--split train:val:cal:dec] [--db PATH]
   compound suggest-assertions <task_key> [--db PATH] [--config PATH]
@@ -304,6 +308,10 @@ export async function runCommand(
     case "-h":
       env.write(HELP_TEXT);
       return { exitCode: args.command === undefined ? 2 : 0 };
+    case "init":
+      return runInitCommand(args, env);
+    case "validate":
+      return runValidateCommand(args, env);
     case "import":
       return runImportCommand(args, env);
     case "curate":
