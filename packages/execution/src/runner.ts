@@ -257,6 +257,7 @@ export async function runExperiment(
           usage: response.usage,
           finishReason: response.finishReason,
           latencyMs: response.latencyMs,
+          queueMs: response.queueMs ?? null,
           costUsd,
         });
       }

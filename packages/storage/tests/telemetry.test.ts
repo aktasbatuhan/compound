@@ -25,6 +25,8 @@ interface SeedCall {
   latencyMs: number;
   costUsd: number;
   outputTokens: number;
+  /** Async-queue portion of latency for a flex route; omit for a sync provider. */
+  queueMs?: number;
 }
 
 /** One experiment whose graded cases each point at a cached completion. */
@@ -45,6 +47,7 @@ function seedExperiment(taskKey: string, model: string, provider: string, calls:
       output: { role: "assistant", content: "x" },
       usage: { input_tokens: 100, output_tokens: call.outputTokens },
       latencyMs: call.latencyMs,
+      ...(call.queueMs !== undefined ? { queueMs: call.queueMs } : {}),
       costUsd: call.costUsd,
     });
   }
@@ -107,6 +110,34 @@ describe("telemetryRollup", () => {
     expect(groups.map((g) => g.provider)).toEqual(["provider-a", "provider-b"]);
     expect(groups[0]?.latencyP50Ms).toBe(100);
     expect(groups[1]?.latencyP50Ms).toBe(900);
+  });
+
+  test("splits queue vs decode for a flex route (#8)", () => {
+    // Three flex completions: queue is most of the latency (async wait).
+    seedExperiment("support", "glm-flex", "doubleword", [
+      { fingerprint: "q1", latencyMs: 1000, queueMs: 900, costUsd: 0.001, outputTokens: 50 },
+      { fingerprint: "q2", latencyMs: 1200, queueMs: 1000, costUsd: 0.001, outputTokens: 50 },
+      { fingerprint: "q3", latencyMs: 1400, queueMs: 1100, costUsd: 0.001, outputTokens: 50 },
+    ]);
+
+    const [group] = telemetryRollup(db);
+    expect(group?.latencyP50Ms).toBe(1200);
+    expect(group?.queueP50Ms).toBe(1000);
+    // decode = latency - queue → {100, 200, 300}, median 200.
+    expect(group?.decodeP50Ms).toBe(200);
+  });
+
+  test("a synchronous provider reports no queue and decode equal to latency", () => {
+    // No queueMs seeded → null in storage → queue is 0, decode == latency.
+    seedExperiment("support", "gpt-4o-mini", "openai", [
+      { fingerprint: "s1", latencyMs: 500, costUsd: 0.0001, outputTokens: 20 },
+      { fingerprint: "s2", latencyMs: 700, costUsd: 0.0001, outputTokens: 20 },
+    ]);
+
+    const [group] = telemetryRollup(db);
+    expect(group?.queueP50Ms).toBe(0);
+    expect(group?.queueP95Ms).toBe(0);
+    expect(group?.decodeP50Ms).toBe(group?.latencyP50Ms);
   });
 
   test("filters by task and skips results with no completion fingerprint", () => {

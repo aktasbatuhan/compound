@@ -227,6 +227,11 @@ export const completions = sqliteTable("completions", {
   usageJson: text("usage_json", { mode: "json" }),
   finishReason: text("finish_reason"),
   latencyMs: integer("latency_ms"),
+  /**
+   * Async-queue portion of `latencyMs` for a flex/background route (issue #8);
+   * decode time is `latencyMs - queueMs`. NULL for synchronous providers.
+   */
+  queueMs: integer("queue_ms"),
   costUsd: real("cost_usd").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()

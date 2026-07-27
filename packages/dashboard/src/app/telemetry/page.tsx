@@ -34,6 +34,8 @@ export default async function TelemetryPage() {
                   <th>Provider</th>
                   <th>n</th>
                   <th>Latency p50</th>
+                  <th>Queue p50</th>
+                  <th>Decode p50</th>
                   <th>p95</th>
                   <th>Cost / case</th>
                   <th>Tokens in/out (mean)</th>
@@ -50,6 +52,8 @@ export default async function TelemetryPage() {
                     <td className="muted">{row.provider}</td>
                     <td>{row.completions}</td>
                     <td>{ms(row.latency_p50_ms)}</td>
+                    <td className="muted">{ms(row.queue_p50_ms)}</td>
+                    <td className="muted">{ms(row.decode_p50_ms)}</td>
                     <td className="muted">{ms(row.latency_p95_ms)}</td>
                     <td>{usd(row.mean_cost_usd)}</td>
                     <td className="muted">

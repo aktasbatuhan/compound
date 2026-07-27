@@ -237,3 +237,66 @@ describe("FlexProvider.complete", () => {
     ).rejects.toThrow(/failed/);
   });
 });
+
+describe("FlexProvider queue timing (#8)", () => {
+  /** A provider whose poll sleeps a REAL few ms, so the queue/decode split is measurable. */
+  function makeTimedProvider(states: unknown[], pollMs: number) {
+    const { impl } = scriptedFetch(states);
+    return new FlexProvider({
+      name: "doubleword",
+      baseUrl: "https://api.doubleword.ai/v1",
+      apiKey: "test-key",
+      pollIntervalMs: pollMs,
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      fetchImpl: impl,
+    });
+  }
+
+  test("splits queue time (waiting) from decode time (running)", async () => {
+    // queued, queued → then in_progress (compute began) → completed.
+    const provider = makeTimedProvider(
+      [
+        { id: "resp-1", status: "queued" },
+        { id: "resp-1", status: "queued" },
+        { id: "resp-1", status: "in_progress" },
+        {
+          id: "resp-1",
+          status: "completed",
+          output_text: "done",
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      ],
+      6,
+    );
+    const result = await provider.complete({
+      model: "m",
+      messages: [{ role: "user", content: "x" }],
+    });
+
+    expect(result.queueMs).toBeGreaterThan(0);
+    // Queue is a PORTION of the total — decode (latency - queue) is positive too.
+    expect(result.queueMs as number).toBeLessThan(result.latencyMs);
+    expect(result.latencyMs - (result.queueMs as number)).toBeGreaterThan(0);
+  });
+
+  test("a response already running on the first poll has near-zero queue", async () => {
+    const provider = makeTimedProvider(
+      [
+        { id: "resp-1", status: "in_progress" },
+        {
+          id: "resp-1",
+          status: "completed",
+          output_text: "done",
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      ],
+      6,
+    );
+    const result = await provider.complete({
+      model: "m",
+      messages: [{ role: "user", content: "x" }],
+    });
+    // It left the queue at the first read, so queue is a small fraction of latency.
+    expect(result.queueMs as number).toBeLessThan(result.latencyMs);
+  });
+});

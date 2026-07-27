@@ -192,8 +192,11 @@ export class FlexProvider implements Provider {
   async complete(request: CompletionRequest): Promise<CompletionResponse> {
     const started = performance.now();
     const responseId = await this.submit(request);
-    const payload = await this.poll(responseId);
+    const { payload, leftQueueAt } = await this.poll(responseId);
     const latencyMs = Math.round(performance.now() - started);
+    // Queue time = submit-start until the response left `queued` (compute began).
+    // Decode time is the remainder; telemetry derives it as latencyMs - queueMs.
+    const queueMs = Math.round(leftQueueAt - started);
 
     if (payload.status !== "completed") {
       throw new ProviderError(
@@ -214,6 +217,7 @@ export class FlexProvider implements Provider {
       finishReason: payload.status ?? null,
       resolvedModel: payload.model ?? null,
       latencyMs,
+      queueMs,
     };
   }
 
@@ -243,19 +247,32 @@ export class FlexProvider implements Provider {
     return response.id;
   }
 
-  /** Poll until the response is terminal or the timeout elapses. */
-  private async poll(responseId: string): Promise<ResponsePayload> {
+  /**
+   * Poll until the response is terminal or the timeout elapses. Also reports
+   * `leftQueueAt`: the clock reading at which the response was first observed to
+   * have left `queued` (compute started), so the caller can split queue time
+   * from decode time.
+   */
+  private async poll(
+    responseId: string,
+  ): Promise<{ payload: ResponsePayload; leftQueueAt: number }> {
     const deadline = performance.now() + this.timeoutMs;
-    // First read immediately; a fast model may already be done.
+    // First read immediately; a fast model may already be running or done.
     let payload = await this.call("GET", `/responses/${responseId}`);
+    let leftQueueAt: number | undefined =
+      payload.status === "queued" ? undefined : performance.now();
     while (payload.status !== undefined && PENDING_STATUSES.has(payload.status)) {
       if (performance.now() > deadline) {
         throw new ProviderError(this.name, `background response ${responseId} timed out`);
       }
       await this.sleep(this.pollIntervalMs);
       payload = await this.call("GET", `/responses/${responseId}`);
+      if (leftQueueAt === undefined && payload.status !== "queued") {
+        leftQueueAt = performance.now();
+      }
     }
-    return payload;
+    // If it never left `queued` before going terminal, queue spanned the run.
+    return { payload, leftQueueAt: leftQueueAt ?? performance.now() };
   }
 
   private async call(

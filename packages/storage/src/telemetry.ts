@@ -22,6 +22,15 @@ export interface TelemetryGroup {
   completions: number;
   latencyP50Ms: number;
   latencyP95Ms: number;
+  /**
+   * Async-queue and decode split of latency for a flex/background route (#8).
+   * For synchronous providers there is no queue, so queue is 0 and decode
+   * equals latency — the columns still line up for a side-by-side comparison.
+   */
+  queueP50Ms: number;
+  queueP95Ms: number;
+  decodeP50Ms: number;
+  decodeP95Ms: number;
   meanCostUsd: number;
   totalCostUsd: number;
   meanInputTokens: number;
@@ -38,6 +47,8 @@ export interface TelemetryGroup {
 
 interface Observation {
   latencyMs: number | null;
+  /** Async-queue portion of latency (flex route), or null for sync providers. */
+  queueMs: number | null;
   costUsd: number;
   inputTokens: number;
   outputTokens: number;
@@ -81,6 +92,7 @@ export function telemetryRollup(handle: CompoundDatabase, taskKey?: string): Tel
       provider: completions.provider,
       fingerprint: completions.fingerprint,
       latencyMs: completions.latencyMs,
+      queueMs: completions.queueMs,
       costUsd: completions.costUsd,
       usageJson: completions.usageJson,
     })
@@ -106,6 +118,7 @@ export function telemetryRollup(handle: CompoundDatabase, taskKey?: string): Tel
     const tokens = usageTokens(row.usageJson);
     byFingerprint.set(row.fingerprint, {
       latencyMs: row.latencyMs,
+      queueMs: row.queueMs,
       costUsd: row.costUsd,
       inputTokens: tokens.input,
       outputTokens: tokens.output,
@@ -120,6 +133,14 @@ export function telemetryRollup(handle: CompoundDatabase, taskKey?: string): Tel
     const latencies = observations
       .map((o) => o.latencyMs)
       .filter((v): v is number => v !== null && v > 0);
+    // Queue is measured only on the async route; decode = latency - queue, so a
+    // sync provider (no queue) reports decode == latency. Paired per observation.
+    const queues = observations
+      .map((o) => o.queueMs)
+      .filter((v): v is number => v !== null && v >= 0);
+    const decodes = observations
+      .filter((o) => o.latencyMs !== null && o.latencyMs > 0)
+      .map((o) => Math.max(0, (o.latencyMs as number) - (o.queueMs ?? 0)));
     const tpsSamples = observations
       .filter((o) => o.latencyMs !== null && o.latencyMs > 0 && o.outputTokens > 0)
       .map((o) => o.outputTokens / ((o.latencyMs as number) / 1000));
@@ -133,6 +154,10 @@ export function telemetryRollup(handle: CompoundDatabase, taskKey?: string): Tel
       completions: n,
       latencyP50Ms: quantile(latencies, 0.5),
       latencyP95Ms: quantile(latencies, 0.95),
+      queueP50Ms: quantile(queues, 0.5),
+      queueP95Ms: quantile(queues, 0.95),
+      decodeP50Ms: quantile(decodes, 0.5),
+      decodeP95Ms: quantile(decodes, 0.95),
       meanCostUsd: n > 0 ? totalCost / n : 0,
       totalCostUsd: totalCost,
       meanInputTokens: n > 0 ? totalInput / n : 0,

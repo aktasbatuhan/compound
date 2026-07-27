@@ -31,6 +31,14 @@ export interface CompletionResponse {
   /** Model id the provider actually served, when it echoes one. */
   resolvedModel: string | null;
   latencyMs: number;
+  /**
+   * For an ASYNC route (flex submit-then-poll): the portion of `latencyMs` spent
+   * waiting in the provider's queue before compute began — decode time is
+   * `latencyMs - queueMs`. `null`/absent for synchronous providers, which have no
+   * queue. Recorded so the telemetry axis compares queueing and decode honestly
+   * rather than lumping them into one wall-clock number (issue #8).
+   */
+  queueMs?: number | null;
 }
 
 export interface Provider {

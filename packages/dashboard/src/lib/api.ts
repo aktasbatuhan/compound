@@ -238,6 +238,10 @@ export interface TelemetryResponse {
   completions: number;
   latency_p50_ms: number;
   latency_p95_ms: number;
+  queue_p50_ms: number;
+  queue_p95_ms: number;
+  decode_p50_ms: number;
+  decode_p95_ms: number;
   mean_cost_usd: number;
   total_cost_usd: number;
   mean_input_tokens: number;

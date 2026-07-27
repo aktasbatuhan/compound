@@ -141,6 +141,8 @@ export interface CacheCompletionInput {
   usage?: unknown;
   finishReason?: string | null;
   latencyMs?: number | null;
+  /** Async-queue portion of latency for a flex route; null for sync providers. */
+  queueMs?: number | null;
   costUsd: number;
 }
 
@@ -159,6 +161,7 @@ export function cacheCompletion(handle: CompoundDatabase, input: CacheCompletion
       usageJson: input.usage ?? null,
       finishReason: input.finishReason ?? null,
       latencyMs: input.latencyMs ?? null,
+      queueMs: input.queueMs ?? null,
       costUsd: input.costUsd,
     })
     .run();

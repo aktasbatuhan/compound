@@ -13,7 +13,18 @@ function stringFlag(flags: ParsedArgs["flags"], name: string): string | undefine
   return typeof value === "string" ? value : undefined;
 }
 
-const HEADERS = ["task", "model", "provider", "n", "p50 ms", "p95 ms", "$/case", "tps"] as const;
+const HEADERS = [
+  "task",
+  "model",
+  "provider",
+  "n",
+  "p50 ms",
+  "queue p50",
+  "decode p50",
+  "p95 ms",
+  "$/case",
+  "tps",
+] as const;
 
 export function runTelemetryCommand(args: ParsedArgs, env: CommandEnvironment): CommandResult {
   const taskKey = args.positional[0];
@@ -39,6 +50,8 @@ export function runTelemetryCommand(args: ParsedArgs, env: CommandEnvironment): 
       g.provider,
       String(g.completions),
       String(Math.round(g.latencyP50Ms)),
+      String(Math.round(g.queueP50Ms)),
+      String(Math.round(g.decodeP50Ms)),
       String(Math.round(g.latencyP95Ms)),
       g.meanCostUsd.toFixed(4),
       g.outputTps.toFixed(1),
@@ -51,7 +64,8 @@ export function runTelemetryCommand(args: ParsedArgs, env: CommandEnvironment): 
     env.write(line(HEADERS));
     for (const row of rows) env.write(line(row));
     env.write(
-      "\ntps = output tokens / full request latency (includes queueing and TTFT); " +
+      "\nqueue p50 = async wait before compute (flex route); decode p50 = latency − queue. " +
+        "\ntps = output tokens / full request latency (includes queueing and TTFT); " +
         "each cached completion counts once.",
     );
     return { exitCode: 0 };
