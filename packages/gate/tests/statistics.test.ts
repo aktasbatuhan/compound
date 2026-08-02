@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
+  casesForDetectableEffect,
+  invNormCdf,
   mean,
   mulberry32,
   pairedBootstrapCi,
+  powerEstimate,
   quantileSorted,
   seedFromString,
+  zForConfidence,
 } from "../src/statistics";
 
 describe("mulberry32", () => {
@@ -59,5 +63,37 @@ describe("pairedBootstrapCi", () => {
     const diffs = new Array(40).fill(0.3);
     const ci = pairedBootstrapCi(diffs, 0.95, seedFromString("pos"));
     expect(ci.lo).toBeGreaterThan(0);
+  });
+});
+
+describe("power / minimum detectable effect (#24)", () => {
+  test("invNormCdf recovers standard z quantiles", () => {
+    expect(invNormCdf(0.975)).toBeCloseTo(1.959964, 4);
+    expect(invNormCdf(0.5)).toBeCloseTo(0, 6);
+    expect(invNormCdf(0.025)).toBeCloseTo(-1.959964, 4);
+  });
+
+  test("zForConfidence gives the two-sided critical value", () => {
+    expect(zForConfidence(0.95)).toBeCloseTo(1.959964, 4);
+    expect(zForConfidence(0.9)).toBeCloseTo(1.644854, 4);
+  });
+
+  test("minimum detectable effect shrinks with more cases", () => {
+    const small = powerEstimate(10, 0.95).minDetectableEffect;
+    const large = powerEstimate(100, 0.95).minDetectableEffect;
+    expect(large).toBeLessThan(small);
+    // z·sd/√n with the default sd = 0.5: 1.96·0.5/√100 ≈ 0.098.
+    expect(large).toBeCloseTo((1.959964 * 0.5) / 10, 4);
+  });
+
+  test("fewer than two cases cannot resolve anything", () => {
+    expect(powerEstimate(1, 0.95).minDetectableEffect).toBe(Number.POSITIVE_INFINITY);
+    expect(powerEstimate(0, 0.95).minDetectableEffect).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  test("casesForDetectableEffect inverts the relation", () => {
+    // To resolve a 10pp effect at 95% with sd = 0.5: (1.96·0.5/0.10)² ≈ 96.
+    expect(casesForDetectableEffect(0.1, 0.95)).toBe(97);
+    expect(casesForDetectableEffect(0, 0.95)).toBe(Number.POSITIVE_INFINITY);
   });
 });

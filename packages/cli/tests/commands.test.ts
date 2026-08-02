@@ -337,6 +337,29 @@ describe("curate", () => {
     expect(again.exitCode).toBe(0);
     expect(output()).toContain("duplicates:      1");
   });
+
+  test("reports decision-set power and nudges when under the floor (issue #24)", async () => {
+    const { env, output, db } = testEnvironment();
+    // Seed 14 sealed cases directly — under the recommended 20.
+    insertCases(
+      db,
+      Array.from({ length: 14 }, (_, i) => ({
+        caseId: `pow-${i}`,
+        taskKey: "powertask",
+        sourceTraceId: `pt-${i}`,
+        contentHash: `pow-hash-${i}`,
+        provenance: "human_golden" as const,
+        partition: "decision_test" as const,
+        input: {},
+        expected: {},
+      })),
+    );
+    const result = await runCommand(["curate", "powertask"], env);
+    expect(result.exitCode).toBe(0);
+    // A precision read on the sealed set, plus a curate-more nudge (14 < 20).
+    expect(output()).toContain("decision power:");
+    expect(output()).toContain("below the recommended 20+");
+  });
 });
 
 describe("experiment", () => {

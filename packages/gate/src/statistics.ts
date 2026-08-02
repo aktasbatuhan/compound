@@ -49,6 +49,93 @@ export function quantileSorted(sorted: readonly number[], q: number): number {
   return (sorted[lo] as number) * (1 - frac) + (sorted[hi] as number) * frac;
 }
 
+/** Horner evaluation of a polynomial with `coeffs` in descending degree. */
+function poly(coeffs: readonly number[], x: number): number {
+  return coeffs.reduce((acc, coef) => acc * x + coef, 0);
+}
+
+// Acklam's coefficients. The central and tail rational approximations share the
+// `c`/`d` tables; a trailing `1` appended to `b`/`d` supplies each denominator's
+// unit term.
+const ACKLAM_A = [
+  -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2,
+  -3.066479806614716e1, 2.506628277459239,
+];
+const ACKLAM_B = [
+  -5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1,
+  -1.328068155288572e1, 1,
+];
+const ACKLAM_C = [
+  -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734,
+  4.374664141464968, 2.938163982698783,
+];
+const ACKLAM_D = [
+  7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416, 1,
+];
+
+/**
+ * Standard-normal quantile z such that Φ(z) = p, via Acklam's rational
+ * approximation (|error| < 1.2e-9 across (0,1)). Used to turn a confidence level
+ * into the two-sided critical value for the pre-run power estimate.
+ */
+export function invNormCdf(p: number): number {
+  if (p <= 0) return Number.NEGATIVE_INFINITY;
+  if (p >= 1) return Number.POSITIVE_INFINITY;
+  const plow = 0.02425;
+  const phigh = 1 - plow;
+  if (p < plow) {
+    const q = Math.sqrt(-2 * Math.log(p));
+    return poly(ACKLAM_C, q) / poly(ACKLAM_D, q);
+  }
+  if (p <= phigh) {
+    const q = p - 0.5;
+    return (poly(ACKLAM_A, q * q) * q) / poly(ACKLAM_B, q * q);
+  }
+  const q = Math.sqrt(-2 * Math.log(1 - p));
+  return -(poly(ACKLAM_C, q) / poly(ACKLAM_D, q));
+}
+
+/** Two-sided critical z for a confidence level (e.g. 0.95 → 1.95996). */
+export function zForConfidence(confidence: number): number {
+  return invNormCdf(1 - (1 - confidence) / 2);
+}
+
+/** Below this many sealed cases, a paired gate rarely resolves a small regression. */
+export const RECOMMENDED_MIN_DECISION_CASES = 20;
+
+/**
+ * A pre-run precision estimate for a paired gate: with `n` sealed cases at the
+ * given confidence, the smallest regression the CI can resolve is roughly the
+ * normal-approximation half-width `z · sd / √n`. `sd` is the per-case difference
+ * SD; on a pass-rate metric each difference lies in [-1, 1], and lacking prior
+ * data we assume moderate disagreement (`sd = 0.5`). It is an estimate, not the
+ * bootstrap CI the decision will actually use, but it lets a user see BEFORE
+ * spending that a tiny set can only detect a huge regression.
+ */
+export interface PowerEstimate {
+  n: number;
+  confidence: number;
+  sd: number;
+  /** Smallest resolvable regression in metric units [0, 1]; Infinity when n < 2. */
+  minDetectableEffect: number;
+}
+
+export function powerEstimate(n: number, confidence: number, sd = 0.5): PowerEstimate {
+  const minDetectableEffect =
+    n >= 2 ? (zForConfidence(confidence) * sd) / Math.sqrt(n) : Number.POSITIVE_INFINITY;
+  return { n, confidence, sd, minDetectableEffect };
+}
+
+/**
+ * The sealed-set size needed to resolve a target effect (e.g. the configured
+ * margin) at the given confidence — the actionable "curate ~N cases" nudge.
+ * Infinity when the target effect is not positive.
+ */
+export function casesForDetectableEffect(effect: number, confidence: number, sd = 0.5): number {
+  if (!(effect > 0)) return Number.POSITIVE_INFINITY;
+  return Math.ceil(((zForConfidence(confidence) * sd) / effect) ** 2);
+}
+
 export interface BootstrapCi {
   point: number;
   lo: number;

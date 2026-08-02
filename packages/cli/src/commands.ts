@@ -9,6 +9,7 @@
 import { readFileSync } from "node:fs";
 import { loadConfig } from "@compound/config";
 import { curateTask, type PartitionRatios } from "@compound/curation";
+import { powerEstimate, RECOMMENDED_MIN_DECISION_CASES } from "@compound/gate";
 import { runImport, SUPPORTED_IMPORTERS } from "@compound/pipeline";
 import {
   type CompoundDatabase,
@@ -209,6 +210,34 @@ function parseSplit(value: string): PartitionRatios {
   };
 }
 
+/**
+ * A pre-run precision read on a task's sealed decision set (#24): the smallest
+ * regression a 95% gate could resolve at the current case count, with a nudge to
+ * curate more when the set is under the recommended floor. Reported at curate
+ * time so a user learns a tiny set is underpowered BEFORE paying to run a gate.
+ */
+export function decisionPowerLines(sealedCases: number): string[] {
+  const confidence = 0.95;
+  if (sealedCases < 2) {
+    return [
+      `  decision power: ${sealedCases} sealed case(s) — far too few to decide; ` +
+        `curate ≥ ${RECOMMENDED_MIN_DECISION_CASES} decision_test cases.`,
+    ];
+  }
+  const mde = powerEstimate(sealedCases, confidence).minDetectableEffect;
+  const lines = [
+    `  decision power: ~${Math.round(mde * 100)}pp — the smallest regression a 95% gate ` +
+      `can resolve at ${sealedCases} sealed cases (conservative estimate).`,
+  ];
+  if (sealedCases < RECOMMENDED_MIN_DECISION_CASES) {
+    lines.push(
+      `  → below the recommended ${RECOMMENDED_MIN_DECISION_CASES}+; curate more ` +
+        "decision_test cases to tighten the gate.",
+    );
+  }
+  return lines;
+}
+
 export function runCurateCommand(args: ParsedArgs, env: CommandEnvironment): CommandResult {
   const taskKey = args.positional[0];
   if (taskKey === undefined) {
@@ -247,6 +276,15 @@ export function runCurateCommand(args: ParsedArgs, env: CommandEnvironment): Com
       // Name the seal explicitly so it is never a surprise later.
       const sealed = report.byPartition.decision_test ?? 0;
       env.write(`  (${sealed} sealed into decision_test — never seen by optimization)`);
+    }
+
+    // The cumulative sealed size (not just this run's new cases) is what a gate
+    // will decide on, so estimate its power against that total.
+    const totalSealed =
+      countCasesByPartition(db, taskKey).find((p) => p.partition === "decision_test")?.count ?? 0;
+    if (totalSealed > 0) {
+      env.write("");
+      for (const line of decisionPowerLines(totalSealed)) env.write(line);
     }
     return { exitCode: 0 };
   } catch (error) {
