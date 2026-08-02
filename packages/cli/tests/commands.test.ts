@@ -409,6 +409,18 @@ describe("experiment", () => {
     expect(output()).toContain("--cap");
   });
 
+  test("--fresh is announced as measurement-only (issue #25)", async () => {
+    const { env, output } = testEnvironment();
+    await importAndCurate(env);
+    const result = await runCommand(
+      ["experiment", "support", "zai-org/GLM-5.2-FP8", "--fresh"],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("fresh:");
+    expect(output()).toContain("measurement-only");
+  });
+
   test("an unknown model is a clear config error", async () => {
     const { env, output } = testEnvironment();
     await importAndCurate(env);

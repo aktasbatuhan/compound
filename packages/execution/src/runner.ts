@@ -7,6 +7,7 @@
  * - every call is cache-first, so a re-run is $0;
  * - dry-run makes zero calls and reports what a paid run would do.
  */
+import { randomUUID } from "node:crypto";
 import { type Assertion, evaluateAssertions } from "@compound/assertions";
 import type { Message } from "@compound/contract";
 import {
@@ -87,6 +88,16 @@ export interface RunExperimentOptions {
    * base identity so it reuses any existing cache entry.
    */
   trial?: number;
+  /**
+   * Measurement hygiene (#25): inject a unique per-call nonce into the outgoing
+   * system message so each call defeats PROVIDER-side prompt caching and hits
+   * real compute — the only way to read honest TPS/latency into the
+   * provider-selection view. Because the nonce lands in `request.messages`, it
+   * also makes the completion fingerprint unique, so a fresh run never reuses OR
+   * populates the correctness cache a gate reads, and never changes a verdict.
+   * Opt-in; it only matters on a paid run (a dry run makes no calls).
+   */
+  fresh?: boolean;
 }
 
 export interface CaseRunResult {
@@ -146,11 +157,32 @@ function toOpenAiTool(tool: unknown): unknown {
   return { type: "function", function: tool };
 }
 
+/** Marker used to carry a measurement cache-bust nonce in the system message (#25). */
+export const CACHE_BUST_MARKER = "compound-measurement-nonce";
+
+/**
+ * Append a unique nonce to the system message so the provider sees a distinct
+ * prompt (defeating server-side prompt caching). If there is no string system
+ * message to append to, prepend a minimal one. Only called when messages exist.
+ */
+function withCacheBustNonce(messages: Message[], nonce: string): Message[] {
+  const tag = `[${CACHE_BUST_MARKER}: ${nonce}]`;
+  const idx = messages.findIndex((m) => m.role === "system");
+  const system = idx >= 0 ? messages[idx] : undefined;
+  if (system !== undefined && typeof system.content === "string") {
+    const next = messages.slice();
+    next[idx] = { ...system, content: `${system.content}\n\n${tag}` };
+    return next;
+  }
+  return [{ role: "system", content: tag }, ...messages];
+}
+
 function requestForCase(
   candidateModel: string,
   input: unknown,
   params: Record<string, unknown> | undefined,
   systemPromptOverride?: string,
+  freshNonce?: string,
 ): CompletionRequest {
   const record = (input ?? {}) as { input?: Message[]; tools_available?: unknown[] | null };
   const tools = record.tools_available ?? null;
@@ -160,6 +192,10 @@ function requestForCase(
       { role: "system", content: systemPromptOverride },
       ...messages.filter((m) => m.role !== "system"),
     ];
+  }
+  // Cache-bust only a real request; an empty one is skipped by the caller.
+  if (freshNonce !== undefined && messages.length > 0) {
+    messages = withCacheBustNonce(messages, freshNonce);
   }
   return {
     model: candidateModel,
@@ -215,11 +251,16 @@ export async function runExperiment(
     // The provider receives the wire id; storage keeps the logical id (#19).
     const wireModel = options.wireModel ?? options.candidateModel;
     for (const stored of cases) {
+      // A fresh measurement run gets a unique nonce per call (#25), so both the
+      // provider's prompt cache and our own completion cache miss and we time
+      // real compute.
+      const freshNonce = options.fresh === true ? randomUUID() : undefined;
       const request = requestForCase(
         wireModel,
         stored.input,
         options.params,
         options.systemPromptOverride,
+        freshNonce,
       );
       if (request.messages.length === 0) {
         skipped += 1;

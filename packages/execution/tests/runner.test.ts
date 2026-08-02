@@ -14,6 +14,7 @@ import {
   traceRecordFromValidation,
 } from "@compound/storage";
 import {
+  CACHE_BUST_MARKER,
   type CompletionRequest,
   type CompletionResponse,
   DecisionPartitionRefusedError,
@@ -257,6 +258,60 @@ describe("runExperiment money-safety", () => {
     expect(report.cache_hits).toBe(report.cases_graded);
     expect(report.actual_cost_usd).toBe(0);
     expect(totalSpendUsd(db)).toBe(spentAfterFirst); // no new spend
+  });
+
+  const paidRun = { paidRunsEnabled: true, experimentCapUsd: 5, globalHardLimitUsd: 25 } as const;
+  const systemContent = (req: CompletionRequest | undefined): string => {
+    const sys = req?.messages.find((m) => m.role === "system");
+    return typeof sys?.content === "string" ? sys.content : "";
+  };
+
+  const freshRun = {
+    taskKey: "support",
+    candidateModel: "cheap",
+    providerName: "mock",
+    price: PRICE,
+    assertions: ASSERTIONS,
+    partition: "optimization_train" as const,
+    ...paidRun,
+  };
+
+  test("a fresh run injects a distinct cache-bust nonce into each call (#25)", async () => {
+    seedCases("support", 12);
+    const provider = new MockProvider('{"ok":true}');
+    await runExperiment(db, { ...freshRun, provider, fresh: true });
+    expect(provider.calls.length).toBeGreaterThan(0);
+    // Every call carries the nonce marker, and the nonces are all distinct.
+    const markers = provider.calls.map(systemContent);
+    for (const m of markers) expect(m).toContain(CACHE_BUST_MARKER);
+    expect(new Set(markers).size).toBe(provider.calls.length);
+  });
+
+  test("a fresh run defeats the client cache: a repeat still makes real calls (#25)", async () => {
+    seedCases("support", 12);
+    const first = new MockProvider('{"ok":true}');
+    await runExperiment(db, { ...freshRun, provider: first, fresh: true });
+    const second = new MockProvider('{"ok":true}');
+    const { report } = await runExperiment(db, { ...freshRun, provider: second, fresh: true });
+    // No cache hits — each fresh nonce is a new fingerprint, so it really runs.
+    expect(second.calls.length).toBe(first.calls.length);
+    expect(first.calls.length).toBeGreaterThan(0);
+    expect(report.cache_hits).toBe(0);
+  });
+
+  test("fresh completions never populate the correctness cache a gate reads (#25)", async () => {
+    seedCases("support", 12);
+    const fresh = new MockProvider('{"ok":true}');
+    await runExperiment(db, { ...freshRun, provider: fresh, fresh: true });
+    // A normal (non-fresh) run afterwards still makes real calls: the baseline
+    // fingerprint differs from every nonce-bearing fresh one, so a gate's
+    // correctness cache is untouched by the measurement run.
+    const normal = new MockProvider('{"ok":true}');
+    const { report } = await runExperiment(db, { ...freshRun, provider: normal });
+    expect(normal.calls.length).toBe(fresh.calls.length);
+    expect(report.cache_hits).toBe(0);
+    // The baseline request carries no nonce.
+    expect(systemContent(normal.calls[0])).not.toContain(CACHE_BUST_MARKER);
   });
 
   test("a new trial re-runs fresh (own paid calls), not from the trial-0 cache", async () => {
