@@ -67,6 +67,19 @@ export interface RunTrajectoryOptions {
    * was real and must be ledgered (#23, money-safety).
    */
   onTurnComplete?: (turn: number, request: CompletionRequest, response: CompletionResponse) => void;
+  /**
+   * Consulted BEFORE each turn's provider call (#1). Return a cached response to
+   * REPLAY this turn — no provider call, no budget check, no fresh spend — or
+   * null to make the call normally. This lets a re-run RESUME a trajectory that a
+   * prior attempt left partially complete (e.g. it threw on a mid-trajectory
+   * budget failure) from the turns already cached, instead of re-hitting the
+   * provider. Without it, a retry re-executes those completed turns as real
+   * provider calls whose per-turn fingerprint is already charged, so the ledger's
+   * idempotency lets the new (billed) calls through un-ledgered — a cap leak.
+   * A replayed turn fires neither `beforeTurn` nor `onTurnComplete`: it was
+   * already budgeted and ledgered on the attempt that cached it.
+   */
+  cachedTurn?: (turn: number, request: CompletionRequest) => CompletionResponse | null;
 }
 
 /** Why a trajectory stopped. Only `answered` yields a gradeable outcome. */
@@ -316,16 +329,29 @@ export async function runTrajectory(
 
   while (turns < maxTurns) {
     const turnRequest: CompletionRequest = { ...options.request, messages: [...messages] };
-    // Budget headroom is enforced per turn against THIS turn's real request, not
-    // once up front — a trajectory can call the provider many times (#23).
-    options.beforeTurn?.(turns + 1, turnRequest);
-    const response = await provider.complete(turnRequest);
-    turns += 1;
-    latencyMs += response.latencyMs;
-    if (response.usage !== null) usage = addUsage(usage, response.usage);
-    // Ledger this turn immediately — even if the tool calls below force a policy
-    // stop, this model call was real and billable.
-    options.onTurnComplete?.(turns, turnRequest, response);
+    // Resume from a per-turn cache if a prior attempt already completed this turn
+    // (#1): a replayed turn makes NO provider call and is neither budgeted nor
+    // ledgered again — it was paid for on the attempt that cached it. Only a turn
+    // with no cached response falls through to a real, budget-checked call.
+    const replay = options.cachedTurn?.(turns + 1, turnRequest) ?? null;
+    let response: CompletionResponse;
+    if (replay !== null) {
+      response = replay;
+      turns += 1;
+      latencyMs += response.latencyMs;
+      if (response.usage !== null) usage = addUsage(usage, response.usage);
+    } else {
+      // Budget headroom is enforced per turn against THIS turn's real request, not
+      // once up front — a trajectory can call the provider many times (#23).
+      options.beforeTurn?.(turns + 1, turnRequest);
+      response = await provider.complete(turnRequest);
+      turns += 1;
+      latencyMs += response.latencyMs;
+      if (response.usage !== null) usage = addUsage(usage, response.usage);
+      // Ledger this turn immediately — even if the tool calls below force a policy
+      // stop, this model call was real and billable.
+      options.onTurnComplete?.(turns, turnRequest, response);
+    }
     finalMessage = response.output;
     messages.push(response.output);
 

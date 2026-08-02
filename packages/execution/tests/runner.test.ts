@@ -618,6 +618,64 @@ describe("runExperiment agentic multi-turn (#23)", () => {
     expect(totalSpendUsd(db)).toBeCloseTo(spendAfterFirst, 9);
   });
 
+  test("a re-run RESUMES a budget-interrupted trajectory from per-turn cache — no re-charge (#1)", async () => {
+    seedLoopingCase();
+    const shared = {
+      taskKey: "agent",
+      candidateModel: "cand",
+      providerName: "mock",
+      price: PRICE,
+      assertions: [{ type: "tool_called", name: "spin" }] as Assertion[],
+      partition: "optimization_train" as const,
+      agentic: true,
+      // Endless loop under `mocked`, so the per-turn budget (not a consumed
+      // recorded result) is what stops it. maxTurns is part of the trajectory
+      // identity, so it MUST match across attempts for the resume to line up.
+      replayPolicy: { default: "mocked" as const },
+      maxTurns: 5,
+      globalHardLimitUsd: 1000,
+    };
+
+    // Attempt 1: each turn bills ~$1 (measured). A $1.5 cap lets exactly two turns
+    // complete; the third's headroom check throws. The trajectory NEVER reaches a
+    // terminal stop, so NO aggregate is cached — only the two completed turns are
+    // cached individually under their per-turn fingerprints.
+    const first = new ScriptedProvider([spin], { input_tokens: 1_000_000, output_tokens: 0 });
+    await expect(
+      runExperiment(db, {
+        ...shared,
+        provider: first,
+        paidRunsEnabled: true,
+        experimentCapUsd: 1.5,
+      }),
+    ).rejects.toBeInstanceOf(BudgetExceededError);
+    expect(first.calls).toHaveLength(2); // two real, ledgered calls
+    const spendAfterFirst = totalSpendUsd(db);
+    expect(spendAfterFirst).toBeCloseTo(2, 9);
+
+    // Attempt 2 (the retry, cap raised): the bug (#1) was that a re-run re-executed
+    // the two already-completed turns as fresh provider calls whose per-turn
+    // fingerprint is already charged, so the ledger idempotency let the new BILLED
+    // calls through un-ledgered. With per-turn resume, those two turns replay at $0
+    // (no provider call) and only the remaining turns hit the provider.
+    const second = new ScriptedProvider([spin], { input_tokens: 1_000_000, output_tokens: 0 });
+    const { report } = await runExperiment(db, {
+      ...shared,
+      provider: second,
+      paidRunsEnabled: true,
+      experimentCapUsd: 10,
+    });
+    // Turns 1-2 resumed from cache → the provider only sees turns 3,4,5.
+    expect(second.calls).toHaveLength(3);
+    expect(report.provider_calls).toBe(3); // only real calls, not the 2 replayed
+    expect(report.cases_skipped).toBe(1); // truncated at maxTurns
+    expect(report.skip_reasons?.turn_budget_exhausted).toBe(1);
+    // The ledger moved by exactly the 3 new calls, and the grand total equals every
+    // real provider call ever made (2 + 3) — no billed call went un-ledgered.
+    expect(totalSpendUsd(db)).toBeCloseTo(spendAfterFirst + 3, 9);
+    expect(totalSpendUsd(db)).toBeCloseTo(first.calls.length + second.calls.length, 9);
+  });
+
   test("a truncated trajectory is skipped, never graded as a pass (#4)", async () => {
     seedLoopingCase();
     // The model never answers; with maxTurns=3 the run hits the budget. A

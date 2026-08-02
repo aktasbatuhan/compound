@@ -390,11 +390,35 @@ export async function runExperiment(
         // runs out mid-trajectory, the turns already made are still billed — no
         // phantom paid call, no cap overrun.
         let trajCost = 0;
+        // Real provider calls this run — replayed (per-turn cached) turns don't
+        // count, so a resumed trajectory reports only the calls it actually made.
+        let realTurnCalls = 0;
         const traj = await runTrajectory(options.provider, {
           request,
           recordedToolResults,
           policy: replayPolicy,
           maxTurns,
+          cachedTurn: (turn, _turnRequest) => {
+            // Resume a turn a prior attempt already completed (#1): return its
+            // cached completion so runTrajectory replays it with NO provider call.
+            // Without this, a re-run of a trajectory that threw mid-flight (e.g. a
+            // budget failure that never cached an aggregate) re-executes the
+            // already-charged turns as real calls the per-turn ledger idempotency
+            // then lets through un-ledgered. Its cost counts toward the case cost
+            // but NOT actualCost — no money was spent on this run's replay, exactly
+            // as a top-level completion cache hit reports.
+            const turnFingerprint = `${fingerprint}#turn:${turn}`;
+            const cachedRow = getCachedCompletion(db, turnFingerprint);
+            if (cachedRow === null) return null;
+            trajCost += cachedRow.costUsd;
+            return {
+              output: cachedRow.outputJson as Message,
+              usage: (cachedRow.usageJson as CompletionResponse["usage"]) ?? null,
+              finishReason: cachedRow.finishReason,
+              resolvedModel: cachedRow.resolvedModel,
+              latencyMs: cachedRow.latencyMs ?? 0,
+            };
+          },
           beforeTurn: (turn, turnRequest) => {
             const turnFingerprint = `${fingerprint}#turn:${turn}`;
             const perCallEstimate = estimateCost(turnRequest, options.price);
@@ -412,6 +436,7 @@ export async function runExperiment(
           },
           onTurnComplete: (turn, turnRequest, turnResponse) => {
             const turnFingerprint = `${fingerprint}#turn:${turn}`;
+            realTurnCalls += 1;
             // A turn whose provider returned no usage is billed at the estimate,
             // never $0 (#3), so a null-usage turn can't leak the cap.
             const { costUsd: turnCost, usageKnown } = chargeableCost(
@@ -422,16 +447,33 @@ export async function runExperiment(
             if (!usageKnown) costUnknownCalls += 1;
             trajCost += turnCost;
             actualCost += turnCost;
-            // Persist immediately so a crash — or a policy stop below — never
-            // loses a real call's spend.
+            // Persist spend AND the turn's completion immediately, so a crash — or
+            // a policy stop below, or a mid-trajectory throw — never loses a real
+            // call's spend, and a later re-run RESUMES this turn from cache instead
+            // of re-charging it (#1). Keyed by the per-turn fingerprint, distinct
+            // from the aggregate fingerprint the whole trajectory caches under.
             recordSpend(db, {
               fingerprint: turnFingerprint,
               costUsd: turnCost,
               experimentId: experiment.id,
             });
+            cacheCompletion(db, {
+              fingerprint: turnFingerprint,
+              provider: options.providerName,
+              model: options.candidateModel,
+              resolvedModel: turnResponse.resolvedModel,
+              upstreamProvider: turnResponse.upstreamProvider ?? null,
+              params: options.params ?? null,
+              output: turnResponse.output,
+              usage: turnResponse.usage,
+              finishReason: turnResponse.finishReason,
+              latencyMs: turnResponse.latencyMs,
+              queueMs: turnResponse.queueMs ?? null,
+              costUsd: turnCost,
+            });
           },
         });
-        providerCalls += traj.turns; // count every turn's call, not just one
+        providerCalls += realTurnCalls; // only real calls, not replayed turns
         costUsd = trajCost;
 
         if (traj.stop.reason !== "answered") {
