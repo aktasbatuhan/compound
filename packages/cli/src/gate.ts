@@ -263,6 +263,7 @@ export async function runGateCommand(
     const {
       result,
       pairs,
+      coverage,
       priorDecisions: prior,
     } = decideGate(db, {
       taskKey,
@@ -275,6 +276,12 @@ export async function runGateCommand(
       minCases,
       judgeAbstainMax,
       firewallReason: reason,
+      // Coverage gate (#5): void a verdict decided on a self-selected subset of
+      // the sealed set (too many omissions, or the two runs skipped different
+      // cases). Reports coverage always; enforces only when this is set.
+      ...(config.gate?.max_skip_fraction !== undefined
+        ? { maxSkipFraction: config.gate.max_skip_fraction }
+        : {}),
       // Only a paid, deliberate run persists the spec + verdict; a dry run is a
       // side-effect-free preview (issue #20).
       persist: wantsPaid,
@@ -331,6 +338,30 @@ export async function runGateCommand(
         `[${(result.ciLo * 100).toFixed(1)}pp, ${(result.ciHi * 100).toFixed(1)}pp]`,
     );
     env.write(`  cases:       ${result.n} paired (min ${minCases})`);
+    // Coverage (#5): what fraction of the sealed set was actually decided, and
+    // where the rest went — so a verdict on a shrunken sample is never silent.
+    env.write(
+      `  coverage:    ${coverage.paired}/${coverage.sealedTotal} sealed decided ` +
+        `(${(coverage.skipFraction * 100).toFixed(1)}% omitted)`,
+    );
+    if (coverage.skippedCandidate > 0 || coverage.skippedReference > 0 || coverage.abstained > 0) {
+      env.write(
+        `  omissions:   candidate skipped ${coverage.skippedCandidate}, ` +
+          `reference skipped ${coverage.skippedReference}, abstained ${coverage.abstained}`,
+      );
+    }
+    if (coverage.asymmetric > 0) {
+      env.write(
+        `  warning:     ${coverage.asymmetric} case(s) gradeable on only ONE side — ` +
+          "the runs disagree on what they could grade, so the paired sample is self-selected.",
+      );
+    }
+    if (coverage.shortfall) {
+      env.write(
+        "  note:        coverage gate voided this verdict (insufficient_data): too much of the " +
+          "sealed set was omitted, or the two runs skipped different cases.",
+      );
+    }
     if (mode === "non_inferiority") {
       env.write(
         `  margin:      ${(-margin * 100).toFixed(1)}pp (candidate may be this much worse)`,

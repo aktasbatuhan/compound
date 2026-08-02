@@ -8,6 +8,7 @@
  */
 import {
   type CompoundDatabase,
+  countCasesByPartition,
   createGateSpec,
   decidedCohort,
   type ExperimentResultRow,
@@ -34,6 +35,14 @@ export interface DecideGateInput extends GateRule {
   /** Provenance for an adoption gate: the optimization artifact under test. */
   optimizationRunId?: string;
   bootstrapIterations?: number;
+  /**
+   * Coverage gate (#5): the largest fraction of the sealed set that may be
+   * omitted (skipped/abstained on either side) before the decision is void.
+   * When set and exceeded — or when the two sides skip DIFFERENT cases — the
+   * verdict is forced to `insufficient_data` rather than decided on a silent,
+   * self-selected subset. Undefined = report coverage but don't enforce.
+   */
+  maxSkipFraction?: number;
   /**
    * Persist the pre-declared spec and the decided result (default true). A
    * dry-run preview passes `false`: it computes and returns the same verdict but
@@ -64,10 +73,32 @@ export interface PairedCase {
   abstained: boolean;
 }
 
+/** How much of the sealed set the decision actually covered (#5). */
+export interface DecisionCoverage {
+  /** Cases in the task's sealed decision partition. */
+  sealedTotal: number;
+  /** Graded on BOTH sides and not abstained — the diff sample (= pairs.length). */
+  paired: number;
+  /** Present on both but a judge abstained on at least one side. */
+  abstained: number;
+  /** Sealed cases NOT graded on the candidate side (skipped, dry-run, or absent). */
+  skippedCandidate: number;
+  /** Sealed cases NOT graded on the reference side. */
+  skippedReference: number;
+  /** Cases graded on exactly ONE side — the two runs disagree on what they could grade. */
+  asymmetric: number;
+  /** (sealedTotal − paired) / sealedTotal: the omitted fraction the guard checks. */
+  skipFraction: number;
+  /** True when coverage voided the verdict (fraction exceeded, or asymmetric skips). */
+  shortfall: boolean;
+}
+
 export interface DecideGateResult {
   spec: GateSpecRow;
   result: GateResultRow;
   pairs: PairedCase[];
+  /** How much of the sealed set was actually decided vs silently omitted (#5). */
+  coverage: DecisionCoverage;
   /** Fingerprint of the sealed set decided on; null if the task has no sealed cases. */
   partitionVersion: string | null;
   /** How often this sealed set was decided BEFORE this decision (the peeking budget, #22). */
@@ -155,6 +186,52 @@ export function pairCases(
   return { pairs, abstainedCount, presentCount };
 }
 
+/**
+ * Measure how much of the sealed set the decision actually covered (#5). The
+ * gate decides on the paired intersection, which can silently shrink the sample
+ * (e.g. agentic cases skipped for a blocked tool). This surfaces the omissions —
+ * per side and, crucially, when the two runs skipped DIFFERENT cases — so a
+ * verdict on a self-selected subset can be flagged instead of trusted.
+ */
+export function decisionCoverage(
+  sealedTotal: number,
+  candidateRows: ExperimentResultRow[],
+  referenceRows: ExperimentResultRow[],
+  pairedCount: number,
+  abstainedCount: number,
+  maxSkipFraction?: number,
+): DecisionCoverage {
+  const cand = byCase(candidateRows);
+  const ref = byCase(referenceRows);
+  const graded = (row: ExperimentResultRow | undefined): boolean =>
+    row?.status === "graded" && !row.judgeAbstained;
+  const allIds = new Set<string>([...cand.keys(), ...ref.keys()]);
+  let skippedCandidate = 0;
+  let skippedReference = 0;
+  let asymmetric = 0;
+  for (const id of allIds) {
+    const cGraded = graded(cand.get(id));
+    const rGraded = graded(ref.get(id));
+    if (cGraded && rGraded) continue;
+    if (!cGraded) skippedCandidate += 1;
+    if (!rGraded) skippedReference += 1;
+    if (cGraded !== rGraded) asymmetric += 1; // gradeable on exactly one side
+  }
+  const skipFraction = sealedTotal > 0 ? (sealedTotal - pairedCount) / sealedTotal : 0;
+  const overFraction = maxSkipFraction !== undefined && skipFraction > maxSkipFraction;
+  const shortfall = maxSkipFraction !== undefined && (overFraction || asymmetric > 0);
+  return {
+    sealedTotal,
+    paired: pairedCount,
+    abstained: abstainedCount,
+    skippedCandidate,
+    skippedReference,
+    asymmetric,
+    skipFraction,
+    shortfall,
+  };
+}
+
 export function decideGate(db: CompoundDatabase, input: DecideGateInput): DecideGateResult {
   if (input.firewallReason.trim().length === 0) {
     throw new GateInputError("a gate needs a firewall reason: state why the sealed set is opened");
@@ -202,7 +279,7 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
   );
   const judgeAbstainedFraction = presentCount > 0 ? abstainedCount / presentCount : 0;
 
-  const outcome = decideOutcome({
+  const decided = decideOutcome({
     mode: rule.mode,
     margin: rule.margin,
     ciLo: ci.lo,
@@ -212,6 +289,23 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
     judgeAbstainedFraction,
     judgeAbstainMax: rule.judgeAbstainMax,
   });
+
+  // Coverage gate (#5): the decision runs on the paired intersection, which can
+  // silently omit sealed cases. If too much of the set was omitted, or the two
+  // runs skipped different cases, the sample is self-selected — void the verdict
+  // to `insufficient_data` rather than decide on it.
+  const sealedTotal =
+    countCasesByPartition(db, rule.taskKey).find((p) => p.partition === "decision_test")?.count ??
+    0;
+  const coverage = decisionCoverage(
+    sealedTotal,
+    getExperimentResults(db, candidate.id),
+    getExperimentResults(db, reference.id),
+    pairs.length,
+    abstainedCount,
+    input.maxSkipFraction,
+  );
+  const outcome = coverage.shortfall ? "insufficient_data" : decided;
 
   const candidateRate = pairs.length > 0 ? mean(pairs.map((p) => p.candidateScore)) : 0;
   const referenceRate = pairs.length > 0 ? mean(pairs.map((p) => p.referenceScore)) : 0;
@@ -264,7 +358,7 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
       decisionPartitionVersion: partitionVersion,
       decidedAt: now,
     };
-    return { spec, result, pairs, partitionVersion, priorDecisions: prior, isAdoption };
+    return { spec, result, pairs, coverage, partitionVersion, priorDecisions: prior, isAdoption };
   }
 
   // The peeking guard: a paid decision that reuses ANY previously-decided label
@@ -330,7 +424,7 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
   // reuses any of these labels is caught by the peeking guard (#3).
   recordDecisionCohort(db, result.id, cohort.contentHashes);
 
-  return { spec, result, pairs, partitionVersion, priorDecisions: prior, isAdoption };
+  return { spec, result, pairs, coverage, partitionVersion, priorDecisions: prior, isAdoption };
 }
 
 function mean(xs: number[]): number {

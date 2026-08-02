@@ -386,6 +386,74 @@ describe("decideGate", () => {
     handle.close();
   });
 
+  // --- Coverage gate (#5) -------------------------------------------------
+  test("reports how much of the sealed set was actually decided", () => {
+    const handle = db();
+    sealCases(handle, ["h1", "h2", "h3", "h4"]);
+    // Both runs grade only 3 of the 4 sealed cases (both skip h4).
+    const withSkip = (): CaseResultInput[] => [
+      ...decisionResults(["h1", "h2", "h3"]),
+      { caseId: "seal-h4", status: "skipped" as const },
+    ];
+    const { coverage } = decideGate(handle, {
+      ...rule,
+      minCases: 3,
+      candidateExperimentId: completedExperiment(handle, "cand", withSkip()).id,
+      referenceExperimentId: completedExperiment(handle, "ref", withSkip()).id,
+    });
+    expect(coverage.sealedTotal).toBe(4);
+    expect(coverage.paired).toBe(3);
+    expect(coverage.skippedCandidate).toBe(1);
+    expect(coverage.skippedReference).toBe(1);
+    expect(coverage.asymmetric).toBe(0); // both skipped the SAME case
+    expect(coverage.skipFraction).toBeCloseTo(0.25, 10);
+  });
+
+  test("asymmetric skips void the verdict when the coverage gate is on (#5)", () => {
+    const handle = db();
+    sealCases(handle, ["h1", "h2", "h3", "h4"]);
+    // The candidate grades h1..h4; the reference skips h4 → they disagree on
+    // what they could grade, so the paired sample is self-selected.
+    const cand = completedExperiment(handle, "cand", decisionResults(["h1", "h2", "h3", "h4"]));
+    const ref = completedExperiment(handle, "ref", [
+      ...decisionResults(["h1", "h2", "h3"]),
+      { caseId: "seal-h4", status: "skipped" as const },
+    ]);
+    const { result, coverage } = decideGate(handle, {
+      ...rule,
+      minCases: 3,
+      maxSkipFraction: 0.5,
+      candidateExperimentId: cand.id,
+      referenceExperimentId: ref.id,
+    });
+    expect(coverage.asymmetric).toBe(1);
+    expect(coverage.shortfall).toBe(true);
+    expect(result.outcome).toBe("insufficient_data");
+  });
+
+  test("too much omission voids the verdict when a max skip fraction is set (#5)", () => {
+    const handle = db();
+    sealCases(handle, ["h1", "h2", "h3", "h4", "h5", "h6"]);
+    // Only 2 of 6 graded on both → 67% omitted, over a 0.3 ceiling.
+    const partial = (): CaseResultInput[] => [
+      ...decisionResults(["h1", "h2"]),
+      ...["h3", "h4", "h5", "h6"].map((h) => ({
+        caseId: `seal-${h}`,
+        status: "skipped" as const,
+      })),
+    ];
+    const { result, coverage } = decideGate(handle, {
+      ...rule,
+      minCases: 2,
+      maxSkipFraction: 0.3,
+      candidateExperimentId: completedExperiment(handle, "cand", partial()).id,
+      referenceExperimentId: completedExperiment(handle, "ref", partial()).id,
+    });
+    expect(coverage.skipFraction).toBeCloseTo(4 / 6, 10);
+    expect(coverage.shortfall).toBe(true);
+    expect(result.outcome).toBe("insufficient_data");
+  });
+
   test("refuses an empty firewall reason", () => {
     const handle = db();
     const cand = completedExperiment(handle, "cand", passResults(30, 27));

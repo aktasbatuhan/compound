@@ -129,6 +129,13 @@ export const GateSchema = z.looseObject({
   block_repeat_decision: z.boolean().optional(),
   /** Deprecated alias for `block_repeat_decision`; both enable the guard. */
   block_repeat_after_adoption: z.boolean().optional(),
+  /**
+   * Coverage gate (#5): the largest fraction of the sealed decision set that may
+   * be omitted (skipped/abstained on either side) before a verdict is voided to
+   * insufficient_data. Asymmetric skips (the two runs dropping different cases)
+   * void it regardless. Unset = report coverage but don't enforce.
+   */
+  max_skip_fraction: z.number().min(0).max(1).optional(),
 });
 
 // ---------------------------------------------------------------------------

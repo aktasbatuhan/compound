@@ -344,6 +344,11 @@
         },
         "block_repeat_after_adoption": {
           "type": "boolean"
+        },
+        "max_skip_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         }
       },
       "additionalProperties": {}
