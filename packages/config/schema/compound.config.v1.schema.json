@@ -550,7 +550,8 @@
                 "type": "string",
                 "enum": [
                   "langfuse",
-                  "json"
+                  "json",
+                  "otel"
                 ]
               },
               "path": {

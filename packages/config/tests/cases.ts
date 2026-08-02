@@ -59,6 +59,7 @@ export const validCases: Record<string, Record<string, unknown>> = {
     sources: [
       { name: "langfuse-prod", importer: "langfuse", path: "exports/langfuse.jsonl" },
       { name: "manual", importer: "json" },
+      { name: "otel-collector", importer: "otel", path: "exports/otlp.jsonl" },
     ],
   }),
   "assertions with tool_call_arg": withSection("assertions", {
@@ -121,7 +122,7 @@ export const invalidCases: Record<string, unknown> = {
   }),
   "ingest unknown importer": withSection("ingest", {
     default_permissions: { judging: true, optimization: true, fine_tuning: false },
-    sources: [{ name: "otel", importer: "otel" }],
+    sources: [{ name: "phoenix", importer: "phoenix" }],
   }),
   "ingest source unknown field": withSection("ingest", {
     default_permissions: { judging: true, optimization: true, fine_tuning: false },

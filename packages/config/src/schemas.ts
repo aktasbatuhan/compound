@@ -209,7 +209,7 @@ export const PermissionsSchema = z.strictObject({
   fine_tuning: z.boolean(),
 });
 
-export const ImporterSchema = z.enum(["langfuse", "json"]);
+export const ImporterSchema = z.enum(["langfuse", "json", "otel"]);
 
 export const IngestSourceSchema = z.strictObject({
   name: nonEmptyString,
