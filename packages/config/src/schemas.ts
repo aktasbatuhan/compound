@@ -296,12 +296,42 @@ export const AssertionSchema = z
       });
       return;
     }
-    const present = TOOL_ARG_MATCHER_KEYS.filter((k) => k in (match as Record<string, unknown>));
+    const matchObj = match as Record<string, unknown>;
+    const present = TOOL_ARG_MATCHER_KEYS.filter((k) => k in matchObj);
     if (present.length !== 1) {
       ctx.addIssue({
         code: "custom",
         message: `tool_call_arg.match must have exactly one of ${TOOL_ARG_MATCHER_KEYS.join("/")}; got ${present.length}`,
         path: ["match"],
+      });
+      return;
+    }
+    // The single matcher's payload must have the right shape (#9). Without this a
+    // `{subset: 23}` passed config and then vacuously passed the assertion at
+    // runtime (Object.entries(23) is empty). `equals` accepts any value.
+    const key = present[0] as (typeof TOOL_ARG_MATCHER_KEYS)[number];
+    const payload = matchObj[key];
+    const isPlainObject = (v: unknown): boolean =>
+      v !== null && typeof v === "object" && !Array.isArray(v);
+    if (key === "regex" && typeof payload !== "string") {
+      ctx.addIssue({
+        code: "custom",
+        message: "tool_call_arg.match.regex must be a string pattern",
+        path: ["match", "regex"],
+      });
+    }
+    if (key === "subset" && !isPlainObject(payload)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "tool_call_arg.match.subset must be an object of key/value pairs",
+        path: ["match", "subset"],
+      });
+    }
+    if (key === "schema" && !isPlainObject(payload)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "tool_call_arg.match.schema must be a JSON Schema object",
+        path: ["match", "schema"],
       });
     }
   });

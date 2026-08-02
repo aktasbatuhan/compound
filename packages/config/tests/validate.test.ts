@@ -115,6 +115,35 @@ describe("tool_call_arg matcher validation (#8)", () => {
       false,
     );
   });
+
+  test("rejects a non-object subset payload — the vacuous-pass hole (#9)", () => {
+    const result = validateConfig(
+      withAssertion({ type: "tool_call_arg", name: "x", match: { subset: 23 } }),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.some((i) => i.path.endsWith("subset"))).toBe(true);
+  });
+
+  test("rejects a non-string regex payload (#9)", () => {
+    expect(
+      validateConfig(withAssertion({ type: "tool_call_arg", name: "x", match: { regex: 23 } })).ok,
+    ).toBe(false);
+  });
+
+  test("rejects a non-object schema payload (#9)", () => {
+    expect(
+      validateConfig(withAssertion({ type: "tool_call_arg", name: "x", match: { schema: 5 } })).ok,
+    ).toBe(false);
+  });
+
+  test("still accepts a well-formed subset object (#9)", () => {
+    expect(
+      validateConfig(
+        withAssertion({ type: "tool_call_arg", name: "x", match: { subset: { amount: 23 } } }),
+      ).ok,
+    ).toBe(true);
+  });
 });
 
 describe("issues are path-qualified", () => {

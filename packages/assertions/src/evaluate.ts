@@ -62,6 +62,11 @@ function compileMatcher(match: unknown): ((value: unknown) => boolean) | { error
     return (value) => structuralEqual(value, m.equals);
   }
   if ("regex" in m) {
+    // A non-string pattern is a malformed matcher, not a regex to compile (#9):
+    // reject it rather than coercing `23` into "23".
+    if (typeof m.regex !== "string") {
+      return { error: "tool_call_arg 'regex' must be a string pattern" };
+    }
     let re: RegExp;
     try {
       re = new RegExp(m.regex, m.flags);
@@ -71,15 +76,24 @@ function compileMatcher(match: unknown): ((value: unknown) => boolean) | { error
     return (value) => re.test(typeof value === "string" ? value : JSON.stringify(value));
   }
   if ("subset" in m) {
+    // The subset payload MUST be an object of key/value pairs (#9). Without this
+    // guard `{subset: 23}` reached Object.entries(23) → [] → `.every()` returned
+    // true for ANY argument, so a malformed matcher passed vacuously.
+    const subset = m.subset;
+    if (subset === null || typeof subset !== "object" || Array.isArray(subset)) {
+      return { error: "tool_call_arg 'subset' must be an object of key/value pairs" };
+    }
+    const entries = Object.entries(subset as Record<string, unknown>);
     return (value) => {
       if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
       const obj = value as Record<string, unknown>;
-      return Object.entries(m.subset).every(
-        ([key, expected]) => key in obj && structuralEqual(obj[key], expected),
-      );
+      return entries.every(([key, expected]) => key in obj && structuralEqual(obj[key], expected));
     };
   }
   if ("schema" in m) {
+    if (m.schema === null || typeof m.schema !== "object" || Array.isArray(m.schema)) {
+      return { error: "tool_call_arg 'schema' must be a JSON Schema object" };
+    }
     let validateFn: ReturnType<typeof ajv.compile>;
     try {
       validateFn = ajv.compile(m.schema as object);
@@ -159,7 +173,9 @@ function evaluateOne(assertion: Assertion, subject: AssertionSubject): Outcome {
     case "equals": {
       const value = resolvePath(subject, assertion.path);
       if (isAbsent(value)) return { passed: false, detail: value.reason };
-      const equal = JSON.stringify(value) === JSON.stringify(assertion.value);
+      // Structural equality, so {a:1,b:2} and {b:2,a:1} are equal (#10) — a
+      // JSON.stringify compare falsely fails on key order.
+      const equal = structuralEqual(value, assertion.value);
       return {
         passed: equal,
         detail: equal
@@ -171,7 +187,7 @@ function evaluateOne(assertion: Assertion, subject: AssertionSubject): Outcome {
     case "json_path_equals": {
       const value = resolvePath(subject, assertion.path);
       if (isAbsent(value)) return { passed: false, detail: value.reason };
-      const equal = JSON.stringify(value) === JSON.stringify(assertion.value);
+      const equal = structuralEqual(value, assertion.value); // key-order-insensitive (#10)
       return {
         passed: equal,
         detail: equal
@@ -203,9 +219,9 @@ function evaluateOne(assertion: Assertion, subject: AssertionSubject): Outcome {
       if (calls.length === 0) {
         return { passed: false, detail: `tool '${assertion.name}' was not called` };
       }
-      const match = calls.some(
-        (call) => JSON.stringify(call.arguments[assertion.arg]) === JSON.stringify(assertion.value),
-      );
+      const match = calls.some((call) =>
+        structuralEqual(call.arguments[assertion.arg], assertion.value),
+      ); // key-order-insensitive (#10)
       return match
         ? { passed: true, detail: `tool '${assertion.name}' arg '${assertion.arg}' matched` }
         : {

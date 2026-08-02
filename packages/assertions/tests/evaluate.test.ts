@@ -83,6 +83,20 @@ describe("equals and json_path_equals", () => {
       false,
     );
   });
+
+  test("equals is key-order insensitive on objects (#10)", () => {
+    const out = textOutput('{"data":{"b":2,"a":1}}');
+    // The value resolved at the path is an object whose keys differ in order from
+    // the expected value; structural equality passes where JSON.stringify fails.
+    expect(run({ type: "equals", path: "data", value: { a: 1, b: 2 } }, out).passed).toBe(true);
+  });
+
+  test("json_path_equals is key-order insensitive on objects (#10)", () => {
+    const out = textOutput('{"data":{"b":2,"a":1}}');
+    expect(run({ type: "json_path_equals", path: "data", value: { a: 1, b: 2 } }, out).passed).toBe(
+      true,
+    );
+  });
 });
 
 describe("tool assertions", () => {
@@ -116,6 +130,14 @@ describe("tool assertions", () => {
       run({ type: "tool_arg_equals", name: "lookup_order", arg: "order_id", value: "Z9" }, output)
         .passed,
     ).toBe(false);
+  });
+
+  test("tool_arg_equals is key-order insensitive on object arguments (#10)", () => {
+    const objArg = toolOutput([{ id: "1", name: "book", arguments: { seat: { row: 1, col: 2 } } }]);
+    expect(
+      run({ type: "tool_arg_equals", name: "book", arg: "seat", value: { col: 2, row: 1 } }, objArg)
+        .passed,
+    ).toBe(true);
   });
 
   test("tool assertions on a text-only output fail cleanly", () => {
@@ -243,6 +265,19 @@ describe("tool_call_arg", () => {
     const result = run(assertion, disputeRight);
     expect(result.passed).toBe(false);
     expect(result.detail).toContain("matcher");
+  });
+
+  test("a malformed subset matcher fails SAFE, never passes vacuously (#9)", () => {
+    // `{subset: 23}` used to reach Object.entries(23) → [] → `.every()` true for
+    // ANY argument. It must fail the assertion with a reason instead.
+    const assertion = {
+      type: "tool_call_arg",
+      name: "dispute_charge",
+      match: { subset: 23 },
+    } as unknown as Assertion;
+    const result = run(assertion, disputeRight);
+    expect(result.passed).toBe(false);
+    expect(result.detail).toContain("subset");
   });
 
   test("equals matches regardless of argument key order (#10)", () => {
