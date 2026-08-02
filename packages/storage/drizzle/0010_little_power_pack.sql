@@ -1,0 +1,1 @@
+ALTER TABLE `gate_results` ADD `decision_partition_version` text;

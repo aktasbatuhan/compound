@@ -6,7 +6,7 @@
  * before results exist, and a spec hash is unique, so re-declaring the identical
  * rule reuses the same row rather than minting a second one.
  */
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { CompoundDatabase } from "./db";
 import {
   type GateMetric,
@@ -96,6 +96,8 @@ export interface RecordGateResultInput {
   candidateRate: number;
   referenceRate: number;
   judgeAbstainedFraction: number;
+  /** Fingerprint of the sealed set this verdict was decided on (the peeking guard, #22). */
+  decisionPartitionVersion?: string | null;
 }
 
 export function recordGateResult(
@@ -118,6 +120,53 @@ export function getGateResult(handle: CompoundDatabase, id: string): GateResultR
 export interface GateResultWithSpec {
   result: GateResultRow;
   spec: GateSpecRow;
+}
+
+export interface PriorDecisions {
+  /** Verdicts already recorded on this sealed set (excludes the one being decided). */
+  count: number;
+  /** When the sealed set was first decided, or null if it never has been. */
+  firstDecidedAt: Date | null;
+  /** How many of those prior verdicts were adoption decisions (an optimized prompt under test). */
+  adoptionCount: number;
+}
+
+/**
+ * How many times a task's SEALED decision set (identified by its partition
+ * version) has already been decided — the multiple-comparisons budget for #22.
+ * A null version (no sealed cases, or a pre-guard verdict) counts as never
+ * decided.
+ */
+export function priorDecisions(
+  handle: CompoundDatabase,
+  taskKey: string,
+  partitionVersion: string | null,
+): PriorDecisions {
+  const empty: PriorDecisions = { count: 0, firstDecidedAt: null, adoptionCount: 0 };
+  if (partitionVersion === null) return empty;
+  const rows = handle.db
+    .select({
+      decidedAt: gateResults.decidedAt,
+      candidatePromptHash: gateSpecs.candidatePromptHash,
+      optimizationRunId: gateSpecs.optimizationRunId,
+    })
+    .from(gateResults)
+    .innerJoin(gateSpecs, eq(gateResults.gateSpecId, gateSpecs.id))
+    .where(
+      and(
+        eq(gateSpecs.taskKey, taskKey),
+        eq(gateResults.decisionPartitionVersion, partitionVersion),
+      ),
+    )
+    .all();
+  if (rows.length === 0) return empty;
+  let firstDecidedAt: Date | null = null;
+  let adoptionCount = 0;
+  for (const row of rows) {
+    if (firstDecidedAt === null || row.decidedAt < firstDecidedAt) firstDecidedAt = row.decidedAt;
+    if (row.candidatePromptHash != null || row.optimizationRunId != null) adoptionCount += 1;
+  }
+  return { count: rows.length, firstDecidedAt, adoptionCount };
 }
 
 /** Every decided gate, newest first, each joined to the rule it was decided under. */

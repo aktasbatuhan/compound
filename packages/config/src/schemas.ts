@@ -121,6 +121,12 @@ export const GateSchema = z.looseObject({
   metric: nonEmptyString.optional(),
   max_regression: z.number().optional(),
   require_decision_test: z.boolean().optional(),
+  /**
+   * The peeking guard (#22): once an optimized prompt has been adopted against a
+   * task's sealed decision set, block a further paid decision on that same
+   * held-out set (a re-curation resets it). Defaults to warn-only.
+   */
+  block_repeat_after_adoption: z.boolean().optional(),
 });
 
 // ---------------------------------------------------------------------------

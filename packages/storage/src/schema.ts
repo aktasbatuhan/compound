@@ -409,6 +409,14 @@ export const gateResults = sqliteTable(
     candidateRate: real("candidate_rate").notNull(),
     referenceRate: real("reference_rate").notNull(),
     judgeAbstainedFraction: real("judge_abstained_fraction").notNull().default(0),
+    /**
+     * Fingerprint of the sealed decision_test set this verdict was decided on
+     * (a hash of its case content hashes). Lets repeated decisions on the SAME
+     * held-out set be counted for the peeking guard (#22); a re-curation yields
+     * a new version, which resets the decision budget. Null for verdicts decided
+     * before the guard existed.
+     */
+    decisionPartitionVersion: text("decision_partition_version"),
     decidedAt: integer("decided_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),

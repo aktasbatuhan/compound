@@ -16,7 +16,10 @@ import {
   type GateSpecRow,
   getExperiment,
   getExperimentResults,
+  type PriorDecisions,
+  priorDecisions,
   recordGateResult,
+  sealedPartitionVersion,
 } from "@compound/storage";
 import { decideOutcome } from "./rule";
 import { type GateRule, hashRule } from "./spec";
@@ -37,6 +40,15 @@ export interface DecideGateInput extends GateRule {
    * deliberate, paid, one-time act, not a side effect of previewing one.
    */
   persist?: boolean;
+  /**
+   * The peeking guard (#22): once the sealed set has been decided under an
+   * adoption gate, block a further paid decision on the SAME held-out set —
+   * repeated examination erodes its statistical guarantee. A re-curation (which
+   * changes the partition version) resets the budget. Ignored on a preview.
+   */
+  blockRepeatAfterAdoption?: boolean;
+  /** Override the peeking block for a deliberate, stated re-decision. */
+  force?: boolean;
 }
 
 /** One case present in both runs, with each side's metric value. */
@@ -54,6 +66,12 @@ export interface DecideGateResult {
   spec: GateSpecRow;
   result: GateResultRow;
   pairs: PairedCase[];
+  /** Fingerprint of the sealed set decided on; null if the task has no sealed cases. */
+  partitionVersion: string | null;
+  /** How often this sealed set was decided BEFORE this decision (the peeking budget, #22). */
+  priorDecisions: PriorDecisions;
+  /** Whether this gate puts an optimized prompt under test (an adoption decision). */
+  isAdoption: boolean;
 }
 
 export class GateInputError extends Error {
@@ -196,6 +214,12 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
   const candidateRate = pairs.length > 0 ? mean(pairs.map((p) => p.candidateScore)) : 0;
   const referenceRate = pairs.length > 0 ? mean(pairs.map((p) => p.referenceScore)) : 0;
 
+  // The peeking budget (#22): how often this exact sealed set was already
+  // decided. Computed on a preview too, so a dry run can warn before you pay.
+  const partitionVersion = sealedPartitionVersion(db, rule.taskKey);
+  const prior = priorDecisions(db, rule.taskKey, partitionVersion);
+  const isAdoption = rule.candidatePromptHash != null || input.optimizationRunId != null;
+
   // A dry-run preview (`persist: false`) writes nothing: it neither declares the
   // rule nor records a verdict, so the sealed set is not "opened". Only a
   // deliberate (paid) decision persists the spec-before-result pair.
@@ -233,9 +257,23 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
       candidateRate,
       referenceRate,
       judgeAbstainedFraction,
+      decisionPartitionVersion: partitionVersion,
       decidedAt: now,
     };
-    return { spec, result, pairs };
+    return { spec, result, pairs, partitionVersion, priorDecisions: prior, isAdoption };
+  }
+
+  // The peeking guard: once this sealed set has been adopted against, a further
+  // paid decision on the SAME held-out labels is blocked unless deliberately
+  // forced. A re-curation changes the partition version and resets the budget.
+  if (input.blockRepeatAfterAdoption && prior.adoptionCount >= 1 && input.force !== true) {
+    const first = prior.firstDecidedAt?.toISOString() ?? "an earlier run";
+    throw new GateInputError(
+      `the sealed decision set for '${rule.taskKey}' has already been decided ${prior.count}× ` +
+        `(${prior.adoptionCount} adoption decision(s), first ${first}); deciding it again ` +
+        "re-examines the held-out labels and erodes the guarantee. Re-curate the decision set " +
+        "for a fresh test, or pass --force with a stated escalation reason to override.",
+    );
   }
 
   // Store the pre-declared rule (idempotent on hash) BEFORE recording the result.
@@ -271,9 +309,10 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
     candidateRate,
     referenceRate,
     judgeAbstainedFraction,
+    decisionPartitionVersion: partitionVersion,
   });
 
-  return { spec, result, pairs };
+  return { spec, result, pairs, partitionVersion, priorDecisions: prior, isAdoption };
 }
 
 function mean(xs: number[]): number {

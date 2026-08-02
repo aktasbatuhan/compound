@@ -98,7 +98,7 @@ export async function runGateCommand(
       `error: usage: compound ${command} <task_key> --candidate M --reference M --reason "..." ` +
         "[--margin 0.05] [--confidence 0.95] [--min-cases 20] [--metric pass_rate|mean_score] " +
         "[--mode non_inferiority|superiority] [--prompt-artifact <optimization_run_id>] " +
-        "[--provider P | --candidate-provider P --reference-provider P] [--paid --cap USD]",
+        "[--provider P | --candidate-provider P --reference-provider P] [--force] [--paid --cap USD]",
     );
     return { exitCode: 2 };
   }
@@ -248,7 +248,11 @@ export async function runGateCommand(
       );
     }
 
-    const { result, pairs } = decideGate(db, {
+    const {
+      result,
+      pairs,
+      priorDecisions: prior,
+    } = decideGate(db, {
       taskKey,
       candidateModel,
       referenceModel,
@@ -262,6 +266,10 @@ export async function runGateCommand(
       // Only a paid, deliberate run persists the spec + verdict; a dry run is a
       // side-effect-free preview (issue #20).
       persist: wantsPaid,
+      // The peeking guard (#22): block a repeat decision after an adoption when
+      // the task's gate policy opts in; --force overrides with a stated reason.
+      blockRepeatAfterAdoption: config.gate?.block_repeat_after_adoption === true,
+      force: args.flags.force === true,
       candidateExperimentId: candidateRun.experimentId,
       referenceExperimentId: referenceRun.experimentId,
       ...(candidatePromptHash !== undefined ? { candidatePromptHash } : {}),
@@ -269,6 +277,19 @@ export async function runGateCommand(
       ...(candidateProvider !== undefined ? { candidateProvider } : {}),
       ...(referenceProvider !== undefined ? { referenceProvider } : {}),
     });
+
+    // Peeking warning (#22): this sealed set has been decided before. On a paid
+    // decision it means a real re-examination; on a preview it's a heads-up.
+    if (prior.count > 0) {
+      const first = prior.firstDecidedAt?.toISOString() ?? "an earlier run";
+      const lead = wantsPaid ? "warning" : "note";
+      env.write(
+        `${lead}: the sealed decision set for '${taskKey}' has already been decided ` +
+          `${prior.count}× (first ${first}` +
+          (prior.adoptionCount > 0 ? `, ${prior.adoptionCount} adoption` : "") +
+          "); each re-decision on the same held-out set weakens its guarantee.",
+      );
+    }
 
     const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
     env.write("");
