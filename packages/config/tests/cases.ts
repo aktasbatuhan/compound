@@ -61,6 +61,18 @@ export const validCases: Record<string, Record<string, unknown>> = {
       { name: "manual", importer: "json" },
     ],
   }),
+  "assertions with tool_call_arg": withSection("assertions", {
+    "finance.dispute_charge": [
+      { type: "tool_called", name: "dispute_charge" },
+      { type: "tool_call_arg", name: "dispute_charge", arg: "amount", match: { equals: 23 } },
+      {
+        type: "tool_call_arg",
+        name: "dispute_charge",
+        match: { subset: { amount: 23, account: "acct_9" } },
+        weight: 2,
+      },
+    ],
+  }),
 };
 
 export const invalidCases: Record<string, unknown> = {
@@ -114,5 +126,8 @@ export const invalidCases: Record<string, unknown> = {
   "ingest source unknown field": withSection("ingest", {
     default_permissions: { judging: true, optimization: true, fine_tuning: false },
     sources: [{ name: "langfuse-prod", importer: "langfuse", project: "prod" }],
+  }),
+  "assertion unknown type": withSection("assertions", {
+    "finance.dispute_charge": [{ type: "tool_call_argument", name: "dispute_charge" }],
   }),
 };

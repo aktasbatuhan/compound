@@ -40,22 +40,13 @@ export function parsedOutput(subject: AssertionSubject): unknown | Absent {
 }
 
 /**
- * Resolve a `path` against an output.
+ * Walk a dotted `path` into an already-parsed value.
  *
- * `content` (or omitted) → the output text. Any other path is a dotted path
- * into the JSON-parsed output text, e.g. `data.items.0.name`. Numeric segments
- * index arrays.
+ * e.g. `data.items.0.name`. Numeric segments index arrays. Returns a typed
+ * `Absent` (never throws) when a segment is missing or out of range.
  */
-export function resolvePath(subject: AssertionSubject, path: string | undefined): unknown | Absent {
-  if (path === undefined || path === "content") {
-    const text = outputText(subject);
-    return text === null ? absent("output has no text content") : text;
-  }
-
-  const parsed = parsedOutput(subject);
-  if (isAbsent(parsed)) return parsed;
-
-  let current: unknown = parsed;
+export function walkPath(root: unknown, path: string): unknown | Absent {
+  let current: unknown = root;
   for (const segment of path.split(".")) {
     if (Array.isArray(current)) {
       const index = Number(segment);
@@ -72,6 +63,25 @@ export function resolvePath(subject: AssertionSubject, path: string | undefined)
     return absent(`path segment '${segment}' not found`);
   }
   return current;
+}
+
+/**
+ * Resolve a `path` against an output.
+ *
+ * `content` (or omitted) → the output text. Any other path is a dotted path
+ * into the JSON-parsed output text, e.g. `data.items.0.name`. Numeric segments
+ * index arrays.
+ */
+export function resolvePath(subject: AssertionSubject, path: string | undefined): unknown | Absent {
+  if (path === undefined || path === "content") {
+    const text = outputText(subject);
+    return text === null ? absent("output has no text content") : text;
+  }
+
+  const parsed = parsedOutput(subject);
+  if (isAbsent(parsed)) return parsed;
+
+  return walkPath(parsed, path);
 }
 
 /** Tool calls in the output, or an empty array when there are none. */

@@ -5,9 +5,22 @@
  * without echoing the raw output, which may be large or sensitive.
  */
 import Ajv from "ajv";
-import { isAbsent, outputText, outputToolCalls, parsedOutput, resolvePath } from "./output";
+import {
+  isAbsent,
+  outputText,
+  outputToolCalls,
+  parsedOutput,
+  resolvePath,
+  walkPath,
+} from "./output";
 import { similarity } from "./similarity";
-import type { Assertion, AssertionReport, AssertionResult, AssertionSubject } from "./types";
+import type {
+  Assertion,
+  AssertionReport,
+  AssertionResult,
+  AssertionSubject,
+  ToolArgMatch,
+} from "./types";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 
@@ -19,6 +32,54 @@ interface Outcome {
 function stringify(value: unknown): string {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return text.length > 80 ? `${text.slice(0, 77)}…` : text;
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** A short, value-free description of a tool-arg matcher for `detail` lines. */
+function matcherLabel(match: ToolArgMatch): string {
+  if ("equals" in match) return `equals ${stringify(match.equals)}`;
+  if ("regex" in match) return `matches /${match.regex}/${match.flags ?? ""}`;
+  if ("subset" in match) return `contains ${stringify(Object.keys(match.subset))}`;
+  return "satisfies schema";
+}
+
+/**
+ * Compile a tool-arg matcher into a predicate, or return the reason it could
+ * not be built (an invalid regex or JSON schema), so a bad matcher fails the
+ * assertion with a clear detail instead of throwing.
+ */
+function compileMatcher(match: ToolArgMatch): ((value: unknown) => boolean) | { error: string } {
+  if ("equals" in match) {
+    return (value) => deepEqual(value, match.equals);
+  }
+  if ("regex" in match) {
+    let re: RegExp;
+    try {
+      re = new RegExp(match.regex, match.flags);
+    } catch (error) {
+      return { error: `invalid regex: ${error instanceof Error ? error.message : "error"}` };
+    }
+    return (value) => re.test(typeof value === "string" ? value : JSON.stringify(value));
+  }
+  if ("subset" in match) {
+    return (value) => {
+      if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+      const obj = value as Record<string, unknown>;
+      return Object.entries(match.subset).every(
+        ([key, expected]) => key in obj && deepEqual(obj[key], expected),
+      );
+    };
+  }
+  let validateFn: ReturnType<typeof ajv.compile>;
+  try {
+    validateFn = ajv.compile(match.schema as object);
+  } catch (error) {
+    return { error: `invalid schema: ${error instanceof Error ? error.message : "error"}` };
+  }
+  return (value) => validateFn(value) === true;
 }
 
 function evaluateOne(assertion: Assertion, subject: AssertionSubject): Outcome {
@@ -144,6 +205,32 @@ function evaluateOne(assertion: Assertion, subject: AssertionSubject): Outcome {
               assertion.value,
             )}`,
           };
+    }
+
+    case "tool_call_arg": {
+      const calls = outputToolCalls(subject).filter((call) => call.name === assertion.name);
+      if (calls.length === 0) {
+        return { passed: false, detail: `tool '${assertion.name}' was not called` };
+      }
+      const compiled = compileMatcher(assertion.match);
+      if ("error" in compiled) return { passed: false, detail: compiled.error };
+
+      const target = assertion.arg === undefined ? "arguments" : `arg '${assertion.arg}'`;
+      const label = matcherLabel(assertion.match);
+      // Passes if ANY call to the tool satisfies the matcher — mirrors
+      // `tool_arg_equals`, which grades the tool's behaviour across all its calls.
+      for (const call of calls) {
+        const value =
+          assertion.arg === undefined ? call.arguments : walkPath(call.arguments, assertion.arg);
+        if (isAbsent(value)) continue;
+        if (compiled(value)) {
+          return { passed: true, detail: `tool '${assertion.name}' ${target} ${label}` };
+        }
+      }
+      return {
+        passed: false,
+        detail: `tool '${assertion.name}' ${target} never ${label}`,
+      };
     }
 
     case "max_length": {

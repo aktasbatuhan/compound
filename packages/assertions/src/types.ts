@@ -17,12 +17,29 @@ export const ASSERTION_TYPES = [
   "tool_called",
   "tool_not_called",
   "tool_arg_equals",
+  "tool_call_arg",
   "max_length",
   "json_path_equals",
   "text_similarity",
 ] as const;
 
 export type AssertionType = (typeof ASSERTION_TYPES)[number];
+
+/**
+ * How a `tool_call_arg` assertion matches a resolved argument value. Exactly
+ * one variant applies:
+ * - `equals`   — deep-equals the expected value.
+ * - `regex`    — the value (stringified) matches the pattern.
+ * - `schema`   — the value satisfies a JSON schema.
+ * - `subset`   — the value is an object containing each expected key/value
+ *                (extra keys are allowed), so a task can pin the arguments it
+ *                cares about without over-specifying the rest.
+ */
+export type ToolArgMatch =
+  | { equals: unknown }
+  | { regex: string; flags?: string }
+  | { schema: unknown }
+  | { subset: Record<string, unknown> };
 
 /** One assertion, discriminated on `type`. `required` gates; `weight` scores. */
 export type Assertion =
@@ -51,6 +68,20 @@ export type Assertion =
       name: string;
       arg: string;
       value: unknown;
+      required?: boolean;
+      weight?: number;
+    }
+  | {
+      type: "tool_call_arg";
+      /** Tool whose call is graded. */
+      name: string;
+      /**
+       * Dot-path into the tool call's arguments (e.g. `amount` or
+       * `filters.min`). Omit to match against the whole arguments object.
+       */
+      arg?: string;
+      /** Exactly one matcher; the argument passes if ANY call to `name` satisfies it. */
+      match: ToolArgMatch;
       required?: boolean;
       weight?: number;
     }

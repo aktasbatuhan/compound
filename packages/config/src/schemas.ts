@@ -238,6 +238,7 @@ export const AssertionTypeSchema = z.enum([
   "tool_called",
   "tool_not_called",
   "tool_arg_equals",
+  "tool_call_arg",
   "max_length",
   "json_path_equals",
   "text_similarity",

@@ -123,6 +123,120 @@ describe("tool assertions", () => {
   });
 });
 
+describe("tool_call_arg", () => {
+  const disputeRight = toolOutput([
+    {
+      id: "1",
+      name: "dispute_charge",
+      arguments: { amount: 23, account: "acct_9", reason: "fraud" },
+    },
+  ]);
+  const disputeWrong = toolOutput([
+    {
+      id: "1",
+      name: "dispute_charge",
+      arguments: { amount: 99, account: "acct_9", reason: "fraud" },
+    },
+  ]);
+
+  // The core correctness hole from #21: the right tool with the wrong amount
+  // must FAIL, where the old `tool_called` check would have passed it.
+  test("equals grades the argument value, not just that the tool ran", () => {
+    const assertion: Assertion = {
+      type: "tool_call_arg",
+      name: "dispute_charge",
+      arg: "amount",
+      match: { equals: 23 },
+    };
+    expect(run(assertion, disputeRight).passed).toBe(true);
+    const wrong = run(assertion, disputeWrong);
+    expect(wrong.passed).toBe(false);
+    expect(wrong.detail).toContain("never");
+  });
+
+  test("subset pins the arguments that matter and tolerates the rest", () => {
+    const assertion: Assertion = {
+      type: "tool_call_arg",
+      name: "dispute_charge",
+      match: { subset: { amount: 23, account: "acct_9" } },
+    };
+    expect(run(assertion, disputeRight).passed).toBe(true);
+    expect(run(assertion, disputeWrong).passed).toBe(false);
+  });
+
+  test("regex matches a stringified argument", () => {
+    const output = toolOutput([{ id: "1", name: "email", arguments: { to: "user@example.com" } }]);
+    expect(
+      run(
+        { type: "tool_call_arg", name: "email", arg: "to", match: { regex: "@example\\.com$" } },
+        output,
+      ).passed,
+    ).toBe(true);
+    expect(
+      run(
+        { type: "tool_call_arg", name: "email", arg: "to", match: { regex: "@other\\.com$" } },
+        output,
+      ).passed,
+    ).toBe(false);
+  });
+
+  test("schema validates the argument's shape", () => {
+    const output = toolOutput([{ id: "1", name: "book", arguments: { seats: 2 } }]);
+    const schema = { type: "integer", minimum: 1 };
+    expect(
+      run({ type: "tool_call_arg", name: "book", arg: "seats", match: { schema } }, output).passed,
+    ).toBe(true);
+    const bad = toolOutput([{ id: "1", name: "book", arguments: { seats: 0 } }]);
+    expect(
+      run({ type: "tool_call_arg", name: "book", arg: "seats", match: { schema } }, bad).passed,
+    ).toBe(false);
+  });
+
+  test("a dot-path reaches a nested argument", () => {
+    const output = toolOutput([
+      { id: "1", name: "search", arguments: { filters: { min: 10, max: 50 } } },
+    ]);
+    expect(
+      run(
+        { type: "tool_call_arg", name: "search", arg: "filters.min", match: { equals: 10 } },
+        output,
+      ).passed,
+    ).toBe(true);
+  });
+
+  test("passes when ANY call satisfies the matcher", () => {
+    const output = toolOutput([
+      { id: "1", name: "dispute_charge", arguments: { amount: 5 } },
+      { id: "2", name: "dispute_charge", arguments: { amount: 23 } },
+    ]);
+    expect(
+      run(
+        { type: "tool_call_arg", name: "dispute_charge", arg: "amount", match: { equals: 23 } },
+        output,
+      ).passed,
+    ).toBe(true);
+  });
+
+  test("fails cleanly when the tool was never called", () => {
+    const result = run(
+      { type: "tool_call_arg", name: "dispute_charge", arg: "amount", match: { equals: 23 } },
+      textOutput("no tools here"),
+    );
+    expect(result.passed).toBe(false);
+    expect(result.detail).toContain("was not called");
+  });
+
+  test("an invalid regex fails with a reason rather than throwing", () => {
+    const output = toolOutput([{ id: "1", name: "email", arguments: { to: "x" } }]);
+    const result = run(
+      { type: "tool_call_arg", name: "email", arg: "to", match: { regex: "(" } },
+      output,
+    );
+    expect(result.passed).toBe(false);
+    expect(result.detail).toContain("invalid regex");
+  });
+});
+
 describe("max_length", () => {
   test("bounds the output length", () => {
     expect(run({ type: "max_length", max: 5 }, textOutput("hi")).passed).toBe(true);
