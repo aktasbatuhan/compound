@@ -9,6 +9,7 @@ import {
   quantileSorted,
   seedFromString,
   zForConfidence,
+  zForPower,
 } from "../src/statistics";
 
 describe("mulberry32", () => {
@@ -78,12 +79,32 @@ describe("power / minimum detectable effect (#24)", () => {
     expect(zForConfidence(0.9)).toBeCloseTo(1.644854, 4);
   });
 
+  test("zForPower gives the one-sided power quantile", () => {
+    expect(zForPower(0.8)).toBeCloseTo(0.841621, 4);
+    expect(zForPower(0.5)).toBeCloseTo(0, 6);
+  });
+
   test("minimum detectable effect shrinks with more cases", () => {
     const small = powerEstimate(10, 0.95).minDetectableEffect;
     const large = powerEstimate(100, 0.95).minDetectableEffect;
     expect(large).toBeLessThan(small);
-    // z·sd/√n with the default sd = 0.5: 1.96·0.5/√100 ≈ 0.098.
-    expect(large).toBeCloseTo((1.959964 * 0.5) / 10, 4);
+    // A true MDE at 80% power: (z_0.975 + z_0.80)·sd/√n = (1.95996+0.84162)·0.5/√100.
+    expect(large).toBeCloseTo(((1.959964 + 0.841621) * 0.5) / 10, 4);
+  });
+
+  test("the MDE includes the power term — wider than a bare CI half-width (#7)", () => {
+    // The old, wrong figure was z·sd/√n (a CI half-width). The correct MDE adds
+    // the power quantile, so it is strictly larger for any power > 0.5.
+    const n = 100;
+    const halfWidth = (zForConfidence(0.95) * 0.5) / Math.sqrt(n);
+    const mde = powerEstimate(n, 0.95, 0.8).minDetectableEffect;
+    expect(mde).toBeGreaterThan(halfWidth);
+  });
+
+  test("a higher assumed SD widens the estimate proportionally", () => {
+    const atHalf = powerEstimate(50, 0.95, 0.8, 0.5).minDetectableEffect;
+    const atOne = powerEstimate(50, 0.95, 0.8, 1.0).minDetectableEffect;
+    expect(atOne).toBeCloseTo(atHalf * 2, 10);
   });
 
   test("fewer than two cases cannot resolve anything", () => {
@@ -91,9 +112,10 @@ describe("power / minimum detectable effect (#24)", () => {
     expect(powerEstimate(0, 0.95).minDetectableEffect).toBe(Number.POSITIVE_INFINITY);
   });
 
-  test("casesForDetectableEffect inverts the relation", () => {
-    // To resolve a 10pp effect at 95% with sd = 0.5: (1.96·0.5/0.10)² ≈ 96.
-    expect(casesForDetectableEffect(0.1, 0.95)).toBe(97);
+  test("casesForDetectableEffect inverts the relation at 80% power", () => {
+    // To detect a 10pp effect at 95%/80% with sd = 0.5:
+    // ((1.95996+0.84162)·0.5/0.10)² ≈ 196.2 → 197.
+    expect(casesForDetectableEffect(0.1, 0.95)).toBe(197);
     expect(casesForDetectableEffect(0, 0.95)).toBe(Number.POSITIVE_INFINITY);
   });
 });

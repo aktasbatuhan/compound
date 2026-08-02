@@ -100,40 +100,73 @@ export function zForConfidence(confidence: number): number {
   return invNormCdf(1 - (1 - confidence) / 2);
 }
 
+/** One-sided z quantile for a target statistical power (e.g. 0.80 → 0.8416). */
+export function zForPower(power: number): number {
+  return invNormCdf(power);
+}
+
 /** Below this many sealed cases, a paired gate rarely resolves a small regression. */
 export const RECOMMENDED_MIN_DECISION_CASES = 20;
 
+/** Default target power for the pre-run estimate: an 80% chance to detect a true regression. */
+export const DEFAULT_TARGET_POWER = 0.8;
+
 /**
- * A pre-run precision estimate for a paired gate: with `n` sealed cases at the
- * given confidence, the smallest regression the CI can resolve is roughly the
- * normal-approximation half-width `z · sd / √n`. `sd` is the per-case difference
- * SD; on a pass-rate metric each difference lies in [-1, 1], and lacking prior
- * data we assume moderate disagreement (`sd = 0.5`). It is an estimate, not the
- * bootstrap CI the decision will actually use, but it lets a user see BEFORE
- * spending that a tiny set can only detect a huge regression.
+ * Assumed per-case difference SD when there is no prior data. On a pass-rate
+ * metric each paired difference lies in [-1, 1]; 0.5 is a moderate guess. The
+ * WORST case is 1.0 (maximal disagreement), which makes the estimate ~2× wider —
+ * so this is an assumption, not a conservative bound.
+ */
+export const ASSUMED_DIFF_SD = 0.5;
+
+/**
+ * A pre-run precision estimate for a paired gate: the minimum detectable effect
+ * (smallest true regression detectable with probability `power`) for a two-sided
+ * test at the given confidence, under the normal approximation:
+ *
+ *   MDE = (z_{1−α/2} + z_{power}) · sd / √n
+ *
+ * The `z_{power}` term is what separates an MDE from a bare CI half-width
+ * (`z_{1−α/2}·sd/√n`) — without it the figure understates how large a regression
+ * you can actually resolve. It is an estimate, not the bootstrap CI the decision
+ * uses, but it lets a user see BEFORE spending that a tiny set resolves only a
+ * huge regression. `sd` is assumed (see ASSUMED_DIFF_SD); the real SD scales it.
  */
 export interface PowerEstimate {
   n: number;
   confidence: number;
+  power: number;
   sd: number;
-  /** Smallest resolvable regression in metric units [0, 1]; Infinity when n < 2. */
+  /** Minimum detectable regression in metric units [0, 1]; Infinity when n < 2. */
   minDetectableEffect: number;
 }
 
-export function powerEstimate(n: number, confidence: number, sd = 0.5): PowerEstimate {
+export function powerEstimate(
+  n: number,
+  confidence: number,
+  power = DEFAULT_TARGET_POWER,
+  sd = ASSUMED_DIFF_SD,
+): PowerEstimate {
   const minDetectableEffect =
-    n >= 2 ? (zForConfidence(confidence) * sd) / Math.sqrt(n) : Number.POSITIVE_INFINITY;
-  return { n, confidence, sd, minDetectableEffect };
+    n >= 2
+      ? ((zForConfidence(confidence) + zForPower(power)) * sd) / Math.sqrt(n)
+      : Number.POSITIVE_INFINITY;
+  return { n, confidence, power, sd, minDetectableEffect };
 }
 
 /**
- * The sealed-set size needed to resolve a target effect (e.g. the configured
- * margin) at the given confidence — the actionable "curate ~N cases" nudge.
- * Infinity when the target effect is not positive.
+ * The sealed-set size needed to detect a target effect (e.g. the configured
+ * margin) with probability `power` at the given confidence — the actionable
+ * "curate ~N cases" nudge. Infinity when the target effect is not positive.
  */
-export function casesForDetectableEffect(effect: number, confidence: number, sd = 0.5): number {
+export function casesForDetectableEffect(
+  effect: number,
+  confidence: number,
+  power = DEFAULT_TARGET_POWER,
+  sd = ASSUMED_DIFF_SD,
+): number {
   if (!(effect > 0)) return Number.POSITIVE_INFINITY;
-  return Math.ceil(((zForConfidence(confidence) * sd) / effect) ** 2);
+  return Math.ceil((((zForConfidence(confidence) + zForPower(power)) * sd) / effect) ** 2);
 }
 
 export interface BootstrapCi {
