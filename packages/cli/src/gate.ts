@@ -18,7 +18,13 @@ import {
   runExperiment,
 } from "@compound/execution";
 import { decideGate, GateInputError } from "@compound/gate";
-import { type GateMetric, type GateMode, getOptimizationRun } from "@compound/storage";
+import {
+  decisionTestCohortHashes,
+  type GateMetric,
+  type GateMode,
+  getOptimizationRun,
+  priorDecisions,
+} from "@compound/storage";
 import type { CommandEnvironment, CommandResult, ParsedArgs } from "./commands";
 import { DEFAULT_CONFIG_PATH, DEFAULT_DATABASE_PATH } from "./commands";
 import { replayPolicyFromConfig } from "./experiment";
@@ -236,7 +242,37 @@ export async function runGateCommand(
       ...(maxCases !== undefined ? { maxCases: Number.parseInt(maxCases, 10) } : {}),
     });
 
+  // The peeking guard, evaluated ONCE so the preflight below and decideGate agree.
+  const blockRepeat =
+    config.gate?.block_repeat_decision === true ||
+    config.gate?.block_repeat_after_adoption === true;
+  const forced = args.flags.force === true;
+
   try {
+    // Preflight the peeking guard BEFORE paying (#2). decideGate throws only
+    // after both experiments have re-run — by which point the paid calls that
+    // re-examine the sealed labels have already happened. Check the sealed
+    // cohort against prior decisions up front and refuse before spending a cent.
+    if (wantsPaid && blockRepeat && !forced) {
+      const sealedHashes = decisionTestCohortHashes(db, taskKey);
+      const prior = priorDecisions(db, taskKey, sealedHashes);
+      if (prior.count >= 1 || prior.legacyCount >= 1) {
+        const first = prior.firstDecidedAt?.toISOString() ?? "an earlier run";
+        const legacyNote =
+          prior.legacyCount >= 1
+            ? ` and ${prior.legacyCount} earlier verdict(s) with no recorded cohort`
+            : "";
+        env.write(
+          `error: the held-out decision set for '${taskKey}' has already been decided: ` +
+            `${prior.count} prior verdict(s) reuse these same cases (first ${first})${legacyNote}. ` +
+            "Deciding again re-examines the held-out labels and erodes the guarantee. Curate a " +
+            "fresh, non-overlapping decision set, or pass --force with a stated escalation reason. " +
+            "(Refused before running — no provider calls were made.)",
+        );
+        return { exitCode: 1 };
+      }
+    }
+
     // A dry run previews the verdict WITHOUT opening the seal or recording it;
     // only a deliberate (paid) run opens the sealed set and persists a decision.
     if (wantsPaid) {
@@ -288,10 +324,10 @@ export async function runGateCommand(
       // The peeking guard (#22, #3): block a repeat decision that reuses any
       // held-out label when the gate policy opts in; --force overrides with a
       // stated reason. `block_repeat_after_adoption` stays a deprecated alias.
-      blockRepeatDecision:
-        config.gate?.block_repeat_decision === true ||
-        config.gate?.block_repeat_after_adoption === true,
-      force: args.flags.force === true,
+      // The CLI preflight above enforces this before paying; this is the backstop
+      // on the exact decided cohort.
+      blockRepeatDecision: blockRepeat,
+      force: forced,
       candidateExperimentId: candidateRun.experimentId,
       referenceExperimentId: referenceRun.experimentId,
       ...(candidatePromptHash !== undefined ? { candidatePromptHash } : {}),

@@ -409,6 +409,77 @@ describe("decideGate", () => {
     expect(coverage.skipFraction).toBeCloseTo(0.25, 10);
   });
 
+  test("a sealed case absent from BOTH runs is still counted as omitted (#11)", () => {
+    const handle = db();
+    sealCases(handle, ["h1", "h2", "h3", "h4"]);
+    // Neither run records ANY row for h4 (not even a skip) — it is simply missing.
+    // The old union-of-present accounting dropped it silently; coverage must count
+    // it against the sealed cohort.
+    const both = () => decisionResults(["h1", "h2", "h3"]);
+    const { coverage } = decideGate(handle, {
+      ...rule,
+      minCases: 3,
+      candidateExperimentId: completedExperiment(handle, "cand", both()).id,
+      referenceExperimentId: completedExperiment(handle, "ref", both()).id,
+    });
+    expect(coverage.sealedTotal).toBe(4);
+    expect(coverage.paired).toBe(3);
+    expect(coverage.skippedCandidate).toBe(1);
+    expect(coverage.skippedReference).toBe(1);
+    expect(coverage.skipFraction).toBeCloseTo(0.25, 10);
+  });
+
+  test("an abstention is counted once, never also as a skip (#11)", () => {
+    const handle = db();
+    sealCases(handle, ["h1", "h2", "h3"]);
+    // h3 present on both, but the candidate's judge abstained → it belongs in the
+    // abstained bucket, not skippedCandidate.
+    const cand: CaseResultInput[] = [
+      ...decisionResults(["h1", "h2"]),
+      { caseId: "seal-h3", status: "graded", passed: true, score: 1, judgeAbstained: true },
+    ];
+    const ref = decisionResults(["h1", "h2", "h3"]);
+    const { coverage } = decideGate(handle, {
+      ...rule,
+      minCases: 2,
+      candidateExperimentId: completedExperiment(handle, "cand", cand).id,
+      referenceExperimentId: completedExperiment(handle, "ref", ref).id,
+    });
+    expect(coverage.paired).toBe(2);
+    expect(coverage.abstained).toBe(1);
+    expect(coverage.skippedCandidate).toBe(0);
+    expect(coverage.skippedReference).toBe(0);
+  });
+
+  test("fail closed: a decided cohort that can't be reconstructed blocks the guard (#5)", () => {
+    const handle = db();
+    // Graded results exist, but their cases were pruned and the rows predate the
+    // content_hash column — so the decided cohort is unverifiable. With the guard
+    // on, refuse rather than treat an unprovable cohort as "never decided".
+    const cand = completedExperiment(handle, "cand", decisionResults(["h1", "h2", "h3"]));
+    const ref = completedExperiment(handle, "ref", decisionResults(["h1", "h2", "h3"]));
+    expect(() =>
+      decideGate(handle, {
+        ...rule,
+        minCases: 3,
+        candidateExperimentId: cand.id,
+        referenceExperimentId: ref.id,
+        blockRepeatDecision: true,
+      }),
+    ).toThrow(GateInputError);
+    // A deliberate escalation still gets through with --force.
+    const forced = decideGate(handle, {
+      ...rule,
+      minCases: 3,
+      candidateExperimentId: cand.id,
+      referenceExperimentId: ref.id,
+      blockRepeatDecision: true,
+      force: true,
+    });
+    expect(forced.result.id).not.toBe("preview");
+    handle.close();
+  });
+
   test("asymmetric skips void the verdict when the coverage gate is on (#5)", () => {
     const handle = db();
     sealCases(handle, ["h1", "h2", "h3", "h4"]);

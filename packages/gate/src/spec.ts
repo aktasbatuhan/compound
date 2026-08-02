@@ -21,6 +21,14 @@ export interface GateRule {
   minCases: number;
   judgeAbstainMax: number;
   /**
+   * The coverage threshold the rule enforces (#6): the largest omitted fraction
+   * of the sealed set the verdict tolerates. It changes the verdict, so it is
+   * part of the rule identity — 0.6 and 0.4 are different declarations, and an
+   * unset threshold (report-only) is distinct from any number. Null/undefined =
+   * unset.
+   */
+  maxSkipFraction?: number | null;
+  /**
    * When the candidate runs with an optimized prompt, its content hash. Part of
    * the rule identity: "model M with prompt P" is a different declaration than
    * plain "model M", so an adoption gate never reuses a baseline gate's spec.
@@ -52,6 +60,10 @@ export function canonicalizeRule(rule: GateRule): string {
     ["confidence", rule.confidence],
     ["min_cases", rule.minCases],
     ["judge_abstain_max", rule.judgeAbstainMax],
+    // Only present when a coverage threshold was declared, so a report-only gate
+    // (unset) keeps its pre-existing hash while any numeric threshold is a
+    // distinct declaration (#6).
+    ...(rule.maxSkipFraction != null ? [["max_skip_fraction", rule.maxSkipFraction]] : []),
     // Only present for an adoption gate, so every baseline hash is unchanged.
     ...(rule.candidatePromptHash != null
       ? [["candidate_prompt_hash", rule.candidatePromptHash]]

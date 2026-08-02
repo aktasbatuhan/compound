@@ -13,6 +13,23 @@ const BASE: GateRule = {
   judgeAbstainMax: 0,
 };
 
+describe("gate rule hashing with the coverage threshold (#6)", () => {
+  test("absent/null max_skip_fraction leaves the baseline hash unchanged", () => {
+    expect(hashRule({ ...BASE, maxSkipFraction: null })).toBe(hashRule(BASE));
+    expect(hashRule({ ...BASE, maxSkipFraction: undefined })).toBe(hashRule(BASE));
+  });
+
+  test("a coverage threshold makes it a DIFFERENT declared rule than report-only", () => {
+    expect(hashRule({ ...BASE, maxSkipFraction: 0.2 })).not.toBe(hashRule(BASE));
+  });
+
+  test("two different thresholds are two different rules — 0.6 and 0.4 cannot collide", () => {
+    const lenient = hashRule({ ...BASE, maxSkipFraction: 0.6 });
+    const strict = hashRule({ ...BASE, maxSkipFraction: 0.4 });
+    expect(lenient).not.toBe(strict);
+  });
+});
+
 describe("gate rule hashing with an optimized-prompt candidate", () => {
   test("absent/null prompt hash leaves the baseline hash unchanged (backward compat)", () => {
     expect(hashRule({ ...BASE, candidatePromptHash: null })).toBe(hashRule(BASE));

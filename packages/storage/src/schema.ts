@@ -313,6 +313,13 @@ export const experimentResults = sqliteTable(
      * exact cached output it graded (docs/judges-v1.md). Null for skipped cases.
      */
     completionFingerprint: text("completion_fingerprint"),
+    /**
+     * The case's content hash, copied in at record time so the exact decided
+     * cohort can be reconstructed by the peeking guard even after the `cases` row
+     * is pruned or re-partitioned (#5). Null only for pre-migration rows, which
+     * fall back to a join on `cases`.
+     */
+    contentHash: text("content_hash"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
@@ -359,6 +366,15 @@ export const gateSpecs = sqliteTable(
     confidence: real("confidence").notNull(),
     minCases: integer("min_cases").notNull(),
     judgeAbstainMax: real("judge_abstain_max").notNull().default(0),
+    /**
+     * The coverage threshold this rule was declared with (#6): the largest
+     * fraction of the sealed set that may be omitted before the verdict is voided
+     * to insufficient_data. It changes the verdict, so it is part of the rule
+     * identity — a decision at 0.6 and one at 0.4 are different declarations and
+     * must not share a spec hash. Null means "report coverage but do not enforce",
+     * itself a distinct declaration from any numeric threshold.
+     */
+    maxSkipFraction: real("max_skip_fraction"),
     /**
      * When the candidate ran with an optimized prompt, its content hash — part
      * of the pre-declared rule, so "model M with prompt P" is a different rule

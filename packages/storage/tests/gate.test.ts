@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
   createExperiment,
   createGateSpec,
+  decidedCohort,
   getExperimentResults,
   getGateSpecByHash,
+  insertCases,
   listGateResults,
   recordCaseResults,
   recordGateResult,
@@ -35,6 +37,62 @@ describe("per-case experiment results", () => {
     expect(rows[0]?.passed).toBe(true);
     expect(rows[2]?.status).toBe("skipped");
     expect(rows[2]?.passed).toBeNull();
+    handle.close();
+  });
+
+  test("decidedCohort reconstructs from recorded content hashes even after cases are pruned (#5)", () => {
+    const handle = freshDatabase();
+    const cand = anExperiment(handle, "cand");
+    const ref = anExperiment(handle, "ref");
+    // Record the content hash ON each result row (as the runner now does). No
+    // `cases` rows exist at all — the join fallback would find nothing.
+    const results = [
+      { caseId: "c1", status: "graded" as const, passed: true, score: 1, contentHash: "h1" },
+      { caseId: "c2", status: "graded" as const, passed: true, score: 1, contentHash: "h2" },
+    ];
+    recordCaseResults(handle, cand.id, results);
+    recordCaseResults(handle, ref.id, results);
+    const cohort = decidedCohort(handle, cand.id, ref.id);
+    expect(cohort.contentHashes).toEqual(["h1", "h2"]);
+    expect(cohort.version).not.toBeNull();
+    handle.close();
+  });
+
+  test("decidedCohort is unreconstructable (null version) when neither the row nor a case has the hash (#5)", () => {
+    const handle = freshDatabase();
+    const cand = anExperiment(handle, "cand");
+    const ref = anExperiment(handle, "ref");
+    // Pre-migration rows: no content hash recorded, and the cases were pruned.
+    const results = [{ caseId: "c1", status: "graded" as const, passed: true, score: 1 }];
+    recordCaseResults(handle, cand.id, results);
+    recordCaseResults(handle, ref.id, results);
+    const cohort = decidedCohort(handle, cand.id, ref.id);
+    expect(cohort.contentHashes).toEqual([]);
+    expect(cohort.version).toBeNull();
+    handle.close();
+  });
+
+  test("decidedCohort still falls back to the cases table for legacy rows with no recorded hash (#5)", () => {
+    const handle = freshDatabase();
+    insertCases(handle, [
+      {
+        caseId: "c1",
+        taskKey: "support",
+        sourceTraceId: "t1",
+        contentHash: "h1",
+        provenance: "human_golden",
+        partition: "decision_test",
+        input: {},
+        expected: {},
+      },
+    ]);
+    const cand = anExperiment(handle, "cand");
+    const ref = anExperiment(handle, "ref");
+    const results = [{ caseId: "c1", status: "graded" as const, passed: true, score: 1 }];
+    recordCaseResults(handle, cand.id, results);
+    recordCaseResults(handle, ref.id, results);
+    const cohort = decidedCohort(handle, cand.id, ref.id);
+    expect(cohort.contentHashes).toEqual(["h1"]);
     handle.close();
   });
 

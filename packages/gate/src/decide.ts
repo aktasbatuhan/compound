@@ -8,9 +8,9 @@
  */
 import {
   type CompoundDatabase,
-  countCasesByPartition,
   createGateSpec,
   decidedCohort,
+  decisionTestCaseIds,
   type ExperimentResultRow,
   type ExperimentRow,
   type GateMetric,
@@ -73,17 +73,21 @@ export interface PairedCase {
   abstained: boolean;
 }
 
-/** How much of the sealed set the decision actually covered (#5). */
+/** How much of the sealed set the decision actually covered (#5, #11). */
 export interface DecisionCoverage {
   /** Cases in the task's sealed decision partition. */
   sealedTotal: number;
   /** Graded on BOTH sides and not abstained — the diff sample (= pairs.length). */
   paired: number;
-  /** Present on both but a judge abstained on at least one side. */
+  /** Sealed cases excluded because a judge abstained on a side (never also counted as skipped). */
   abstained: number;
-  /** Sealed cases NOT graded on the candidate side (skipped, dry-run, or absent). */
+  /**
+   * Sealed cases NOT graded on the candidate side — skipped, dry-run, or absent
+   * from the run entirely — excluding abstentions. Counted over the WHOLE sealed
+   * cohort, so a case missing from both runs is not silently dropped (#11).
+   */
   skippedCandidate: number;
-  /** Sealed cases NOT graded on the reference side. */
+  /** Sealed cases NOT graded on the reference side, excluding abstentions (#11). */
   skippedReference: number;
   /** Cases graded on exactly ONE side — the two runs disagree on what they could grade. */
   asymmetric: number;
@@ -194,25 +198,36 @@ export function pairCases(
  * verdict on a self-selected subset can be flagged instead of trusted.
  */
 export function decisionCoverage(
-  sealedTotal: number,
+  sealedCaseIds: readonly string[],
   candidateRows: ExperimentResultRow[],
   referenceRows: ExperimentResultRow[],
   pairedCount: number,
-  abstainedCount: number,
   maxSkipFraction?: number,
 ): DecisionCoverage {
   const cand = byCase(candidateRows);
   const ref = byCase(referenceRows);
   const graded = (row: ExperimentResultRow | undefined): boolean =>
     row?.status === "graded" && !row.judgeAbstained;
-  const allIds = new Set<string>([...cand.keys(), ...ref.keys()]);
+  const abstainedOn = (row: ExperimentResultRow | undefined): boolean =>
+    row?.judgeAbstained === true;
+  const sealedTotal = sealedCaseIds.length;
+  let abstained = 0;
   let skippedCandidate = 0;
   let skippedReference = 0;
   let asymmetric = 0;
-  for (const id of allIds) {
-    const cGraded = graded(cand.get(id));
-    const rGraded = graded(ref.get(id));
-    if (cGraded && rGraded) continue;
+  // Iterate the WHOLE sealed cohort so a case absent from BOTH runs is still
+  // counted, and put each case in exactly ONE bucket so an abstention is never
+  // also tallied as a skip (#11).
+  for (const id of sealedCaseIds) {
+    const c = cand.get(id);
+    const r = ref.get(id);
+    const cGraded = graded(c);
+    const rGraded = graded(r);
+    if (cGraded && rGraded) continue; // paired
+    if (abstainedOn(c) || abstainedOn(r)) {
+      abstained += 1; // excluded by abstention, not a skip
+      continue;
+    }
     if (!cGraded) skippedCandidate += 1;
     if (!rGraded) skippedReference += 1;
     if (cGraded !== rGraded) asymmetric += 1; // gradeable on exactly one side
@@ -223,7 +238,7 @@ export function decisionCoverage(
   return {
     sealedTotal,
     paired: pairedCount,
-    abstained: abstainedCount,
+    abstained,
     skippedCandidate,
     skippedReference,
     asymmetric,
@@ -257,6 +272,9 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
     confidence: input.confidence,
     minCases: input.minCases,
     judgeAbstainMax: input.judgeAbstainMax,
+    // The coverage threshold changes the verdict, so it is part of the rule
+    // identity (#6): a gate at 0.6 and one at 0.4 must not share a spec hash.
+    maxSkipFraction: input.maxSkipFraction ?? null,
     candidatePromptHash: input.candidatePromptHash ?? null,
     candidateProvider: input.candidateProvider ?? null,
     referenceProvider: input.referenceProvider ?? null,
@@ -294,15 +312,12 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
   // silently omit sealed cases. If too much of the set was omitted, or the two
   // runs skipped different cases, the sample is self-selected — void the verdict
   // to `insufficient_data` rather than decide on it.
-  const sealedTotal =
-    countCasesByPartition(db, rule.taskKey).find((p) => p.partition === "decision_test")?.count ??
-    0;
+  const sealedCaseIds = decisionTestCaseIds(db, rule.taskKey);
   const coverage = decisionCoverage(
-    sealedTotal,
+    sealedCaseIds,
     getExperimentResults(db, candidate.id),
     getExperimentResults(db, reference.id),
     pairs.length,
-    abstainedCount,
     input.maxSkipFraction,
   );
   const outcome = coverage.shortfall ? "insufficient_data" : decided;
@@ -335,6 +350,7 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
       confidence: rule.confidence,
       minCases: rule.minCases,
       judgeAbstainMax: rule.judgeAbstainMax,
+      maxSkipFraction: rule.maxSkipFraction ?? null,
       candidatePromptHash: rule.candidatePromptHash ?? null,
       optimizationRunId: input.optimizationRunId ?? null,
       candidateProvider: rule.candidateProvider ?? null,
@@ -367,6 +383,24 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
   // does not escape the guard (#3). Legacy verdicts with no recorded cohort
   // (pre-guard, or pruned experiments) also trip it: their overlap can't be
   // proven, so an override must be explicit (#9).
+  // Fail closed (#5): a non-empty paired sample whose cohort can't be
+  // reconstructed (cases pruned, no recorded content hash) can't be checked for
+  // overlap at all — so the guard can't prove this is a fresh decision. Refuse
+  // rather than silently treat an unverifiable cohort as "never decided".
+  if (
+    input.blockRepeatDecision &&
+    pairs.length > 0 &&
+    cohort.contentHashes.length === 0 &&
+    input.force !== true
+  ) {
+    throw new GateInputError(
+      `cannot verify the held-out cohort for '${rule.taskKey}': ${pairs.length} paired case(s) ` +
+        "were decided but their content hashes are no longer reconstructable (cases pruned). " +
+        "The peeking guard cannot prove this decision does not reuse already-decided labels. " +
+        "Re-curate the decision set, or pass --force with a stated escalation reason.",
+    );
+  }
+
   if (
     input.blockRepeatDecision &&
     (prior.count >= 1 || prior.legacyCount >= 1) &&
@@ -397,6 +431,7 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
     confidence: rule.confidence,
     minCases: rule.minCases,
     judgeAbstainMax: rule.judgeAbstainMax,
+    ...(rule.maxSkipFraction != null ? { maxSkipFraction: rule.maxSkipFraction } : {}),
     ...(rule.candidatePromptHash != null ? { candidatePromptHash: rule.candidatePromptHash } : {}),
     ...(input.optimizationRunId !== undefined
       ? { optimizationRunId: input.optimizationRunId }

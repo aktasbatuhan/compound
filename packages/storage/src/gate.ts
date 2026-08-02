@@ -8,7 +8,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { CompoundDatabase } from "./db";
 import {
   cases,
@@ -34,6 +34,8 @@ export interface CreateGateSpecInput {
   confidence: number;
   minCases: number;
   judgeAbstainMax: number;
+  /** The coverage threshold the rule was declared with (#6); part of its identity. */
+  maxSkipFraction?: number;
   /** Content hash of an optimized candidate prompt under test; absent for a baseline gate. */
   candidatePromptHash?: string;
   /** The optimization artifact that supplied the prompt (provenance). */
@@ -69,6 +71,7 @@ export function createGateSpec(handle: CompoundDatabase, input: CreateGateSpecIn
       confidence: input.confidence,
       minCases: input.minCases,
       judgeAbstainMax: input.judgeAbstainMax,
+      maxSkipFraction: input.maxSkipFraction ?? null,
       candidatePromptHash: input.candidatePromptHash ?? null,
       optimizationRunId: input.optimizationRunId ?? null,
       candidateProvider: input.candidateProvider ?? null,
@@ -139,12 +142,11 @@ export function decidedCohort(
   candidateExperimentId: string,
   referenceExperimentId: string,
 ): { contentHashes: string[]; version: string | null } {
-  const candIds = handle.db
-    .select({ caseId: experimentResults.caseId })
+  const candRows = handle.db
+    .select({ caseId: experimentResults.caseId, contentHash: experimentResults.contentHash })
     .from(experimentResults)
     .where(eq(experimentResults.experimentId, candidateExperimentId))
-    .all()
-    .map((r) => r.caseId);
+    .all();
   const refIds = new Set(
     handle.db
       .select({ caseId: experimentResults.caseId })
@@ -153,19 +155,63 @@ export function decidedCohort(
       .all()
       .map((r) => r.caseId),
   );
-  const sharedIds = candIds.filter((id) => refIds.has(id));
-  if (sharedIds.length === 0) return { contentHashes: [], version: null };
-  const contentHashes = handle.db
-    .select({ contentHash: cases.contentHash })
-    .from(cases)
-    .where(inArray(cases.caseId, sharedIds))
-    .all()
-    .map((r) => r.contentHash)
-    .sort();
-  if (contentHashes.length === 0) return { contentHashes: [], version: null };
+  const shared = candRows.filter((r) => refIds.has(r.caseId));
+  if (shared.length === 0) return { contentHashes: [], version: null };
+
+  // Prefer the content hash recorded ON the result row (survives case pruning,
+  // #5); fall back to the live `cases` table for pre-migration rows that never
+  // stored one.
+  const needsFallback = shared.filter((r) => r.contentHash == null).map((r) => r.caseId);
+  const fallback = new Map<string, string>();
+  if (needsFallback.length > 0) {
+    for (const row of handle.db
+      .select({ caseId: cases.caseId, contentHash: cases.contentHash })
+      .from(cases)
+      .where(inArray(cases.caseId, needsFallback))
+      .all()) {
+      fallback.set(row.caseId, row.contentHash);
+    }
+  }
+  const contentHashes: string[] = [];
+  for (const r of shared) {
+    const hash = r.contentHash ?? fallback.get(r.caseId);
+    if (hash != null) contentHashes.push(hash);
+  }
+  // Fail closed: if the cohort can't be FULLY reconstructed (cases pruned and no
+  // recorded hash), report no version so the caller does not silently treat an
+  // unverifiable cohort as "never decided" (#5).
+  if (contentHashes.length < shared.length) return { contentHashes: [], version: null };
+  contentHashes.sort();
   const digest = createHash("sha256");
   for (const h of contentHashes) digest.update(h).update("\n");
   return { contentHashes, version: `sha256:${digest.digest("hex")}` };
+}
+
+/**
+ * Content hashes of a task's SEALED decision partition — the full cohort a gate
+ * would decide on, resolved WITHOUT opening the firewall (a set of hashes is not
+ * the sealed labels). Used by the CLI to preflight the peeking guard BEFORE
+ * paying to re-run the decision experiments (#2), and to attribute coverage
+ * omissions against the true sealed set rather than only the cases that happened
+ * to be graded (#11).
+ */
+export function decisionTestCohortHashes(handle: CompoundDatabase, taskKey: string): string[] {
+  return handle.db
+    .select({ contentHash: cases.contentHash, caseId: cases.caseId })
+    .from(cases)
+    .where(and(eq(cases.taskKey, taskKey), eq(cases.partition, "decision_test")))
+    .all()
+    .map((r) => r.contentHash);
+}
+
+/** Case ids of a task's sealed decision partition (for coverage attribution, #11). */
+export function decisionTestCaseIds(handle: CompoundDatabase, taskKey: string): string[] {
+  return handle.db
+    .select({ caseId: cases.caseId })
+    .from(cases)
+    .where(and(eq(cases.taskKey, taskKey), eq(cases.partition, "decision_test")))
+    .all()
+    .map((r) => r.caseId);
 }
 
 /** Record the exact cases a persisted verdict decided (the peeking-guard ground truth). */

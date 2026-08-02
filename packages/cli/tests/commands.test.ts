@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -608,6 +608,94 @@ describe("gate", () => {
     );
     // Even a preview flags that the held-out set has been examined before.
     expect(output()).toContain("already been decided 1×");
+  });
+
+  test("a paid re-decision is refused BEFORE running when the guard is on (#2)", async () => {
+    const { env, output, db } = testEnvironment();
+    await importAndCurate(env);
+    insertCases(
+      db,
+      ["s1", "s2", "s3"].map((h, i) => ({
+        caseId: `sealed-${h}`,
+        taskKey: "support",
+        sourceTraceId: `seal-trace-${i}`,
+        contentHash: h,
+        provenance: "human_golden" as const,
+        partition: "decision_test" as const,
+        input: {},
+        expected: {},
+      })),
+    );
+    const mkExp = (model: string) =>
+      createExperiment(db, {
+        taskKey: "support",
+        candidateModel: model,
+        provider: "openrouter",
+        partition: "decision_test",
+        paid: false,
+      });
+    const prior = createGateSpec(db, {
+      specHash: "sha256:prior-rule-2",
+      taskKey: "support",
+      candidateModel: "zai-org/GLM-5.2-FP8",
+      referenceModel: "anthropic/claude-opus-4.8",
+      metric: "pass_rate",
+      mode: "non_inferiority",
+      margin: 0.05,
+      confidence: 0.95,
+      minCases: 20,
+      judgeAbstainMax: 0,
+      firewallReason: "an earlier release gate",
+    });
+    const priorResult = recordGateResult(db, {
+      gateSpecId: prior.id,
+      candidateExperimentId: mkExp("zai-org/GLM-5.2-FP8").id,
+      referenceExperimentId: mkExp("anthropic/claude-opus-4.8").id,
+      outcome: "meets_gate",
+      delta: 0,
+      ciLo: 0,
+      ciHi: 0,
+      n: 25,
+      candidateRate: 1,
+      referenceRate: 1,
+      judgeAbstainedFraction: 0,
+      decisionPartitionVersion: "sha256:prior-cohort",
+    });
+    recordDecisionCohort(db, priorResult.id, ["s1", "s2", "s3"]);
+
+    // A config that opts into the peeking block.
+    const cfg = readFileSync("compound.yaml", "utf8").replace(
+      "gate:\n",
+      "gate:\n  block_repeat_decision: true\n",
+    );
+    const path = join(tmpdir(), `compound-gate-${crypto.randomUUID()}.yaml`);
+    writeFileSync(path, cfg);
+    try {
+      const result = await runCommand(
+        [
+          "gate",
+          "support",
+          "--candidate",
+          "zai-org/GLM-5.2-FP8",
+          "--reference",
+          "anthropic/claude-opus-4.8",
+          "--reason",
+          "trying to re-decide the same sealed set",
+          "--paid",
+          "--cap",
+          "5",
+          "--config",
+          path,
+        ],
+        env,
+      );
+      // The guard fires in the preflight — exit 1, and the message says no
+      // provider calls were made (the whole point of #2).
+      expect(result.exitCode).toBe(1);
+      expect(output()).toContain("Refused before running");
+    } finally {
+      rmSync(path, { force: true });
+    }
   });
 
   test("--prompt-artifact must name a stored optimization run", async () => {

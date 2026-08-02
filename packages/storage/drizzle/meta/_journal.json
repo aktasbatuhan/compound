@@ -85,6 +85,13 @@
       "when": 1785678876135,
       "tag": "0011_giant_anthem",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1785686348751,
+      "tag": "0012_spicy_gertrude_yorkes",
+      "breakpoints": true
     }
   ]
 }

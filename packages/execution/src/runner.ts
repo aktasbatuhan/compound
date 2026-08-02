@@ -564,7 +564,10 @@ export async function runExperiment(
       skip_reasons: skipReasons,
     };
     // Persist per-case outcomes so a gate can pair candidate vs reference by
-    // case, and the dashboard can show run diffs (docs/gate-decision-v1.md).
+    // case, and the dashboard can show run diffs (docs/gate-decision-v1.md). The
+    // content hash is copied in so the peeking guard can rebuild the decided
+    // cohort even after these cases are pruned (#5).
+    const contentHashByCase = new Map(cases.map((c) => [c.caseId, c.contentHash]));
     recordCaseResults(
       db,
       experiment.id,
@@ -575,6 +578,9 @@ export async function runExperiment(
         ...(r.score !== undefined ? { score: r.score } : {}),
         ...(r.completionFingerprint !== undefined
           ? { completionFingerprint: r.completionFingerprint }
+          : {}),
+        ...(contentHashByCase.has(r.caseId)
+          ? { contentHash: contentHashByCase.get(r.caseId) as string }
           : {}),
       })),
     );

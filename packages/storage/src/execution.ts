@@ -232,6 +232,8 @@ export interface CaseResultInput {
   judgeAbstained?: boolean;
   /** Fingerprint of the completion this case produced (for later judge grading). */
   completionFingerprint?: string;
+  /** The case's content hash, so the decided cohort survives case pruning (#5). */
+  contentHash?: string;
 }
 
 /**
@@ -256,6 +258,7 @@ export function recordCaseResults(
         score: r.score ?? null,
         judgeAbstained: r.judgeAbstained ?? false,
         completionFingerprint: r.completionFingerprint ?? null,
+        contentHash: r.contentHash ?? null,
       })
       .onConflictDoUpdate({
         target: [experimentResults.experimentId, experimentResults.caseId],
@@ -265,6 +268,7 @@ export function recordCaseResults(
           score: r.score ?? null,
           judgeAbstained: r.judgeAbstained ?? false,
           completionFingerprint: r.completionFingerprint ?? null,
+          contentHash: r.contentHash ?? null,
         },
       })
       .run();
