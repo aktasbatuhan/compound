@@ -11,7 +11,11 @@
 import { createHash } from "node:crypto";
 import type { CompoundConfig } from "@compound/config";
 import { validate } from "@compound/contract";
-import { normalizeJsonExport, normalizeLangfuseExport } from "@compound/ingest";
+import {
+  normalizeJsonExport,
+  normalizeLangfuseExport,
+  normalizeOtelExport,
+} from "@compound/ingest";
 import { redactTrace } from "@compound/redaction";
 import {
   type CompoundDatabase,
@@ -33,7 +37,7 @@ export const DEFAULT_INGEST_PERMISSIONS = {
   fine_tuning: false,
 } as const;
 
-export const SUPPORTED_IMPORTERS = ["langfuse", "json"] as const;
+export const SUPPORTED_IMPORTERS = ["langfuse", "json", "otel"] as const;
 export type SupportedImporter = (typeof SUPPORTED_IMPORTERS)[number];
 
 export class UnsupportedImporterError extends Error {
@@ -96,7 +100,9 @@ export function runImport(db: CompoundDatabase, options: RunImportOptions): RunI
     const { traces, report: source } =
       options.importer === "json"
         ? normalizeJsonExport(options.content, normalizeOptions)
-        : normalizeLangfuseExport(options.content, normalizeOptions);
+        : options.importer === "otel"
+          ? normalizeOtelExport(options.content, normalizeOptions)
+          : normalizeLangfuseExport(options.content, normalizeOptions);
 
     const records: TraceRecordInput[] = [];
     const diagnosticReasons: Record<string, number> = {};

@@ -99,7 +99,7 @@ Usage:
   compound init [--config PATH] [--db PATH] [--force]
   compound validate [--config PATH]
   compound providers [name]                        (known providers; a name prints a paste-ready block)
-  compound import <file> [--importer langfuse] [--db PATH] [--config PATH] [--project-id ID]
+  compound import <file> [--importer langfuse|json|otel] [--db PATH] [--config PATH] [--project-id ID]
   compound curate <task_key> [--split train:val:cal:dec] [--db PATH]
   compound suggest-assertions <task_key> [--db PATH] [--config PATH]
   compound experiment <task_key> <model> [--partition P] [--paid --cap USD]
