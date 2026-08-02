@@ -207,6 +207,21 @@ export async function runGateCommand(
   }
 
   const maxCases = stringFlag(args.flags, "max");
+  // A paid gate decides the WHOLE sealed set. `--max` would truncate it to an
+  // order-dependent, arbitrary slice — which is not a sound held-out decision and
+  // also poisons the recorded cohort so a later full-set gate is blocked by the
+  // peeking guard. It would additionally desync the preflight (which scans the
+  // full sealed set) from the smaller cohort actually decided, falsely blocking a
+  // legitimately-fresh slice. Refuse it on a paid run; a dry-run preview keeps it.
+  if (args.flags.paid === true && maxCases !== undefined) {
+    env.write(
+      "error: --max is not allowed on a paid gate: a recorded decision must cover the whole " +
+        "sealed decision set, not an arbitrary truncated slice of held-out data. Drop --max to " +
+        "decide the full set, curate a smaller decision_test partition if you need fewer cases, " +
+        "or use a dry run (no --paid) to preview on a subset.",
+    );
+    return { exitCode: 2 };
+  }
   // Agentic (#23): gate a multi-turn task by driving each side across turns
   // under the task's replay policy; the sealed-partition + pairing are unchanged.
   const agentic = args.flags.agentic === true;

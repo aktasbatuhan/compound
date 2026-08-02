@@ -14,6 +14,7 @@ import {
   recordDecisionCohort,
   recordGateResult,
   recordOptimizationRun,
+  totalSpendUsd,
 } from "@compound/storage";
 import { type CommandEnvironment, parseArgs, runCommand } from "../src/commands";
 import { configGateMetric, verdictExitCode } from "../src/gate";
@@ -507,6 +508,31 @@ describe("gate", () => {
     expect(output()).toContain("--reason is required");
   });
 
+  test("refuses --max on a paid gate — a decision must cover the whole sealed set", async () => {
+    const { env, output } = testEnvironment();
+    await importAndCurate(env);
+    const result = await runCommand(
+      [
+        "gate",
+        "support",
+        "--candidate",
+        "zai-org/GLM-5.2-FP8",
+        "--reference",
+        "anthropic/claude-opus-4.8",
+        "--reason",
+        "trying to gate a truncated slice",
+        "--paid",
+        "--cap",
+        "5",
+        "--max",
+        "3",
+      ],
+      env,
+    );
+    expect(result.exitCode).toBe(2);
+    expect(output()).toContain("--max is not allowed on a paid gate");
+  });
+
   test("a dry run previews without opening the seal or recording a verdict (issue #20)", async () => {
     const { env, output, db } = testEnvironment();
     await importAndCurate(env);
@@ -693,6 +719,12 @@ describe("gate", () => {
       // provider calls were made (the whole point of #2).
       expect(result.exitCode).toBe(1);
       expect(output()).toContain("Refused before running");
+      // Assert the PROPERTY, not just the message: the paid path was never
+      // entered. The seal is never announced ("opening the sealed decision set"
+      // prints immediately before the experiments run), and nothing was spent —
+      // so no provider call could have happened before the refusal.
+      expect(output()).not.toContain("opening the sealed decision set");
+      expect(totalSpendUsd(db)).toBe(0);
     } finally {
       rmSync(path, { force: true });
     }
