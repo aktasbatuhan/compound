@@ -54,8 +54,18 @@ function compileMatcher(match: unknown): ((value: unknown) => boolean) | { error
   // tool_call_arg with a missing/blank matcher, and this runs mid-experiment
   // after completions may already be paid for — a bad matcher must fail the
   // assertion, never throw and abort the run.
-  if (match === null || typeof match !== "object") {
+  if (match === null || typeof match !== "object" || Array.isArray(match)) {
     return { error: "tool_call_arg needs a matcher (equals/regex/subset/schema)" };
+  }
+  // Enforce EXACTLY ONE matcher at runtime, independent of config validation (#9):
+  // `{equals: 23, regex: "nope"}` otherwise silently used whichever key was
+  // checked first and ignored the rest — a false pass. Config catches this on
+  // load, but the grader must fail safe on any matcher that reaches it unchecked.
+  const present = (["equals", "regex", "subset", "schema"] as const).filter((k) => k in match);
+  if (present.length !== 1) {
+    return {
+      error: `tool_call_arg needs exactly one matcher (equals/regex/subset/schema); got ${present.length}`,
+    };
   }
   const m = match as ToolArgMatch;
   if ("equals" in m) {
@@ -84,6 +94,12 @@ function compileMatcher(match: unknown): ((value: unknown) => boolean) | { error
       return { error: "tool_call_arg 'subset' must be an object of key/value pairs" };
     }
     const entries = Object.entries(subset as Record<string, unknown>);
+    // An EMPTY subset `{}` is a vacuous matcher: `[].every()` is true, so it would
+    // pass against ANY argument (#9). A matcher that constrains nothing is a config
+    // mistake, not a wildcard — fail it rather than silently pass every call.
+    if (entries.length === 0) {
+      return { error: "tool_call_arg 'subset' must not be empty" };
+    }
     return (value) => {
       if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
       const obj = value as Record<string, unknown>;

@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { Message } from "@compound/contract";
 import type { CompletionRequest, CompletionResponse, Provider } from "../src/provider";
-import { type RecordedToolResult, runTrajectory } from "../src/trajectory";
+import {
+  decodeTrajectorySkip,
+  encodeTrajectorySkip,
+  type RecordedToolResult,
+  runTrajectory,
+} from "../src/trajectory";
 
 /** A provider that returns a scripted sequence of outputs (clamped to the last). */
 class ScriptedProvider implements Provider {
@@ -243,5 +248,50 @@ describe("runTrajectory", () => {
     expect(result.stop.reason).toBe("answered");
     const toolResults = result.transcript.filter((m) => m.role === "tool").map((m) => m.content);
     expect(toolResults).toEqual(["pending", "done"]);
+  });
+});
+
+describe("decodeTrajectorySkip validates the payload discriminator", () => {
+  test("round-trips a real non-answered stop", () => {
+    const encoded = encodeTrajectorySkip({ reason: "tool_blocked", tool: "issue_refund" });
+    expect(decodeTrajectorySkip(encoded)).toEqual({ reason: "tool_blocked", tool: "issue_refund" });
+  });
+
+  test("keeps a valid replay policy on an unsupported_policy stop", () => {
+    const encoded = encodeTrajectorySkip({
+      reason: "unsupported_policy",
+      tool: "search",
+      policy: "live_read_only",
+    });
+    expect(decodeTrajectorySkip(encoded)).toEqual({
+      reason: "unsupported_policy",
+      tool: "search",
+      policy: "live_read_only",
+    });
+  });
+
+  test("rejects an out-of-vocabulary reason rather than casting it into the enum", () => {
+    // A forged/garbled payload must decode to null so the caller grades the row
+    // as an ordinary completion, never a stop with an unknown reason that later
+    // breaks describeStop/stopSkipKey.
+    const forged = { __compound_trajectory_incomplete__: { reason: "totally_made_up" } };
+    expect(decodeTrajectorySkip(forged)).toBeNull();
+  });
+
+  test("drops an invalid policy but keeps the valid reason", () => {
+    const payload = {
+      __compound_trajectory_incomplete__: { reason: "truncated", policy: "not_a_policy" },
+    };
+    expect(decodeTrajectorySkip(payload)).toEqual({ reason: "truncated" });
+  });
+
+  test("an ordinary gradeable message decodes to null", () => {
+    expect(decodeTrajectorySkip({ role: "assistant", content: "hello" })).toBeNull();
+    expect(decodeTrajectorySkip(null)).toBeNull();
+  });
+
+  test("an 'answered' reason is never a skip", () => {
+    const payload = { __compound_trajectory_incomplete__: { reason: "answered" } };
+    expect(decodeTrajectorySkip(payload)).toBeNull();
   });
 });

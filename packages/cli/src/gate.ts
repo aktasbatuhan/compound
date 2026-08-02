@@ -381,9 +381,12 @@ export async function runGateCommand(
         `(${(coverage.skipFraction * 100).toFixed(1)}% omitted)`,
     );
     if (coverage.skippedCandidate > 0 || coverage.skippedReference > 0 || coverage.abstained > 0) {
+      // Per-side totals overlap on `skippedBoth`, so they do not sum; show the
+      // both-skipped overlap explicitly rather than let the reader add them (#11).
+      const both = coverage.skippedBoth > 0 ? ` (${coverage.skippedBoth} on both sides)` : "";
       env.write(
         `  omissions:   candidate skipped ${coverage.skippedCandidate}, ` +
-          `reference skipped ${coverage.skippedReference}, abstained ${coverage.abstained}`,
+          `reference skipped ${coverage.skippedReference}${both}, abstained ${coverage.abstained}`,
       );
     }
     if (coverage.asymmetric > 0) {

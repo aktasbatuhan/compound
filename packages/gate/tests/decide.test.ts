@@ -406,7 +406,33 @@ describe("decideGate", () => {
     expect(coverage.skippedCandidate).toBe(1);
     expect(coverage.skippedReference).toBe(1);
     expect(coverage.asymmetric).toBe(0); // both skipped the SAME case
+    // h4 was skipped on BOTH sides, so it lands in the disjoint skippedBoth
+    // bucket — NOT summed across the two per-side totals (#11).
+    expect(coverage.skippedBoth).toBe(1);
     expect(coverage.skipFraction).toBeCloseTo(0.25, 10);
+  });
+
+  test("skipped cases partition disjointly into skippedBoth vs asymmetric (#11)", () => {
+    const handle = db();
+    sealCases(handle, ["h1", "h2", "h3", "h4"]);
+    // Candidate grades h1,h2. Reference grades h1,h2,h3. So: h3 is skipped on the
+    // candidate side only (asymmetric), h4 is skipped on both sides.
+    const cand = decisionResults(["h1", "h2"]);
+    const ref = decisionResults(["h1", "h2", "h3"]);
+    const { coverage } = decideGate(handle, {
+      ...rule,
+      minCases: 2,
+      candidateExperimentId: completedExperiment(handle, "cand", cand).id,
+      referenceExperimentId: completedExperiment(handle, "ref", ref).id,
+    });
+    expect(coverage.paired).toBe(2);
+    expect(coverage.skippedBoth).toBe(1); // h4
+    expect(coverage.asymmetric).toBe(1); // h3, candidate side only
+    // The skipped cases (h3, h4) partition exactly as skippedBoth + asymmetric.
+    expect(coverage.skippedBoth + coverage.asymmetric).toBe(2);
+    // Per-side totals overlap on skippedBoth, so they exceed the true skip count.
+    expect(coverage.skippedCandidate).toBe(2); // h3 + h4
+    expect(coverage.skippedReference).toBe(1); // h4 only
   });
 
   test("a sealed case absent from BOTH runs is still counted as omitted (#11)", () => {

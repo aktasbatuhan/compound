@@ -8,8 +8,8 @@
 import {
   type CompletionRequest,
   type CompletionResponse,
+  chargeableCost,
   completionFingerprint,
-  costFromUsage,
   estimateCost,
 } from "@compound/execution";
 import {
@@ -33,6 +33,12 @@ export type JudgeGradeOutcome =
       fingerprint: string;
       costUsd: number;
       cached: boolean;
+      /**
+       * True when a paid judge call returned no usage, so `costUsd` is the
+       * conservative estimate rather than a measured figure (#3). The caller can
+       * surface this so a run's judge cost isn't quietly part-guessed.
+       */
+      costEstimated: boolean;
     }
   | { status: "cache_miss_dry_run"; fingerprint: string }
   | { status: "unparseable"; fingerprint: string };
@@ -62,6 +68,10 @@ export async function judgeGradeOutput(
   let response: CompletionResponse;
   let costUsd = 0;
   let cached = false;
+  // A paid call whose provider reported no usage is billed at the estimate, so
+  // its cost is guessed rather than measured (#3). A cache hit keeps the cost
+  // recorded on the row (already measured-or-estimated when first paid).
+  let costEstimated = false;
 
   if (hit !== null) {
     cached = true;
@@ -85,7 +95,12 @@ export async function judgeGradeOutput(
       globalHardLimitUsd: ctx.globalHardLimitUsd,
     });
     response = await ctx.provider.complete(request);
-    costUsd = costFromUsage(response.usage, ctx.price);
+    // A real judge call whose usage is null must ledger the estimate, never $0
+    // (#3): the judge shares the same Flex provider and ledger as the runner, so
+    // a $0 judge charge silently leaks the experiment cap and the global limit.
+    const charge = chargeableCost(response.usage, request, ctx.price);
+    costUsd = charge.costUsd;
+    costEstimated = !charge.usageKnown;
     // Persist before parsing, so a paid call is never lost to a parse error.
     recordSpend(ctx.db, { fingerprint, costUsd });
     cacheCompletion(ctx.db, {
@@ -109,5 +124,5 @@ export async function judgeGradeOutput(
     void messageText(response.output);
     return { status: "unparseable", fingerprint };
   }
-  return { status: "graded", verdict, fingerprint, costUsd, cached };
+  return { status: "graded", verdict, fingerprint, costUsd, cached, costEstimated };
 }

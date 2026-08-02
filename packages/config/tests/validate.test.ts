@@ -144,6 +144,15 @@ describe("tool_call_arg matcher validation (#8)", () => {
       ).ok,
     ).toBe(true);
   });
+
+  test("rejects an EMPTY subset — it constrains nothing and passes vacuously (#9)", () => {
+    const result = validateConfig(
+      withAssertion({ type: "tool_call_arg", name: "x", match: { subset: {} } }),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.some((i) => i.path.endsWith("subset"))).toBe(true);
+  });
 });
 
 describe("issues are path-qualified", () => {

@@ -159,13 +159,29 @@ export function decodeTrajectorySkip(output: unknown): TrajectoryStop | null {
   const raw = (output as Record<string, unknown>)[TRAJECTORY_INCOMPLETE_KEY];
   if (raw === null || typeof raw !== "object") return null;
   const r = raw as { reason?: unknown; tool?: unknown; policy?: unknown };
-  if (typeof r.reason !== "string" || r.reason === "answered") return null;
+  // Validate the reason against the KNOWN non-answered reasons rather than
+  // blind-casting any string into the enum: a malformed or forged payload must
+  // decode to null (grade it as an ordinary row), never yield a stop with an
+  // out-of-vocabulary reason that later breaks describeStop/stopSkipKey.
+  if (typeof r.reason !== "string" || !NON_ANSWERED_REASONS.has(r.reason as TrajectoryStopReason)) {
+    return null;
+  }
+  const policyValid =
+    typeof r.policy === "string" && (TOOL_REPLAY_POLICIES as readonly string[]).includes(r.policy);
   return {
     reason: r.reason as TrajectoryStopReason,
     ...(typeof r.tool === "string" ? { tool: r.tool } : {}),
-    ...(typeof r.policy === "string" ? { policy: r.policy as ToolReplayPolicy } : {}),
+    ...(policyValid ? { policy: r.policy as ToolReplayPolicy } : {}),
   };
 }
+
+/** The non-`answered` stop reasons a cached skip may legitimately decode to. */
+const NON_ANSWERED_REASONS: ReadonlySet<TrajectoryStopReason> = new Set([
+  "truncated",
+  "tool_blocked",
+  "missing_recorded_result",
+  "unsupported_policy",
+]);
 
 /** The skip-reason key a non-`answered` stop is counted under in the report. */
 export function stopSkipKey(reason: Exclude<TrajectoryStopReason, "answered">): string {

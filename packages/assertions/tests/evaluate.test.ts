@@ -280,6 +280,35 @@ describe("tool_call_arg", () => {
     expect(result.detail).toContain("subset");
   });
 
+  test("an EMPTY subset fails SAFE — a matcher that constrains nothing never passes (#9)", () => {
+    // `{subset: {}}` is a plain object, so it slipped the type guard, but
+    // `[].every()` is vacuously true — it would pass against ANY call. It must
+    // fail with a reason instead of rubber-stamping every argument.
+    const assertion = {
+      type: "tool_call_arg",
+      name: "dispute_charge",
+      match: { subset: {} },
+    } as unknown as Assertion;
+    const result = run(assertion, disputeRight);
+    expect(result.passed).toBe(false);
+    expect(result.detail).toContain("subset");
+  });
+
+  test("two matchers at once fail SAFE — the runtime enforces exactly one (#9)", () => {
+    // `{equals: 23, regex: "nope"}` used to silently pick whichever key was
+    // checked first (equals) and ignore the rest — a false pass on the amount.
+    // Config rejects this, but the grader must fail safe if it ever reaches here.
+    const assertion = {
+      type: "tool_call_arg",
+      name: "dispute_charge",
+      arg: "amount",
+      match: { equals: 23, regex: "nope" },
+    } as unknown as Assertion;
+    const result = run(assertion, disputeRight);
+    expect(result.passed).toBe(false);
+    expect(result.detail).toContain("exactly one");
+  });
+
   test("equals matches regardless of argument key order (#10)", () => {
     // The recorded value and the call's arguments carry the same keys in a
     // different order — a structural match, not a JSON.stringify match.

@@ -327,6 +327,15 @@ export const AssertionSchema = z
         path: ["match", "subset"],
       });
     }
+    // An empty subset `{}` constrains nothing and passes vacuously at runtime (#9),
+    // so it is a config mistake, not a wildcard — reject it up front.
+    if (key === "subset" && isPlainObject(payload) && Object.keys(payload as object).length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "tool_call_arg.match.subset must not be empty",
+        path: ["match", "subset"],
+      });
+    }
     if (key === "schema" && !isPlainObject(payload)) {
       ctx.addIssue({
         code: "custom",

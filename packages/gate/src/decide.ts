@@ -84,11 +84,19 @@ export interface DecisionCoverage {
   /**
    * Sealed cases NOT graded on the candidate side — skipped, dry-run, or absent
    * from the run entirely — excluding abstentions. Counted over the WHOLE sealed
-   * cohort, so a case missing from both runs is not silently dropped (#11).
+   * cohort, so a case missing from both runs is not silently dropped (#11). This
+   * is a PER-SIDE total: a case skipped on BOTH sides is counted here AND in
+   * `skippedReference`, so the two do not sum — use `skippedBoth` to reconcile.
    */
   skippedCandidate: number;
-  /** Sealed cases NOT graded on the reference side, excluding abstentions (#11). */
+  /** Sealed cases NOT graded on the reference side, excluding abstentions; per-side total, overlaps `skippedCandidate` (#11). */
   skippedReference: number;
+  /**
+   * Sealed cases skipped on BOTH sides (excluding abstentions) — the overlap of
+   * `skippedCandidate` and `skippedReference`. Disjoint from `asymmetric`, so the
+   * skipped cases partition exactly as `skippedBoth + asymmetric` (#11).
+   */
+  skippedBoth: number;
   /** Cases graded on exactly ONE side — the two runs disagree on what they could grade. */
   asymmetric: number;
   /** (sealedTotal − paired) / sealedTotal: the omitted fraction the guard checks. */
@@ -214,10 +222,13 @@ export function decisionCoverage(
   let abstained = 0;
   let skippedCandidate = 0;
   let skippedReference = 0;
+  let skippedBoth = 0;
   let asymmetric = 0;
   // Iterate the WHOLE sealed cohort so a case absent from BOTH runs is still
-  // counted, and put each case in exactly ONE bucket so an abstention is never
-  // also tallied as a skip (#11).
+  // counted. Abstention is its own exclusive bucket; the remaining skipped cases
+  // partition disjointly into skippedBoth vs asymmetric (one side only). The
+  // per-side `skippedCandidate`/`skippedReference` are totals that overlap on
+  // `skippedBoth`, so they are NOT meant to be summed (#11).
   for (const id of sealedCaseIds) {
     const c = cand.get(id);
     const r = ref.get(id);
@@ -230,7 +241,8 @@ export function decisionCoverage(
     }
     if (!cGraded) skippedCandidate += 1;
     if (!rGraded) skippedReference += 1;
-    if (cGraded !== rGraded) asymmetric += 1; // gradeable on exactly one side
+    if (!cGraded && !rGraded) skippedBoth += 1; // exclusive: skipped on both sides
+    if (cGraded !== rGraded) asymmetric += 1; // exclusive: gradeable on exactly one side
   }
   const skipFraction = sealedTotal > 0 ? (sealedTotal - pairedCount) / sealedTotal : 0;
   const overFraction = maxSkipFraction !== undefined && skipFraction > maxSkipFraction;
@@ -241,6 +253,7 @@ export function decisionCoverage(
     abstained,
     skippedCandidate,
     skippedReference,
+    skippedBoth,
     asymmetric,
     skipFraction,
     shortfall,
