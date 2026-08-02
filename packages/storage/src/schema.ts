@@ -282,6 +282,8 @@ export interface ExperimentReport {
   provider_calls?: number;
   estimated_cost_usd?: number;
   actual_cost_usd?: number;
+  /** Paid calls whose provider reported no usage, so their cost is estimated (#3). */
+  cost_unknown_calls?: number;
   run_fingerprint?: string;
   skip_reasons?: Record<string, number>;
   error?: string;

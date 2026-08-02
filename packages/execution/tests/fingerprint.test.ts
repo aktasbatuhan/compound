@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  chargeableCost,
   completionFingerprint,
   costFromUsage,
   estimateCost,
@@ -108,5 +109,48 @@ describe("estimateCost", () => {
     );
     // ~ output-dominated: 1000 output tokens at $10/M ≈ $0.01.
     expect(estimate).toBeGreaterThanOrEqual(0.01);
+  });
+
+  test("counts tool schemas, so an agentic request estimates higher than its bare prompt (#4)", () => {
+    const messages = [{ role: "user" as const, content: "hi" }];
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "dispute_charge",
+          description: "Open a dispute for a charge on the customer's account",
+          parameters: {
+            type: "object",
+            properties: { charge_id: { type: "string" }, amount: { type: "number" } },
+            required: ["charge_id"],
+          },
+        },
+      },
+    ];
+    const price = { input: 100, output: 1 };
+    const withoutTools = estimateCost({ model: "m", messages }, price);
+    const withTools = estimateCost({ model: "m", messages, tools }, price);
+    // Tool JSON is billed as prompt tokens, so it must raise the input estimate.
+    expect(withTools).toBeGreaterThan(withoutTools);
+  });
+});
+
+describe("chargeableCost", () => {
+  const req = { model: "m", messages: [{ role: "user" as const, content: "hi" }] };
+
+  test("uses the measured cost when usage is present", () => {
+    const { costUsd, usageKnown } = chargeableCost(
+      { input_tokens: 1_000_000, output_tokens: 0 },
+      req,
+      { input: 3, output: 6 },
+    );
+    expect(costUsd).toBeCloseTo(3, 9);
+    expect(usageKnown).toBe(true);
+  });
+
+  test("falls back to the estimate — never $0 — when the provider omits usage (#3)", () => {
+    const { costUsd, usageKnown } = chargeableCost(null, req, { input: 1, output: 10 });
+    expect(costUsd).toBeGreaterThan(0);
+    expect(usageKnown).toBe(false);
   });
 });

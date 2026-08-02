@@ -90,15 +90,19 @@ export function costFromUsage(usage: CompletionUsage | null, price: TokenPrice):
 
 /**
  * A conservative pre-call cost estimate: assume the full output-token budget is
- * consumed. Used to reserve budget headroom BEFORE a call, so the cap is never
- * blown by an unexpectedly long completion.
+ * consumed, and count BOTH the prompt messages and the tool schemas sent with
+ * the request. Used to reserve budget headroom BEFORE a call. It is a rough
+ * (~4 chars/token) projection, not an exact ceiling — the true billed prompt can
+ * still exceed it — but it must never under-count a component of the request, so
+ * the tool schemas (often larger than the user message on an agentic call) are
+ * included rather than silently dropped (#4).
  */
 export function estimateCost(
   request: CompletionRequest,
   price: TokenPrice,
   defaultMaxTokens = 4096,
 ): number {
-  const promptTokens = estimatePromptTokens(request.messages);
+  const promptTokens = estimatePromptTokens(request.messages) + estimateToolTokens(request.tools);
   const maxOutput =
     typeof request.params?.max_tokens === "number"
       ? (request.params.max_tokens as number)
@@ -119,4 +123,34 @@ export function estimatePromptTokens(messages: CompletionRequest["messages"]): n
     }
   }
   return Math.ceil(chars / 4) + 8 * messages.length;
+}
+
+/**
+ * Rough token estimate for the tool schemas on a request (#4). Tool JSON Schemas
+ * are billed as prompt tokens and can dwarf a short user message, so omitting
+ * them from the pre-call estimate lets the first paid agentic call cross the cap
+ * despite passing the headroom check. Serialized length over ~4 chars/token.
+ */
+export function estimateToolTokens(tools: CompletionRequest["tools"]): number {
+  if (tools === undefined || tools.length === 0) return 0;
+  let chars = 0;
+  for (const tool of tools) chars += JSON.stringify(tool).length;
+  return Math.ceil(chars / 4);
+}
+
+/**
+ * The cost to LEDGER for a completed paid call. Real cost when the provider
+ * reported usage; the conservative pre-call estimate when it returned `usage:
+ * null` (#3). A real call whose token counts we cannot read must never ledger
+ * $0 — that silently leaks the cap and the global limit — so we fall back to the
+ * same estimate the pre-call check reserved. `usageKnown` lets the caller flag a
+ * completion whose cost is estimated rather than measured.
+ */
+export function chargeableCost(
+  usage: CompletionUsage | null,
+  request: CompletionRequest,
+  price: TokenPrice,
+): { costUsd: number; usageKnown: boolean } {
+  if (usage !== null) return { costUsd: costFromUsage(usage, price), usageKnown: true };
+  return { costUsd: estimateCost(request, price), usageKnown: false };
 }

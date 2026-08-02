@@ -127,6 +127,46 @@ export function describeStop(stop: TrajectoryStop): string {
   }
 }
 
+/**
+ * Cache key marking a completion row as a NON-answered trajectory rather than a
+ * gradeable output (#1). A non-answered trajectory spends real money per turn but
+ * produces nothing to grade; if it isn't cached, re-running the experiment re-runs
+ * the turns and makes fresh provider calls that bypass the per-turn cap+ledger
+ * idempotency. Caching the skip under the aggregate fingerprint makes the re-run a
+ * $0 cache hit, exactly as an answered trajectory already is.
+ */
+const TRAJECTORY_INCOMPLETE_KEY = "__compound_trajectory_incomplete__";
+
+/** Encode a non-answered stop as a cache payload the hit path can recognize (#1). */
+export function encodeTrajectorySkip(stop: TrajectoryStop): Record<string, unknown> {
+  return {
+    [TRAJECTORY_INCOMPLETE_KEY]: {
+      reason: stop.reason,
+      ...(stop.tool !== undefined ? { tool: stop.tool } : {}),
+      ...(stop.policy !== undefined ? { policy: stop.policy } : {}),
+    },
+  };
+}
+
+/**
+ * Recover a non-answered stop from a cached completion's output, or null if the
+ * row is an ordinary gradeable message (#1). A pre-existing single-call or
+ * answered-trajectory cache row has no marker key, so it decodes to null and the
+ * caller grades it as before.
+ */
+export function decodeTrajectorySkip(output: unknown): TrajectoryStop | null {
+  if (output === null || typeof output !== "object") return null;
+  const raw = (output as Record<string, unknown>)[TRAJECTORY_INCOMPLETE_KEY];
+  if (raw === null || typeof raw !== "object") return null;
+  const r = raw as { reason?: unknown; tool?: unknown; policy?: unknown };
+  if (typeof r.reason !== "string" || r.reason === "answered") return null;
+  return {
+    reason: r.reason as TrajectoryStopReason,
+    ...(typeof r.tool === "string" ? { tool: r.tool } : {}),
+    ...(typeof r.policy === "string" ? { policy: r.policy as ToolReplayPolicy } : {}),
+  };
+}
+
 /** The skip-reason key a non-`answered` stop is counted under in the report. */
 export function stopSkipKey(reason: Exclude<TrajectoryStopReason, "answered">): string {
   switch (reason) {
@@ -156,6 +196,32 @@ type ResolveOutcome =
     };
 
 /**
+ * An ordered, single-use queue over the recorded tool results (#8). A recorded
+ * result answers a call at most ONCE: a tool polled twice with identical
+ * arguments must replay its two recorded results in sequence (e.g.
+ * `pending` then `done`), not the first result both times. `take` returns the
+ * FIRST still-unconsumed result matching the call — by name, and by arguments
+ * when the recorded entry pins them — and marks it consumed.
+ */
+class RecordedResultQueue {
+  private readonly used: boolean[];
+  constructor(private readonly recorded: readonly RecordedToolResult[]) {
+    this.used = recorded.map(() => false);
+  }
+  take(call: ToolCall): string | undefined {
+    for (let i = 0; i < this.recorded.length; i += 1) {
+      if (this.used[i]) continue;
+      const r = this.recorded[i] as RecordedToolResult;
+      if (r.tool !== call.name) continue;
+      if (r.arguments !== undefined && !structuralEqual(r.arguments, call.arguments)) continue;
+      this.used[i] = true;
+      return r.result;
+    }
+    return undefined;
+  }
+}
+
+/**
  * Answer one tool call per the replay policy; never touches a live system in v1.
  * Returns a stop reason instead of throwing, so the caller keeps the billing
  * state of every turn already made before the stop (#23, money-safety).
@@ -163,7 +229,7 @@ type ResolveOutcome =
 function resolveToolResult(
   call: ToolCall,
   policy: TrajectoryPolicy,
-  recorded: readonly RecordedToolResult[],
+  recorded: RecordedResultQueue,
   mockResult: string,
 ): ResolveOutcome {
   const p = policyFor(call.name, policy);
@@ -176,14 +242,10 @@ function resolveToolResult(
       // Deliberately unsupported in v1: executing a live tool is a follow-up.
       return { ok: false, reason: "unsupported_policy", tool: call.name, policy: p };
     case "recorded": {
-      const match = recorded.find(
-        (r) =>
-          r.tool === call.name &&
-          (r.arguments === undefined || structuralEqual(r.arguments, call.arguments)),
-      );
-      if (match === undefined)
+      const result = recorded.take(call);
+      if (result === undefined)
         return { ok: false, reason: "missing_recorded_result", tool: call.name };
-      return { ok: true, result: match.result };
+      return { ok: true, result };
     }
   }
 }
@@ -222,7 +284,9 @@ export async function runTrajectory(
   options: RunTrajectoryOptions,
 ): Promise<TrajectoryResult> {
   const maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
-  const recorded = options.recordedToolResults ?? [];
+  // One consumable queue for the whole trajectory, so identical repeated calls
+  // draw successive recorded results rather than the same one every turn (#8).
+  const recorded = new RecordedResultQueue(options.recordedToolResults ?? []);
   const mockResult = options.mockResult ?? "{}";
   const messages: Message[] = [...options.request.messages];
   const toolCalls: ToolCall[] = [];

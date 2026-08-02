@@ -23,11 +23,18 @@ import {
   recordSpend,
   requireBudgetHeadroom,
 } from "@compound/storage";
-import { completionFingerprint, costFromUsage, estimateCost, type TokenPrice } from "./fingerprint";
+import {
+  chargeableCost,
+  completionFingerprint,
+  estimateCost,
+  type TokenPrice,
+} from "./fingerprint";
 import type { CompletionRequest, CompletionResponse, Provider } from "./provider";
 import {
   DEFAULT_MAX_TURNS,
+  decodeTrajectorySkip,
   describeStop,
+  encodeTrajectorySkip,
   type RecordedToolResult,
   runTrajectory,
   stopSkipKey,
@@ -278,6 +285,10 @@ export async function runExperiment(
     let providerCalls = 0;
     let estimatedCost = 0;
     let actualCost = 0;
+    // Paid calls whose provider returned no usage, so their cost is the estimate
+    // rather than a measured figure (#3) — surfaced so a run's cost isn't quietly
+    // part-guessed.
+    let costUnknownCalls = 0;
 
     // The provider receives the wire id; storage keeps the logical id (#19).
     const wireModel = options.wireModel ?? options.candidateModel;
@@ -329,6 +340,26 @@ export async function runExperiment(
       let cached = false;
 
       const hit = getCachedCompletion(db, fingerprint);
+      // A cached NON-answered trajectory (#1): reproduce the skip from cache
+      // instead of re-running its turns. Re-running would make fresh provider
+      // calls that the per-turn cap+ledger idempotency then lets through
+      // un-ledgered; serving the cached skip keeps a re-run $0, as it already is
+      // for an answered trajectory.
+      const cachedSkip = hit !== null ? decodeTrajectorySkip(hit.outputJson) : null;
+      if (hit !== null && cachedSkip !== null && cachedSkip.reason !== "answered") {
+        cacheHits += 1;
+        skipped += 1;
+        skipReasons[stopSkipKey(cachedSkip.reason)] =
+          (skipReasons[stopSkipKey(cachedSkip.reason)] ?? 0) + 1;
+        results.push({
+          caseId: stored.caseId,
+          status: "skipped",
+          costUsd: hit.costUsd,
+          cached: true,
+          detail: describeStop(cachedSkip),
+        });
+        continue;
+      }
       if (hit !== null) {
         cached = true;
         cacheHits += 1;
@@ -379,9 +410,16 @@ export async function runExperiment(
             });
             estimatedCost += perCallEstimate;
           },
-          onTurnComplete: (turn, _turnRequest, turnResponse) => {
+          onTurnComplete: (turn, turnRequest, turnResponse) => {
             const turnFingerprint = `${fingerprint}#turn:${turn}`;
-            const turnCost = costFromUsage(turnResponse.usage, options.price);
+            // A turn whose provider returned no usage is billed at the estimate,
+            // never $0 (#3), so a null-usage turn can't leak the cap.
+            const { costUsd: turnCost, usageKnown } = chargeableCost(
+              turnResponse.usage,
+              turnRequest,
+              options.price,
+            );
+            if (!usageKnown) costUnknownCalls += 1;
             trajCost += turnCost;
             actualCost += turnCost;
             // Persist immediately so a crash — or a policy stop below — never
@@ -404,6 +442,23 @@ export async function runExperiment(
           skipped += 1;
           skipReasons[stopSkipKey(traj.stop.reason)] =
             (skipReasons[stopSkipKey(traj.stop.reason)] ?? 0) + 1;
+          // Cache the skip under the aggregate fingerprint (#1): a re-run of this
+          // experiment then hits the cache and makes NO provider call, instead of
+          // re-running the turns and slipping paid calls past the per-turn ledger.
+          cacheCompletion(db, {
+            fingerprint,
+            provider: options.providerName,
+            model: options.candidateModel,
+            resolvedModel: wireModel,
+            upstreamProvider: null,
+            params: options.params ?? null,
+            output: encodeTrajectorySkip(traj.stop),
+            usage: traj.usage,
+            finishReason: `trajectory_incomplete:${traj.stop.reason}`,
+            latencyMs: traj.latencyMs,
+            queueMs: null,
+            costUsd: trajCost,
+          });
           results.push({
             caseId: stored.caseId,
             status: "skipped",
@@ -454,7 +509,11 @@ export async function runExperiment(
 
         response = await options.provider.complete(request);
         providerCalls += 1;
-        costUsd = costFromUsage(response.usage, options.price);
+        // A completed paid call with no reported usage ledgers the estimate, not
+        // $0 (#3) — the money was spent whether or not the provider counted it.
+        const charge = chargeableCost(response.usage, request, options.price);
+        costUsd = charge.costUsd;
+        if (!charge.usageKnown) costUnknownCalls += 1;
         actualCost += costUsd;
 
         // Persist before grading, so a crash after the paid call never loses it.
@@ -501,6 +560,7 @@ export async function runExperiment(
       provider_calls: providerCalls,
       estimated_cost_usd: estimatedCost,
       actual_cost_usd: actualCost,
+      cost_unknown_calls: costUnknownCalls,
       skip_reasons: skipReasons,
     };
     // Persist per-case outcomes so a gate can pair candidate vs reference by

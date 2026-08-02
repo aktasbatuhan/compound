@@ -196,12 +196,52 @@ describe("runTrajectory", () => {
     const provider = new ScriptedProvider([toolCall("c1", "loop", {})]);
     const result = await runTrajectory(provider, {
       request: baseRequest,
-      recordedToolResults: [{ tool: "loop", result: "{}" }],
-      policy: { default: "recorded" },
+      // `mocked` answers every turn's tool call, so nothing runs out and the run
+      // truncates on the turn budget — a `recorded` result is consumed once (#8),
+      // which would instead stop the loop at turn 2 with missing_recorded_result.
+      policy: { default: "mocked" },
       maxTurns: 3,
     });
     expect(result.turns).toBe(3);
     expect(result.truncated).toBe(true);
     expect(result.toolCalls).toHaveLength(3);
+  });
+
+  test("a recorded result with pinned arguments does not answer a different-arg call (#8)", async () => {
+    // The trace recorded dispute_charge({amount:23})→ok. A candidate that calls
+    // it with the WRONG amount must NOT receive the success result — replay stops
+    // with missing_recorded_result rather than fabricating a matching outcome.
+    const provider = new ScriptedProvider([toolCall("c1", "dispute_charge", { amount: 999 })]);
+    const result = await runTrajectory(provider, {
+      request: baseRequest,
+      recordedToolResults: [{ tool: "dispute_charge", arguments: { amount: 23 }, result: "ok" }],
+      policy: { default: "recorded" },
+      maxTurns: 3,
+    });
+    expect(result.stop.reason).toBe("missing_recorded_result");
+    expect(result.turns).toBe(1);
+  });
+
+  test("identical repeated calls draw recorded results in sequence, not the first twice (#8)", async () => {
+    // A poll tool called twice with identical args must replay pending THEN done —
+    // the recorded queue is consumed once per result, so the second call does not
+    // re-serve the first.
+    const provider = new ScriptedProvider([
+      toolCall("c1", "poll", {}),
+      toolCall("c2", "poll", {}),
+      { role: "assistant", content: "finished" },
+    ]);
+    const result = await runTrajectory(provider, {
+      request: baseRequest,
+      recordedToolResults: [
+        { tool: "poll", result: "pending" },
+        { tool: "poll", result: "done" },
+      ],
+      policy: { default: "recorded" },
+      maxTurns: 5,
+    });
+    expect(result.stop.reason).toBe("answered");
+    const toolResults = result.transcript.filter((m) => m.role === "tool").map((m) => m.content);
+    expect(toolResults).toEqual(["pending", "done"]);
   });
 });

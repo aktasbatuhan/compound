@@ -118,6 +118,44 @@ describe("runExperiment money-safety", () => {
     expect(report.estimated_cost_usd ?? 0).toBeGreaterThan(0);
   });
 
+  test("a paid call with no usage ledgers the estimate, never $0 (#3)", async () => {
+    seedCases("support", 1);
+    // A provider that completes but reports no usage (e.g. Doubleword Flex on
+    // some long outputs). The money was spent; costFromUsage would read $0.
+    class NullUsageProvider implements Provider {
+      readonly name = "mock";
+      calls: CompletionRequest[] = [];
+      async complete(request: CompletionRequest): Promise<CompletionResponse> {
+        this.calls.push(request);
+        return {
+          output: { role: "assistant", content: '{"ok":true}' },
+          usage: null,
+          finishReason: "stop",
+          resolvedModel: request.model,
+          latencyMs: 1,
+        };
+      }
+    }
+    const provider = new NullUsageProvider();
+    const { report } = await runExperiment(db, {
+      taskKey: "support",
+      candidateModel: "cheap",
+      provider,
+      providerName: "mock",
+      price: PRICE,
+      assertions: ASSERTIONS,
+      partition: "optimization_train",
+      paidRunsEnabled: true,
+      experimentCapUsd: 5,
+      globalHardLimitUsd: 25,
+    });
+    expect(provider.calls).toHaveLength(1);
+    // Ledger and reported cost are the estimate, not $0.
+    expect(report.actual_cost_usd as number).toBeGreaterThan(0);
+    expect(report.cost_unknown_calls).toBe(1);
+    expect(totalSpendUsd(db)).toBeCloseTo(report.actual_cost_usd as number, 9);
+  });
+
   test("re-wraps contract tools into the OpenAI function envelope for the provider", async () => {
     // Seed one trace whose focal step exposes a tool in the CONTRACT shape
     // ({name, description, parameters}) — the shape ingest normalizes to.
@@ -540,6 +578,46 @@ describe("runExperiment agentic multi-turn (#23)", () => {
     expect(report.actual_cost_usd).toBe(0);
   });
 
+  test("re-running a NON-answered trajectory is served from cache — no re-charge (#1)", async () => {
+    seedAgenticCase();
+    const shared = {
+      taskKey: "agent",
+      candidateModel: "cand",
+      providerName: "mock",
+      price: PRICE,
+      assertions: [{ type: "tool_called", name: "dispute_charge" }] as Assertion[],
+      partition: "optimization_train" as const,
+      agentic: true,
+      // dispute_charge is blocked, so the first turn stops non-answered (skipped).
+      replayPolicy: {
+        default: "recorded" as const,
+        perTool: { dispute_charge: "blocked" as const },
+      },
+      paidRunsEnabled: true,
+      experimentCapUsd: 5,
+      globalHardLimitUsd: 25,
+    };
+    const first = new ScriptedProvider([dispute, { role: "assistant", content: "done" }]);
+    const firstRun = await runExperiment(db, { ...shared, provider: first });
+    expect(firstRun.report.cases_skipped).toBe(1);
+    expect(first.calls).toHaveLength(1); // one real, ledgered call
+    const spendAfterFirst = totalSpendUsd(db);
+    expect(spendAfterFirst).toBeGreaterThan(0);
+
+    // The bug (#1): a re-run finds no aggregate cache, re-runs the turn, and the
+    // per-turn ledger idempotency lets the fresh paid call through un-charged.
+    // With the skip cached, the re-run makes ZERO provider calls and the ledger
+    // does not move.
+    const second = new ScriptedProvider([dispute, { role: "assistant", content: "done" }]);
+    const secondRun = await runExperiment(db, { ...shared, provider: second });
+    expect(second.calls).toHaveLength(0);
+    expect(secondRun.report.cache_hits).toBe(1);
+    expect(secondRun.report.cases_skipped).toBe(1);
+    expect(secondRun.report.skip_reasons?.tool_blocked).toBe(1);
+    expect(secondRun.report.actual_cost_usd).toBe(0);
+    expect(totalSpendUsd(db)).toBeCloseTo(spendAfterFirst, 9);
+  });
+
   test("a truncated trajectory is skipped, never graded as a pass (#4)", async () => {
     seedLoopingCase();
     // The model never answers; with maxTurns=3 the run hits the budget. A
@@ -555,7 +633,10 @@ describe("runExperiment agentic multi-turn (#23)", () => {
       assertions: [{ type: "tool_called", name: "spin" }],
       partition: "optimization_train",
       agentic: true,
-      replayPolicy: { default: "recorded" },
+      // `mocked`: an endless-loop fixture needs a policy with nothing to exhaust,
+      // so it truncates on the turn budget rather than running out of recorded
+      // results (which a `recorded` policy now consumes once each, #8).
+      replayPolicy: { default: "mocked" },
       maxTurns: 3,
       paidRunsEnabled: true,
       experimentCapUsd: 5,
@@ -586,7 +667,9 @@ describe("runExperiment agentic multi-turn (#23)", () => {
         assertions: [{ type: "tool_called", name: "spin" }],
         partition: "optimization_train",
         agentic: true,
-        replayPolicy: { default: "recorded" },
+        // Endless loop → `mocked` so the budget (not a consumed recorded result,
+        // #8) is what stops it.
+        replayPolicy: { default: "mocked" },
         maxTurns: 8,
         paidRunsEnabled: true,
         experimentCapUsd: 3.5,
