@@ -56,13 +56,22 @@ export function computeContentHash(trace: Trace): string {
     .filter((step) => step.type === "tool_execution")
     .map((step) => ({ name: step.name, input: step.input ?? null, output: step.output ?? null }));
 
+  // The identity subject is the request a candidate would actually be REPLAYED
+  // from. For an agentic trace that is the FIRST model call (before any tool
+  // ran), matching curation's request root (#7); for a single call it is the
+  // focal call. Either way the replay script is folded in, so two traces with the
+  // same initial request but different tool outcomes stay distinct (#6).
+  const firstCall =
+    replayScript.length > 0 ? trace.steps.find((step) => step.type === "model_call") : undefined;
+  const requestCall = firstCall ?? focal;
+
   const subject =
-    focal !== undefined && focal.type === "model_call"
+    requestCall !== undefined && requestCall.type === "model_call"
       ? {
           kind: "focal_request",
-          model: focal.model ?? null,
-          input: focal.input,
-          tools_available: focal.tools_available ?? null,
+          model: requestCall.model ?? null,
+          input: requestCall.input,
+          tools_available: requestCall.tools_available ?? null,
           // Present only for agentic traces, so non-agentic hashes are unchanged.
           ...(replayScript.length > 0 ? { recorded_tool_results: replayScript } : {}),
         }

@@ -15,27 +15,33 @@ import type { CaseProvenance } from "@compound/storage";
  * Convert a trace's `tool_execution` steps into ordered replay results (#6). A
  * production agentic trace already records what each tool returned; without this
  * an imported agentic case reaches `--agentic` with an empty script and skips on
- * its first tool call. `arguments` are carried when the same tool ran more than
- * once, so distinct calls stay distinguishable; a lone execution answers any
- * call to that tool. Trace order is preserved.
+ * its first tool call. `arguments` are carried whenever the recorded execution
+ * HAS an input (#8): a result is bound to the exact call that produced it, so a
+ * candidate that calls the tool with different arguments does not receive a
+ * result recorded for other arguments. The runner consumes these in order, so
+ * repeated identical calls draw successive results. Trace order is preserved.
  */
 function recordedToolResults(trace: Trace): RecordedToolResult[] {
   const executions = trace.steps.filter((step) => step.type === "tool_execution");
-  const nameCounts = new Map<string, number>();
-  for (const step of executions) nameCounts.set(step.name, (nameCounts.get(step.name) ?? 0) + 1);
-
   const results: RecordedToolResult[] = [];
   for (const step of executions) {
     const output = step.output;
     const result = typeof output === "string" ? output : JSON.stringify(output ?? null);
-    const disambiguate = (nameCounts.get(step.name) ?? 0) > 1 && step.input != null;
     results.push({
       tool: step.name,
-      ...(disambiguate ? { arguments: step.input } : {}),
+      // Bind to the recorded arguments whenever they exist, so a wrong-arg call
+      // is not answered by an unrelated recorded result (#8). Only a genuinely
+      // argument-less recorded call (no input) stays a wildcard.
+      ...(step.input != null ? { arguments: step.input } : {}),
       result,
     });
   }
   return results;
+}
+
+/** The first model call in the trace — the request a candidate is given (#7). */
+function firstModelCall(trace: Trace): ModelCallStep | undefined {
+  return trace.steps.find((step): step is ModelCallStep => step.type === "model_call");
 }
 
 export class NotExtractableError extends Error {
@@ -147,11 +153,19 @@ export function extractCase(trace: Trace, options: { contentHash: string }): Ext
   if (trace.task_key === null) {
     throw new NotExtractableError(trace.trace_id, "trace has no task_key");
   }
+  // The focal call is the trace's FINAL model call — the terminal answer, which
+  // defines the expected output. But an agentic candidate must drive the whole
+  // trajectory itself, so the request it is GIVEN is the FIRST model call (before
+  // any tool ran), not the focal call's already-expanded transcript (#7).
+  // Grading it against the focal answer starts replay at turn one, as production
+  // did; using the focal request as input would hand the candidate the finished
+  // conversation and let it answer without ever selecting a tool.
   const focal = focalCall(trace);
   const expected = typeExpected(trace, focal);
   // The whole trace (its tool_execution steps included) is covered by
   // `contentHash`, so scripting the replay changes the case identity too (#6).
   const recorded = recordedToolResults(trace);
+  const requestRoot = recorded.length > 0 ? (firstModelCall(trace) ?? focal) : focal;
 
   return {
     caseId: caseIdFor(trace.task_key, options.contentHash),
@@ -159,9 +173,9 @@ export function extractCase(trace: Trace, options: { contentHash: string }): Ext
     sourceTraceId: trace.trace_id,
     contentHash: options.contentHash,
     input: {
-      model: focal.model ?? null,
-      input: focal.input,
-      tools_available: focal.tools_available ?? null,
+      model: requestRoot.model ?? null,
+      input: requestRoot.input,
+      tools_available: requestRoot.tools_available ?? null,
       ...(recorded.length > 0 ? { recorded_tool_results: recorded } : {}),
     },
     provenance: expected.provenance,

@@ -136,12 +136,84 @@ describe("extractCase", () => {
     return result.trace;
   }
 
-  test("scripts recorded tool executions as replay results, in order (#6)", () => {
+  test("scripts recorded tool executions as replay results, in order, arg-bound (#6, #8)", () => {
     const c = extractCase(agenticTrace(), { contentHash: "h-agentic" });
+    // Arguments are carried whenever the execution recorded an input, so a
+    // wrong-arg call can't be answered by an unrelated recorded result (#8).
     expect(c.input.recorded_tool_results).toEqual([
-      { tool: "get_charge", result: '{"amount":23}' },
-      { tool: "dispute_charge", result: "ok" },
+      { tool: "get_charge", arguments: { id: "ch_1" }, result: '{"amount":23}' },
+      { tool: "dispute_charge", arguments: { amount: 23 }, result: "ok" },
     ]);
+  });
+
+  // A multi-generation agentic trace: call-1 makes a tool call, the tool runs,
+  // call-2 (focal) gives the final answer. The importer marks the LAST call
+  // focal, so its input is the already-expanded transcript — replaying from it
+  // would skip tool selection entirely (#7).
+  function twoCallAgenticTrace(): Trace {
+    const raw = {
+      schema: "compound.trace",
+      schema_version: 1,
+      trace_id: "langfuse:agentic-2call",
+      task_key: "support",
+      started_at: "2026-07-23T10:00:00Z",
+      source: { importer: "test", importer_version: "1", source_ids: {} },
+      steps: [
+        {
+          type: "model_call",
+          step_id: "s1",
+          model: "gpt-4o",
+          input: [{ role: "user", content: "dispute my $23 charge" }],
+          output: {
+            role: "assistant",
+            content: null,
+            tool_calls: [{ id: "c1", name: "dispute_charge", arguments: { amount: 23 } }],
+          },
+        },
+        {
+          type: "tool_execution",
+          step_id: "t1",
+          name: "dispute_charge",
+          call_ref: { step_id: "s1", tool_call_id: "c1" },
+          input: { amount: 23 },
+          output: "ok",
+        },
+        {
+          type: "model_call",
+          step_id: "s2",
+          model: "gpt-4o",
+          input: [
+            { role: "user", content: "dispute my $23 charge" },
+            {
+              role: "assistant",
+              content: null,
+              tool_calls: [{ id: "c1", name: "dispute_charge", arguments: { amount: 23 } }],
+            },
+            { role: "tool", content: "ok", tool_call_id: "c1" },
+          ],
+          output: { role: "assistant", content: "Done — disputed the $23 charge." },
+        },
+      ],
+      focal_step_id: "s2",
+      permissions: { judging: true, optimization: true, fine_tuning: false },
+      redactions: [],
+    };
+    const result = validate(raw);
+    if (result.class === "rejected") throw new Error("bad two-call agentic trace");
+    return result.trace;
+  }
+
+  test("replay starts at the FIRST model call, graded against the focal answer (#7)", () => {
+    const c = extractCase(twoCallAgenticTrace(), { contentHash: "h-2call" });
+    // The request the candidate is given is call-1's initial prompt, NOT call-2's
+    // expanded transcript — so the candidate must select the tool itself.
+    expect(c.input.input).toEqual([{ role: "user", content: "dispute my $23 charge" }]);
+    // The recorded tool result is scripted so replay can proceed.
+    expect(c.input.recorded_tool_results).toEqual([
+      { tool: "dispute_charge", arguments: { amount: 23 }, result: "ok" },
+    ]);
+    // The expected output is still the focal (final) answer.
+    expect(c.expected).toEqual({ role: "assistant", content: "Done — disputed the $23 charge." });
   });
 
   test("a non-agentic trace carries no recorded_tool_results (unchanged shape)", () => {
