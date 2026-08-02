@@ -16,7 +16,7 @@
  * tool outright. `live_read_only` (actually calling a read tool) is a documented
  * follow-up, not part of v1.
  */
-import type { Message, ToolCall } from "@compound/contract";
+import { type Message, structuralEqual, type ToolCall } from "@compound/contract";
 import type { CompletionRequest, CompletionResponse, CompletionUsage, Provider } from "./provider";
 
 export const TOOL_REPLAY_POLICIES = ["recorded", "mocked", "live_read_only", "blocked"] as const;
@@ -145,10 +145,6 @@ function policyFor(tool: string, policy: TrajectoryPolicy): ToolReplayPolicy {
   return policy.perTool?.[tool] ?? policy.default;
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
 /** A resolved tool result, or the reason replay cannot continue. */
 type ResolveOutcome =
   | { ok: true; result: string }
@@ -183,7 +179,7 @@ function resolveToolResult(
       const match = recorded.find(
         (r) =>
           r.tool === call.name &&
-          (r.arguments === undefined || deepEqual(r.arguments, call.arguments)),
+          (r.arguments === undefined || structuralEqual(r.arguments, call.arguments)),
       );
       if (match === undefined)
         return { ok: false, reason: "missing_recorded_result", tool: call.name };

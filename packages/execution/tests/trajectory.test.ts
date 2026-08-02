@@ -120,6 +120,25 @@ describe("runTrajectory", () => {
     });
   });
 
+  test("argument-specific matching ignores key order (#10)", async () => {
+    // The recorded arguments and the call's arguments carry the same keys in a
+    // different order — a structural match, not a brittle JSON.stringify match.
+    const provider = new ScriptedProvider([
+      toolCall("c1", "book", { row: 1, col: 2 }),
+      answer("ok"),
+    ]);
+    const recorded: RecordedToolResult[] = [
+      { tool: "book", arguments: { col: 2, row: 1 }, result: '{"booked":true}' },
+    ];
+    const result = await runTrajectory(provider, {
+      request: baseRequest,
+      recordedToolResults: recorded,
+      policy: { default: "recorded" },
+    });
+    expect(result.stop.reason).toBe("answered");
+    expect(result.transcript.find((m) => m.role === "tool")?.content).toBe('{"booked":true}');
+  });
+
   test("argument-specific recorded results answer the matching call", async () => {
     const provider = new ScriptedProvider([toolCall("c1", "get_order", { id: "B" }), answer("ok")]);
     const recorded: RecordedToolResult[] = [

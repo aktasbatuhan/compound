@@ -4,6 +4,8 @@
  * Each evaluator returns `{ passed, detail }`. `detail` summarises the outcome
  * without echoing the raw output, which may be large or sensitive.
  */
+
+import { structuralEqual } from "@compound/contract";
 import Ajv from "ajv";
 import {
   isAbsent,
@@ -34,10 +36,6 @@ function stringify(value: unknown): string {
   return text.length > 80 ? `${text.slice(0, 77)}…` : text;
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
 /** A short, value-free description of a tool-arg matcher for `detail` lines. */
 function matcherLabel(match: ToolArgMatch): string {
   if ("equals" in match) return `equals ${stringify(match.equals)}`;
@@ -51,35 +49,46 @@ function matcherLabel(match: ToolArgMatch): string {
  * not be built (an invalid regex or JSON schema), so a bad matcher fails the
  * assertion with a clear detail instead of throwing.
  */
-function compileMatcher(match: ToolArgMatch): ((value: unknown) => boolean) | { error: string } {
-  if ("equals" in match) {
-    return (value) => deepEqual(value, match.equals);
+function compileMatcher(match: unknown): ((value: unknown) => boolean) | { error: string } {
+  // Fail SAFE on a malformed matcher (#8): config may not have caught a
+  // tool_call_arg with a missing/blank matcher, and this runs mid-experiment
+  // after completions may already be paid for — a bad matcher must fail the
+  // assertion, never throw and abort the run.
+  if (match === null || typeof match !== "object") {
+    return { error: "tool_call_arg needs a matcher (equals/regex/subset/schema)" };
   }
-  if ("regex" in match) {
+  const m = match as ToolArgMatch;
+  if ("equals" in m) {
+    return (value) => structuralEqual(value, m.equals);
+  }
+  if ("regex" in m) {
     let re: RegExp;
     try {
-      re = new RegExp(match.regex, match.flags);
+      re = new RegExp(m.regex, m.flags);
     } catch (error) {
       return { error: `invalid regex: ${error instanceof Error ? error.message : "error"}` };
     }
     return (value) => re.test(typeof value === "string" ? value : JSON.stringify(value));
   }
-  if ("subset" in match) {
+  if ("subset" in m) {
     return (value) => {
       if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
       const obj = value as Record<string, unknown>;
-      return Object.entries(match.subset).every(
-        ([key, expected]) => key in obj && deepEqual(obj[key], expected),
+      return Object.entries(m.subset).every(
+        ([key, expected]) => key in obj && structuralEqual(obj[key], expected),
       );
     };
   }
-  let validateFn: ReturnType<typeof ajv.compile>;
-  try {
-    validateFn = ajv.compile(match.schema as object);
-  } catch (error) {
-    return { error: `invalid schema: ${error instanceof Error ? error.message : "error"}` };
+  if ("schema" in m) {
+    let validateFn: ReturnType<typeof ajv.compile>;
+    try {
+      validateFn = ajv.compile(m.schema as object);
+    } catch (error) {
+      return { error: `invalid schema: ${error instanceof Error ? error.message : "error"}` };
+    }
+    return (value) => validateFn(value) === true;
   }
-  return (value) => validateFn(value) === true;
+  return { error: "tool_call_arg matcher must be one of equals/regex/subset/schema" };
 }
 
 function evaluateOne(assertion: Assertion, subject: AssertionSubject): Outcome {

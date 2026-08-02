@@ -259,17 +259,52 @@ export const AssertionTypeSchema = z.enum([
   "text_similarity",
 ]);
 
+const TOOL_ARG_MATCHER_KEYS = ["equals", "regex", "subset", "schema"] as const;
+
 /**
  * One assertion. The engine (`@compound/assertions`) owns the exact per-type
  * parameters; here the shape is loose on parameters but strict on `type`,
  * `required`, and `weight`, so a config is caught for an unknown assertion type
  * without duplicating the engine's discriminated union.
+ *
+ * The one exception is `tool_call_arg` (#8): a missing or ambiguous matcher
+ * would otherwise sail through config validation and throw mid-experiment, after
+ * completions may already be paid for — so its matcher is checked here, up front.
  */
-export const AssertionSchema = z.looseObject({
-  type: AssertionTypeSchema,
-  required: z.boolean().optional(),
-  weight: z.number().positive().optional(),
-});
+export const AssertionSchema = z
+  .looseObject({
+    type: AssertionTypeSchema,
+    required: z.boolean().optional(),
+    weight: z.number().positive().optional(),
+  })
+  .superRefine((assertion, ctx) => {
+    if (assertion.type !== "tool_call_arg") return;
+    const a = assertion as Record<string, unknown>;
+    if (typeof a.name !== "string" || a.name.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "tool_call_arg requires a tool `name`",
+        path: ["name"],
+      });
+    }
+    const match = a.match;
+    if (match === null || typeof match !== "object" || Array.isArray(match)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "tool_call_arg requires a `match` object (equals/regex/subset/schema)",
+        path: ["match"],
+      });
+      return;
+    }
+    const present = TOOL_ARG_MATCHER_KEYS.filter((k) => k in (match as Record<string, unknown>));
+    if (present.length !== 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: `tool_call_arg.match must have exactly one of ${TOOL_ARG_MATCHER_KEYS.join("/")}; got ${present.length}`,
+        path: ["match"],
+      });
+    }
+  });
 
 /** Per-task assertion lists, keyed by task_key. */
 export const AssertionsSchema = z.record(z.string(), z.array(AssertionSchema));

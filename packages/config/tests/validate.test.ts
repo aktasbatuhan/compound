@@ -80,6 +80,43 @@ describe("invalid cases", () => {
   }
 });
 
+describe("tool_call_arg matcher validation (#8)", () => {
+  // Runtime (zod) enforcement only — the JSON Schema stays loose on per-type
+  // params by design, and only the TS engine grades assertions. Catching this at
+  // config load stops a malformed matcher from throwing mid-experiment.
+  const withAssertion = (assertion: Record<string, unknown>) =>
+    withSection("assertions", { "finance.dispute_charge": [assertion] });
+
+  test("accepts exactly one matcher", () => {
+    expect(
+      validateConfig(withAssertion({ type: "tool_call_arg", name: "x", match: { equals: 1 } })).ok,
+    ).toBe(true);
+  });
+
+  test("rejects a missing matcher", () => {
+    const result = validateConfig(
+      withAssertion({ type: "tool_call_arg", name: "x", arg: "amount" }),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.some((i) => i.path.endsWith("match"))).toBe(true);
+  });
+
+  test("rejects two matchers at once", () => {
+    expect(
+      validateConfig(
+        withAssertion({ type: "tool_call_arg", name: "x", match: { equals: 1, regex: "1" } }),
+      ).ok,
+    ).toBe(false);
+  });
+
+  test("rejects a missing tool name", () => {
+    expect(validateConfig(withAssertion({ type: "tool_call_arg", match: { equals: 1 } })).ok).toBe(
+      false,
+    );
+  });
+});
+
 describe("issues are path-qualified", () => {
   test("names the offending task key and field", () => {
     const result = validateConfig(invalidCases["unknown replay policy"]);

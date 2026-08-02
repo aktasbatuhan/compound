@@ -1,3 +1,4 @@
+export * from "./equal";
 export * from "./schemas";
 export * from "./validate";
 

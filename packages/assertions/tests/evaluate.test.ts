@@ -235,6 +235,28 @@ describe("tool_call_arg", () => {
     expect(result.passed).toBe(false);
     expect(result.detail).toContain("invalid regex");
   });
+
+  test("a missing matcher fails SAFE — fails the assertion, never throws (#8)", () => {
+    // Config validation should catch this, but if a malformed assertion reaches
+    // the engine it must fail cleanly rather than throw mid-experiment.
+    const assertion = { type: "tool_call_arg", name: "dispute_charge" } as unknown as Assertion;
+    const result = run(assertion, disputeRight);
+    expect(result.passed).toBe(false);
+    expect(result.detail).toContain("matcher");
+  });
+
+  test("equals matches regardless of argument key order (#10)", () => {
+    // The recorded value and the call's arguments carry the same keys in a
+    // different order — a structural match, not a JSON.stringify match.
+    const output = toolOutput([{ id: "1", name: "book", arguments: { seat: { row: 1, col: 2 } } }]);
+    const assertion: Assertion = {
+      type: "tool_call_arg",
+      name: "book",
+      arg: "seat",
+      match: { equals: { col: 2, row: 1 } },
+    };
+    expect(run(assertion, output).passed).toBe(true);
+  });
 });
 
 describe("max_length", () => {
