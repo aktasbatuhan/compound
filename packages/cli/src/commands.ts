@@ -30,6 +30,7 @@ import { runProvidersCommand } from "./providers";
 import { runSuggestAssertionsCommand } from "./suggest";
 import { runTelemetryCommand } from "./telemetry";
 import { runValidateCommand } from "./validate";
+import { runViewCommand } from "./view";
 
 export interface CommandEnvironment {
   /** Where output goes; injected so tests can capture it. */
@@ -109,6 +110,8 @@ Usage:
   compound judge grade <task_key> <experiment_id> [--paid --cap USD]
   compound optimize <task_key> --candidate M [--reflection M] [--max-calls N] [--force]
   compound telemetry [task_key] [--json] [--db PATH]
+  compound view [gate|case|trace|experiment] [id] [--full] [--db PATH]   (read-only browser; overview if no args)
+  compound view compare [task_key] [--db PATH]                           (cost vs score per model; aggregated + per task)
   compound status [--db PATH]
   compound serve [--port N] [--host HOST] [--db PATH] [--config PATH]
   compound help
@@ -336,6 +339,8 @@ export async function runCommand(
       return runOptimizeCommand(args, env);
     case "telemetry":
       return runTelemetryCommand(args, env);
+    case "view":
+      return runViewCommand(args, env);
     case "suggest-assertions":
       return runSuggestAssertionsCommand(args, env);
     default:

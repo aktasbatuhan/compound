@@ -40,13 +40,30 @@ export async function runExperimentCommand(
   if (taskKey === undefined || modelId === undefined) {
     env.write(
       "error: usage: compound experiment <task_key> <model> [--provider P] " +
-        "[--transport chat_completions|flex] [--partition P] [--paid --cap N]",
+        "[--transport chat_completions|flex] [--service-tier T] " +
+        "[--openrouter-provider SLUG] [--openrouter-quant Q] [--trial N] " +
+        "[--max-tokens N] [--partition P] [--paid --cap N]",
     );
     return { exitCode: 2 };
   }
 
   const providerOverride = stringFlag(args.flags, "provider");
   const transportOverride = stringFlag(args.flags, "transport");
+  const openrouterProvider = stringFlag(args.flags, "openrouter-provider");
+  const openrouterQuant = stringFlag(args.flags, "openrouter-quant");
+  const serviceTier = stringFlag(args.flags, "service-tier");
+  const trialFlag = stringFlag(args.flags, "trial");
+  const trial = trialFlag !== undefined ? Number.parseInt(trialFlag, 10) : 0;
+  if (Number.isNaN(trial) || trial < 0) {
+    env.write("error: --trial must be a non-negative integer");
+    return { exitCode: 2 };
+  }
+  const maxTokensFlag = stringFlag(args.flags, "max-tokens");
+  const maxTokens = maxTokensFlag !== undefined ? Number.parseInt(maxTokensFlag, 10) : undefined;
+  if (maxTokens !== undefined && (Number.isNaN(maxTokens) || maxTokens <= 0)) {
+    env.write("error: --max-tokens must be a positive integer");
+    return { exitCode: 2 };
+  }
   if (
     transportOverride !== undefined &&
     transportOverride !== "chat_completions" &&
@@ -72,6 +89,8 @@ export async function runExperimentCommand(
       ...(transportOverride !== undefined
         ? { transport: transportOverride as "chat_completions" | "flex" }
         : {}),
+      ...(openrouterProvider !== undefined ? { openrouterProvider } : {}),
+      ...(openrouterQuant !== undefined ? { openrouterQuant } : {}),
     });
   } catch (error) {
     if (error instanceof ExecutionConfigError) {
@@ -80,6 +99,17 @@ export async function runExperimentCommand(
     }
     throw error;
   }
+
+  // Request params: OpenRouter upstream routing (#9) plus an optional Doubleword
+  // service tier — both ride in params so each joins the completion fingerprint.
+  const runParams: Record<string, unknown> | undefined =
+    resolved.routingParams !== undefined || serviceTier !== undefined || maxTokens !== undefined
+      ? {
+          ...resolved.routingParams,
+          ...(serviceTier !== undefined ? { service_tier: serviceTier } : {}),
+          ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+        }
+      : undefined;
 
   const controls = moneyControls(config);
   const wantsPaid = args.flags.paid === true;
@@ -114,6 +144,8 @@ export async function runExperimentCommand(
       ...(resolved.transportOverride !== undefined
         ? { transportOverride: resolved.transportOverride }
         : {}),
+      ...(runParams !== undefined ? { params: runParams } : {}),
+      ...(trial > 0 ? { trial } : {}),
       // The config schema is loose on assertion params (the engine owns the
       // exact shapes); the engine validates per-type at evaluation.
       assertions: (config.assertions?.[taskKey] ?? []) as Assertion[],
@@ -129,8 +161,16 @@ export async function runExperimentCommand(
 
     const paid = wantsPaid;
     env.write(`experiment: ${modelId} on task ${taskKey} (${partition})`);
-    env.write(`  provider:     ${resolved.providerName}`);
-    env.write(`  transport:    ${resolved.transport}`);
+    env.write(
+      `  provider:     ${resolved.providerName}` +
+        (openrouterProvider !== undefined ? ` (upstream: ${openrouterProvider})` : ""),
+    );
+    env.write(
+      `  transport:    ${resolved.transport}` +
+        (serviceTier !== undefined ? ` (service_tier: ${serviceTier})` : ""),
+    );
+    if (trial > 0) env.write(`  trial:        ${trial}`);
+    if (maxTokens !== undefined) env.write(`  max_tokens:   ${maxTokens}`);
     env.write(`  mode:         ${paid ? "PAID" : "dry run (no provider calls)"}`);
     env.write(`  cases:        ${report.cases_total ?? 0}`);
     env.write(`  graded:       ${report.cases_graded ?? 0}`);

@@ -151,7 +151,9 @@ export function responsesOutputText(payload: ResponsePayload): string {
 
 function responsesUsage(payload: ResponsePayload): CompletionUsage | null {
   const raw = payload.usage;
-  if (raw === undefined) return null;
+  // A provider may send `usage: null` (not just omit it) — e.g. Doubleword's
+  // Responses API on some long-output completions. Treat null like absent.
+  if (raw === undefined || raw === null) return null;
   return {
     input_tokens: raw.input_tokens ?? 0,
     output_tokens: raw.output_tokens ?? 0,
@@ -228,7 +230,12 @@ export class FlexProvider implements Provider {
       // Responses API takes `input`; render messages as its input array.
       input: request.messages,
       background: true,
-      service_tier: this.serviceTier,
+      // A per-request tier (Doubleword flex/default/scale) overrides the
+      // configured default; it rides in params so it also joins the fingerprint.
+      service_tier:
+        typeof request.params?.service_tier === "string"
+          ? request.params.service_tier
+          : this.serviceTier,
       ...(request.tools && request.tools.length > 0
         ? { tools: toResponsesTools(request.tools), tool_choice: "auto" }
         : {}),

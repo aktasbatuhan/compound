@@ -225,7 +225,16 @@ export async function runGateCommand(
     });
 
   try {
-    env.write(`opening the sealed decision set for '${taskKey}': ${reason}`);
+    // A dry run previews the verdict WITHOUT opening the seal or recording it;
+    // only a deliberate (paid) run opens the sealed set and persists a decision.
+    if (wantsPaid) {
+      env.write(`opening the sealed decision set for '${taskKey}': ${reason}`);
+    } else {
+      env.write(
+        `preview (dry run) for '${taskKey}': ${reason} — computing the gate without ` +
+          "opening the seal or recording a verdict; re-run with --paid --cap to decide.",
+      );
+    }
     if (promptArtifactId !== undefined) {
       env.write(`optimized prompt under test: artifact ${promptArtifactId}`);
     }
@@ -250,6 +259,9 @@ export async function runGateCommand(
       minCases,
       judgeAbstainMax,
       firewallReason: reason,
+      // Only a paid, deliberate run persists the spec + verdict; a dry run is a
+      // side-effect-free preview (issue #20).
+      persist: wantsPaid,
       candidateExperimentId: candidateRun.experimentId,
       referenceExperimentId: referenceRun.experimentId,
       ...(candidatePromptHash !== undefined ? { candidatePromptHash } : {}),
@@ -260,7 +272,8 @@ export async function runGateCommand(
 
     const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
     env.write("");
-    env.write(`GATE: ${OUTCOME_LABEL[result.outcome] ?? result.outcome}`);
+    const verdictLabel = wantsPaid ? "GATE" : "GATE (preview)";
+    env.write(`${verdictLabel}: ${OUTCOME_LABEL[result.outcome] ?? result.outcome}`);
     env.write(`  task:        ${taskKey}   metric: ${metric}   mode: ${mode}`);
     const onProvider = (r: ReturnType<typeof resolveModel>) => ` @${r.providerName}`;
     env.write(

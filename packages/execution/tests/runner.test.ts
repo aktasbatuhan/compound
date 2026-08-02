@@ -259,6 +259,36 @@ describe("runExperiment money-safety", () => {
     expect(totalSpendUsd(db)).toBe(spentAfterFirst); // no new spend
   });
 
+  test("a new trial re-runs fresh (own paid calls), not from the trial-0 cache", async () => {
+    seedCases("support", 8);
+    const base = { input_tokens: 10, output_tokens: 5 };
+    const shared = {
+      taskKey: "support",
+      candidateModel: "cheap",
+      providerName: "mock",
+      price: PRICE,
+      assertions: ASSERTIONS,
+      partition: "optimization_train" as const,
+      paidRunsEnabled: true,
+      experimentCapUsd: 5,
+      globalHardLimitUsd: 25,
+    };
+    const t0 = new MockProvider('{"ok":true}', base);
+    await runExperiment(db, { ...shared, provider: t0 }); // trial 0
+    const cases = t0.calls.length; // however many landed in this partition
+    expect(cases).toBeGreaterThan(0);
+    const spentT0 = totalSpendUsd(db);
+
+    // Trial 1: a distinct fingerprint per case → fresh calls, new spend, and a
+    // second latency/TPS sample per case rather than a $0 replay of trial 0.
+    const t1 = new MockProvider('{"ok":true}', base);
+    const { report } = await runExperiment(db, { ...shared, provider: t1, trial: 1 });
+    expect(t1.calls).toHaveLength(cases); // nothing cached across trials
+    expect(report.cache_hits).toBe(0);
+    expect(report.actual_cost_usd).toBeGreaterThan(0);
+    expect(totalSpendUsd(db)).toBeGreaterThan(spentT0);
+  });
+
   test("the hard cap stops a run before exceeding the global limit", async () => {
     seedCases("support", 200);
     const provider = new MockProvider('{"ok":true}', { input_tokens: 1000, output_tokens: 1000 });

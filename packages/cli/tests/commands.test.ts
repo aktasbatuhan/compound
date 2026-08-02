@@ -3,10 +3,15 @@ import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  cacheCompletion,
   createDatabase,
+  createExperiment,
+  createGateSpec,
   insertCases,
   listGateResults,
   migrate,
+  recordCaseResults,
+  recordGateResult,
   recordOptimizationRun,
 } from "@compound/storage";
 import { type CommandEnvironment, parseArgs, runCommand } from "../src/commands";
@@ -387,6 +392,36 @@ describe("experiment", () => {
     expect(result.exitCode).toBe(1);
     expect(output()).toContain("not in models");
   });
+
+  test("--max-tokens must be a positive integer", async () => {
+    const { env, output } = testEnvironment();
+    await importAndCurate(env);
+    const result = await runCommand(
+      ["experiment", "support", "zai-org/GLM-5.2-FP8", "--max-tokens", "0"],
+      env,
+    );
+    expect(result.exitCode).toBe(2);
+    expect(output()).toContain("--max-tokens must be a positive integer");
+  });
+
+  test("--max-tokens is echoed and bounds the output budget", async () => {
+    const { env, output } = testEnvironment();
+    await importAndCurate(env);
+    const result = await runCommand(
+      [
+        "experiment",
+        "support",
+        "zai-org/GLM-5.2-FP8",
+        "--partition",
+        "optimization_train",
+        "--max-tokens",
+        "1200",
+      ],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("max_tokens:   1200");
+  });
 });
 
 describe("gate", () => {
@@ -424,8 +459,8 @@ describe("gate", () => {
     expect(output()).toContain("--reason is required");
   });
 
-  test("a dry run opens the seal, decides honestly, and makes no provider calls", async () => {
-    const { env, output } = testEnvironment();
+  test("a dry run previews without opening the seal or recording a verdict (issue #20)", async () => {
+    const { env, output, db } = testEnvironment();
     await importAndCurate(env);
     const result = await runCommand(
       [
@@ -441,11 +476,16 @@ describe("gate", () => {
       env,
     );
     expect(result.exitCode).toBe(0);
-    expect(output()).toContain("opening the sealed decision set");
-    expect(output()).toContain("GATE:");
+    // A dry run is a side-effect-free PREVIEW: it does not claim to open the seal
+    // and it labels the verdict as a preview, not a recorded decision.
+    expect(output()).not.toContain("opening the sealed decision set");
+    expect(output()).toContain("preview (dry run)");
+    expect(output()).toContain("GATE (preview):");
     // No cached completions on the sealed set in a dry run → an honest verdict,
     // not a fabricated pass.
     expect(output()).toContain("INSUFFICIENT DATA");
+    // Crucially, nothing is persisted — a preview must not pollute the audit trail.
+    expect(listGateResults(db)).toHaveLength(0);
   });
 
   test("--prompt-artifact must name a stored optimization run", async () => {
@@ -502,7 +542,10 @@ describe("gate", () => {
     expect(output()).toContain("belongs to task");
   });
 
-  test("an adoption re-gate records the artifact and prompt hash on the declared rule", async () => {
+  // A dry-run preview announces the artifact under test but records nothing;
+  // that the persisted rule captures the artifact + prompt hash is covered at the
+  // gate-decision level (packages/gate/tests/decide.test.ts).
+  test("an adoption re-gate previews the optimized prompt under test", async () => {
     const { env, output, db } = testEnvironment();
     await importAndCurate(env);
     const artifact = recordOptimizationRun(db, {
@@ -532,16 +575,12 @@ describe("gate", () => {
     );
     expect(result.exitCode).toBe(0);
     expect(output()).toContain(`optimized prompt under test: artifact ${artifact.id}`);
-
-    const [decided] = listGateResults(db, 1);
-    expect(decided?.spec.optimizationRunId).toBe(artifact.id);
-    expect(decided?.spec.candidatePromptHash).toStartWith("sha256:");
-    // A different rule than a baseline gate over the same models would declare.
-    expect(decided?.spec.candidatePromptHash).not.toBeNull();
+    // A preview persists nothing (issue #20).
+    expect(listGateResults(db)).toHaveLength(0);
   });
 
-  test("--candidate-provider runs the model on the override and records it on the rule", async () => {
-    const { env, output, db } = testEnvironment();
+  test("--candidate-provider runs the model on the override (preview)", async () => {
+    const { env, output } = testEnvironment();
     await importAndCurate(env);
     const result = await runCommand(
       [
@@ -560,10 +599,8 @@ describe("gate", () => {
     );
     expect(result.exitCode).toBe(0);
     // The candidate resolved onto the override provider (chat), shown in output.
+    // (That the override joins the persisted rule is covered in decide.test.ts.)
     expect(output()).toContain("zai-org/GLM-5.2-FP8 @openrouter");
-
-    const [decided] = listGateResults(db, 1);
-    expect(decided?.spec.candidateProvider).toBe("openrouter");
   });
 });
 
@@ -585,7 +622,7 @@ describe("eval (CI gate)", () => {
     expect((await runCommand(["eval", "support"], env)).exitCode).toBe(2);
   });
 
-  test("needs no --reason: a standing CI reason opens the seal", async () => {
+  test("needs no --reason: a standing CI reason drives the preview", async () => {
     const { env, output } = testEnvironment();
     await importAndCurate(env);
     const result = await runCommand(
@@ -836,5 +873,311 @@ describe("status", () => {
     expect(output()).toContain("traces: 1");
     expect(output()).toContain("eval_ready: 1");
     expect(output()).toContain("support");
+  });
+});
+
+describe("view", () => {
+  /**
+   * Seed a full reviewable scenario: one case, a candidate that FAILS it and a
+   * reference that PASSES it (each with a stored completion), plus a gate that
+   * decided between them — enough to exercise every subview.
+   */
+  function seedScenario(db: ReturnType<typeof createDatabase>) {
+    insertCases(db, [
+      {
+        caseId: "case:abc123def456",
+        taskKey: "finance.dispute_charge",
+        sourceTraceId: "trace:src-1",
+        contentHash: "hash-1",
+        provenance: "observed_output" as const,
+        partition: "decision_test" as const,
+        input: { input: [{ role: "user", content: "dispute a $23 charge" }] },
+        expected: {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c", name: "dispute_charge", arguments: {} }],
+        },
+      },
+    ]);
+    cacheCompletion(db, {
+      fingerprint: "fp-cand",
+      provider: "doubleword",
+      model: "cand-model",
+      params: {},
+      output: { role: "assistant", content: "Could you give me the transaction ID?" },
+      costUsd: 0.001,
+    });
+    cacheCompletion(db, {
+      fingerprint: "fp-ref",
+      provider: "openrouter",
+      model: "ref-model",
+      params: {},
+      output: {
+        role: "assistant",
+        content: null,
+        tool_calls: [{ id: "c", name: "dispute_charge", arguments: {} }],
+      },
+      costUsd: 0.01,
+    });
+    const cand = createExperiment(db, {
+      taskKey: "finance.dispute_charge",
+      candidateModel: "cand-model",
+      provider: "doubleword",
+      partition: "decision_test",
+      paid: true,
+    });
+    const ref = createExperiment(db, {
+      taskKey: "finance.dispute_charge",
+      candidateModel: "ref-model",
+      provider: "openrouter",
+      partition: "decision_test",
+      paid: true,
+    });
+    recordCaseResults(db, cand.id, [
+      {
+        caseId: "case:abc123def456",
+        status: "graded",
+        passed: false,
+        completionFingerprint: "fp-cand",
+      },
+    ]);
+    recordCaseResults(db, ref.id, [
+      {
+        caseId: "case:abc123def456",
+        status: "graded",
+        passed: true,
+        completionFingerprint: "fp-ref",
+      },
+    ]);
+    const spec = createGateSpec(db, {
+      specHash: "spec-1",
+      taskKey: "finance.dispute_charge",
+      candidateModel: "cand-model",
+      referenceModel: "ref-model",
+      metric: "pass_rate",
+      mode: "non_inferiority",
+      margin: 0.02,
+      confidence: 0.95,
+      minCases: 20,
+      judgeAbstainMax: 0,
+      candidateProvider: "doubleword",
+      referenceProvider: "openrouter",
+      firewallReason: "review test",
+    });
+    const result = recordGateResult(db, {
+      gateSpecId: spec.id,
+      candidateExperimentId: cand.id,
+      referenceExperimentId: ref.id,
+      outcome: "insufficient_data",
+      delta: -0.08,
+      ciLo: -0.2,
+      ciHi: 0,
+      n: 25,
+      candidateRate: 0.92,
+      referenceRate: 1,
+      judgeAbstainedFraction: 0,
+    });
+    return { candId: cand.id, gateId: result.id };
+  }
+
+  test("overview lists tasks with partition counts, gates and telemetry", async () => {
+    const { env, output, db } = testEnvironment();
+    seedScenario(db);
+    const result = await runCommand(["view"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("COMPOUND — overview");
+    expect(output()).toContain("finance.dispute_charge");
+    expect(output()).toContain("1 decision_test");
+    expect(output()).toContain("INSUFFICIENT_DATA");
+  });
+
+  test("gate detail shows the verdict and the candidate/reference disagreement", async () => {
+    const { env, output, db } = testEnvironment();
+    const { gateId } = seedScenario(db);
+    const result = await runCommand(["view", "gate", gateId.slice(0, 8)], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("GATE INSUFFICIENT_DATA");
+    expect(output()).toContain("cand-model @doubleword   92.0%");
+    expect(output()).toContain("95% CI [-20.0pp, 0.0pp]");
+    expect(output()).toContain("candidate FAIL / reference PASS");
+  });
+
+  test("case detail shows the input and each model's output side by side", async () => {
+    const { env, output, db } = testEnvironment();
+    seedScenario(db);
+    const result = await runCommand(["view", "case", "case:abc123def456"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("dispute a $23 charge");
+    expect(output()).toContain("cand-model  [FAIL]");
+    expect(output()).toContain("Could you give me the transaction ID?");
+    expect(output()).toContain("ref-model  [PASS]");
+    expect(output()).toContain("→ tool_call dispute_charge");
+  });
+
+  test("unknown subject is an error; a missing id reports cleanly", async () => {
+    const { env, output } = testEnvironment();
+    expect((await runCommand(["view", "frobnicate"], env)).exitCode).toBe(2);
+    expect(output()).toContain("unknown view 'frobnicate'");
+    const { env: e2, output: o2 } = testEnvironment();
+    expect((await runCommand(["view", "case", "nope"], e2)).exitCode).toBe(1);
+    expect(o2()).toContain("no case 'nope'");
+  });
+});
+
+describe("view compare", () => {
+  // Reuses the same shape as the `view` scenario: a candidate that fails and a
+  // reference that passes, each graded with a priced completion.
+  function seedTwoModels(db: ReturnType<typeof createDatabase>) {
+    insertCases(db, [
+      {
+        caseId: "case:cmp1",
+        taskKey: "finance.dispute_charge",
+        sourceTraceId: "trace:cmp",
+        contentHash: "hash-cmp",
+        provenance: "observed_output" as const,
+        partition: "decision_test" as const,
+        input: { input: [{ role: "user", content: "dispute" }] },
+        expected: null,
+      },
+    ]);
+    cacheCompletion(db, {
+      fingerprint: "fp-c",
+      provider: "doubleword",
+      model: "cand",
+      params: {},
+      output: { role: "assistant", content: "hedge" },
+      costUsd: 0.001,
+    });
+    cacheCompletion(db, {
+      fingerprint: "fp-r",
+      provider: "openrouter",
+      model: "ref",
+      params: {},
+      output: { role: "assistant", content: "act" },
+      costUsd: 0.01,
+      latencyMs: 500,
+      usage: { output_tokens: 100 }, // 100 tok / 0.5s = 200 tps
+    });
+    const cand = createExperiment(db, {
+      taskKey: "finance.dispute_charge",
+      candidateModel: "cand",
+      provider: "doubleword",
+      partition: "decision_test",
+      paid: true,
+    });
+    const ref = createExperiment(db, {
+      taskKey: "finance.dispute_charge",
+      candidateModel: "ref",
+      provider: "openrouter",
+      partition: "decision_test",
+      paid: true,
+    });
+    recordCaseResults(db, cand.id, [
+      {
+        caseId: "case:cmp1",
+        status: "graded",
+        passed: false,
+        score: 0,
+        completionFingerprint: "fp-c",
+      },
+    ]);
+    recordCaseResults(db, ref.id, [
+      {
+        caseId: "case:cmp1",
+        status: "graded",
+        passed: true,
+        score: 1,
+        completionFingerprint: "fp-r",
+      },
+    ]);
+  }
+
+  test("aggregated ranks best-first with pass% and per-case cost", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoModels(db);
+    const result = await runCommand(["view", "compare"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("aggregated (per model, across all tasks)");
+    // The passing reference (100%) sorts above the failing candidate (0%).
+    const out = output();
+    expect(out.indexOf("ref")).toBeLessThan(out.indexOf("cand"));
+    expect(out).toContain("100.0%");
+    expect(out).toContain("$0.01000"); // ref per-case cost
+    expect(out).toContain("$0.00100"); // cand per-case cost
+    // avg latency + TPS columns are present and computed for the priced ref.
+    expect(out).toContain("avg ms");
+    expect(out).toContain("tps");
+    expect(out).toContain("500"); // ref avg latency
+    expect(out).toContain("200.0"); // ref tps (100 tok / 0.5s)
+  });
+
+  test("per-task form shows the partition and only that task", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoModels(db);
+    const result = await runCommand(["view", "compare", "finance.dispute_charge"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("cost / score — finance.dispute_charge");
+    expect(output()).toContain("decision_test");
+  });
+
+  test("reports cleanly when a task has no graded experiments", async () => {
+    const { env, output } = testEnvironment();
+    const result = await runCommand(["view", "compare", "nope"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("no graded experiments for task 'nope'");
+  });
+
+  // One model id served by two OpenRouter upstreams must appear as two rows,
+  // labelled by host — the provider-selection table (#9), not one collapsed row.
+  function seedTwoUpstreams(db: ReturnType<typeof createDatabase>) {
+    insertCases(db, [
+      {
+        caseId: "case:up1",
+        taskKey: "finance.dispute_charge",
+        sourceTraceId: "trace:up",
+        contentHash: "hash-up",
+        provenance: "observed_output" as const,
+        partition: "optimizer_validation" as const,
+        input: { input: [{ role: "user", content: "dispute" }] },
+        expected: null,
+      },
+    ]);
+    for (const [fp, upstream, latency] of [
+      ["fp-fw", "Fireworks", 800],
+      ["fp-tg", "Together", 1600],
+    ] as const) {
+      cacheCompletion(db, {
+        fingerprint: fp,
+        provider: "openrouter",
+        model: "kimi-k3",
+        upstreamProvider: upstream,
+        params: { provider: { only: [upstream.toLowerCase()] } },
+        output: { role: "assistant", content: "act" },
+        costUsd: 0.003,
+        latencyMs: latency,
+        usage: { output_tokens: 40 },
+      });
+      const exp = createExperiment(db, {
+        taskKey: "finance.dispute_charge",
+        candidateModel: "kimi-k3",
+        provider: "openrouter",
+        partition: "optimizer_validation",
+        paid: true,
+      });
+      recordCaseResults(db, exp.id, [
+        { caseId: "case:up1", status: "graded", passed: true, score: 1, completionFingerprint: fp },
+      ]);
+    }
+  }
+
+  test("one model across two OpenRouter upstreams shows two host-labelled rows", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoUpstreams(db);
+    const result = await runCommand(["view", "compare", "finance.dispute_charge"], env);
+    expect(result.exitCode).toBe(0);
+    const out = output();
+    // Both hosts appear, distinctly labelled — not collapsed into one "openrouter".
+    expect(out).toContain("openrouter/Fireworks");
+    expect(out).toContain("openrouter/Together");
   });
 });

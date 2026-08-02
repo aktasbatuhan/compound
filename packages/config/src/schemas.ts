@@ -53,6 +53,12 @@ export const ProviderSchema = z.looseObject({
   base_url: z.url(),
   api_key_env: nonEmptyString,
   type: z.enum(["openai_compatible", "flex", "anthropic", "google"]).optional(),
+  /**
+   * HTTP request timeout in milliseconds. Long-output / reasoning-heavy
+   * generations can run for minutes; the default (180s chat, 1h flex) suits
+   * short tool-calls, so raise this for long-running agent workloads.
+   */
+  request_timeout_ms: z.number().int().positive().optional(),
   /** Per-provider price overrides, keyed by model id; falls back to the global table. */
   pricing_usd_per_million_tokens: PricingTableSchema.optional(),
 });

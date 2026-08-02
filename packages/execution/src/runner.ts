@@ -79,6 +79,14 @@ export interface RunExperimentOptions {
   /** Force a dry run even when paid calls are enabled. */
   dryRun?: boolean;
   maxCases?: number;
+  /**
+   * Stochastic-trial discriminator (default 0). A trial > 0 joins the completion
+   * fingerprint, so re-running the same case under a new trial is a fresh paid
+   * call rather than a $0 cache hit — used to collect repeated latency/TPS
+   * samples per case for a variance-aware speed comparison. Trial 0 keeps the
+   * base identity so it reuses any existing cache entry.
+   */
+  trial?: number;
 }
 
 export interface CaseRunResult {
@@ -220,12 +228,15 @@ export async function runExperiment(
         continue;
       }
 
-      const fingerprint = completionFingerprint({
-        provider: options.providerName,
-        request,
-        providerRevision: options.providerRevision,
-        transportOverride: options.transportOverride,
-      });
+      const fingerprint = completionFingerprint(
+        {
+          provider: options.providerName,
+          request,
+          providerRevision: options.providerRevision,
+          transportOverride: options.transportOverride,
+        },
+        options.trial ?? 0,
+      );
 
       let response: CompletionResponse;
       let costUsd = 0;
@@ -279,6 +290,7 @@ export async function runExperiment(
           provider: options.providerName,
           model: options.candidateModel,
           resolvedModel: response.resolvedModel,
+          upstreamProvider: response.upstreamProvider ?? null,
           params: options.params ?? null,
           output: response.output,
           usage: response.usage,

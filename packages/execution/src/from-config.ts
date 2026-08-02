@@ -38,6 +38,14 @@ interface ResolvedModel {
    * existing (native) cache entry keeps hitting.
    */
   transportOverride?: string;
+  /**
+   * OpenRouter upstream routing to merge into the request params (issue #9),
+   * e.g. `{ provider: { only: ["fireworks"], allow_fallbacks: false } }`. Set
+   * only when an upstream was pinned; it flows into `request.params`, so it joins
+   * the completion fingerprint automatically — pinning `fireworks` vs `together`
+   * yields distinct cache identities and distinct paid calls.
+   */
+  routingParams?: Record<string, unknown>;
 }
 
 export interface ResolveModelOptions {
@@ -54,6 +62,16 @@ export interface ResolveModelOptions {
    * pushed to flex — that is refused. Omitted → the provider's native transport.
    */
   transport?: Transport;
+  /**
+   * Pin a specific OpenRouter UPSTREAM host for this run (issue #9), by
+   * OpenRouter provider slug (e.g. "fireworks", "together", "baseten"). Sends
+   * `provider: { only: [slug], allow_fallbacks: false }` so the single kimi-k3
+   * model id can be benchmarked host-by-host. Only valid on an OpenRouter
+   * provider; refused otherwise.
+   */
+  openrouterProvider?: string;
+  /** Optional OpenRouter quantization filter for the pinned upstream (e.g. "fp8"). */
+  openrouterQuant?: string;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -174,15 +192,52 @@ export function resolveModel(
     );
   }
 
+  // An optional per-provider request timeout override (long-output workloads).
+  const timeoutOverride =
+    typeof (providerConfig as { request_timeout_ms?: unknown }).request_timeout_ms === "number"
+      ? { timeoutMs: (providerConfig as { request_timeout_ms: number }).request_timeout_ms }
+      : {};
   const provider =
     transport === "flex"
-      ? new FlexProvider({ name: providerName, baseUrl: providerConfig.base_url, apiKey })
-      : new HttpProvider({ name: providerName, baseUrl: providerConfig.base_url, apiKey });
+      ? new FlexProvider({
+          name: providerName,
+          baseUrl: providerConfig.base_url,
+          apiKey,
+          ...timeoutOverride,
+        })
+      : new HttpProvider({
+          name: providerName,
+          baseUrl: providerConfig.base_url,
+          apiKey,
+          ...timeoutOverride,
+        });
 
   // The wire id sent to this provider: a declared per-provider alias, else the
   // logical id. Price stays keyed by the logical id (what the user declares).
   const providerIds = (entry as { provider_ids?: Record<string, string> }).provider_ids;
   const wireModel = providerIds?.[providerName] ?? modelId;
+
+  // OpenRouter upstream pinning (issue #9). Only OpenRouter accepts a `provider`
+  // routing block; sending it to a direct host would be silently ignored (a
+  // false comparison) or rejected, so refuse rather than pretend it pinned.
+  let routingParams: Record<string, unknown> | undefined;
+  if (options.openrouterProvider !== undefined) {
+    if (!providerConfig.base_url.includes("openrouter.ai")) {
+      throw new ExecutionConfigError(
+        `--openrouter-provider only applies to an OpenRouter provider; ` +
+          `'${providerName}' (${providerConfig.base_url}) is not one`,
+      );
+    }
+    routingParams = {
+      provider: {
+        only: [options.openrouterProvider],
+        allow_fallbacks: false,
+        ...(options.openrouterQuant !== undefined
+          ? { quantizations: [options.openrouterQuant] }
+          : {}),
+      },
+    };
+  }
 
   return {
     provider,
@@ -191,6 +246,7 @@ export function resolveModel(
     wireModel,
     transport,
     ...(transportOverride !== undefined ? { transportOverride } : {}),
+    ...(routingParams !== undefined ? { routingParams } : {}),
   };
 }
 

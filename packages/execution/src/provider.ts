@@ -30,6 +30,14 @@ export interface CompletionResponse {
   finishReason: string | null;
   /** Model id the provider actually served, when it echoes one. */
   resolvedModel: string | null;
+  /**
+   * The UPSTREAM provider that actually served the call, when a routing broker
+   * echoes one (issue #9). OpenRouter returns a top-level `provider` naming the
+   * host it dispatched to (e.g. "Fireworks", "Together"); a direct provider does
+   * not, so this is `null`/absent for them. Recorded so a single OpenRouter model
+   * id can be compared host-by-host in telemetry.
+   */
+  upstreamProvider?: string | null;
   latencyMs: number;
   /**
    * For an ASYNC route (flex submit-then-poll): the portion of `latencyMs` spent
@@ -127,6 +135,8 @@ export class HttpProvider implements Provider {
 
 interface ChatCompletionPayload {
   model?: string;
+  /** OpenRouter names the upstream host it routed to here (issue #9). */
+  provider?: string;
   choices?: Array<{
     message?: {
       role?: string;
@@ -193,6 +203,7 @@ export function normalizeChatCompletion(
     usage,
     finishReason: choice.finish_reason ?? null,
     resolvedModel: payload.model ?? null,
+    upstreamProvider: payload.provider ?? null,
     latencyMs,
   };
 }

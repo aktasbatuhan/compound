@@ -228,6 +228,25 @@ describe("FlexProvider.complete", () => {
     expect(calls.filter((c) => c.method === "GET")).toHaveLength(1);
   });
 
+  test("a completed response with usage:null yields null usage, does not throw", async () => {
+    // Doubleword's Responses API returns `usage: null` (not absent) on some
+    // long-output completions; the strict `=== undefined` guard used to crash.
+    const { provider } = makeProvider([
+      {
+        id: "resp-1",
+        status: "completed",
+        output_text: "done",
+        usage: null,
+      },
+    ]);
+    const result = await provider.complete({
+      model: "m",
+      messages: [{ role: "user", content: "x" }],
+    });
+    expect(result.output.content).toBe("done");
+    expect(result.usage).toBeNull();
+  });
+
   test("throws when the background response ends in a non-completed status", async () => {
     const { provider } = makeProvider([
       { id: "resp-1", status: "failed", error: { message: "capacity" } },

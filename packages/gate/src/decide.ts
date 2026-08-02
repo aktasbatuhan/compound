@@ -12,7 +12,6 @@ import {
   type ExperimentResultRow,
   type ExperimentRow,
   type GateMetric,
-  type GateMode,
   type GateResultRow,
   type GateSpecRow,
   getExperiment,
@@ -31,6 +30,13 @@ export interface DecideGateInput extends GateRule {
   /** Provenance for an adoption gate: the optimization artifact under test. */
   optimizationRunId?: string;
   bootstrapIterations?: number;
+  /**
+   * Persist the pre-declared spec and the decided result (default true). A
+   * dry-run preview passes `false`: it computes and returns the same verdict but
+   * writes nothing and does not "open" the seal — recording a verdict is a
+   * deliberate, paid, one-time act, not a side effect of previewing one.
+   */
+  persist?: boolean;
 }
 
 /** One case present in both runs, with each side's metric value. */
@@ -160,27 +166,7 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
   };
   const specHash = hashRule(rule);
 
-  // Store the pre-declared rule (idempotent on hash) BEFORE deciding.
-  const spec = createGateSpec(db, {
-    specHash,
-    taskKey: rule.taskKey,
-    candidateModel: rule.candidateModel,
-    referenceModel: rule.referenceModel,
-    metric: rule.metric,
-    mode: rule.mode,
-    margin: rule.margin,
-    confidence: rule.confidence,
-    minCases: rule.minCases,
-    judgeAbstainMax: rule.judgeAbstainMax,
-    ...(rule.candidatePromptHash != null ? { candidatePromptHash: rule.candidatePromptHash } : {}),
-    ...(input.optimizationRunId !== undefined
-      ? { optimizationRunId: input.optimizationRunId }
-      : {}),
-    ...(rule.candidateProvider != null ? { candidateProvider: rule.candidateProvider } : {}),
-    ...(rule.referenceProvider != null ? { referenceProvider: rule.referenceProvider } : {}),
-    firewallReason: input.firewallReason,
-  });
-
+  // Pairing and the bootstrap CI are pure reads — safe on a preview.
   const { pairs, abstainedCount, presentCount } = pairCases(
     getExperimentResults(db, candidate.id),
     getExperimentResults(db, reference.id),
@@ -209,6 +195,69 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
 
   const candidateRate = pairs.length > 0 ? mean(pairs.map((p) => p.candidateScore)) : 0;
   const referenceRate = pairs.length > 0 ? mean(pairs.map((p) => p.referenceScore)) : 0;
+
+  // A dry-run preview (`persist: false`) writes nothing: it neither declares the
+  // rule nor records a verdict, so the sealed set is not "opened". Only a
+  // deliberate (paid) decision persists the spec-before-result pair.
+  if (input.persist === false) {
+    const now = new Date();
+    const spec: GateSpecRow = {
+      id: "preview",
+      specHash,
+      taskKey: rule.taskKey,
+      candidateModel: rule.candidateModel,
+      referenceModel: rule.referenceModel,
+      metric: rule.metric,
+      mode: rule.mode,
+      margin: rule.margin,
+      confidence: rule.confidence,
+      minCases: rule.minCases,
+      judgeAbstainMax: rule.judgeAbstainMax,
+      candidatePromptHash: rule.candidatePromptHash ?? null,
+      optimizationRunId: input.optimizationRunId ?? null,
+      candidateProvider: rule.candidateProvider ?? null,
+      referenceProvider: rule.referenceProvider ?? null,
+      firewallReason: input.firewallReason,
+      createdAt: now,
+    };
+    const result: GateResultRow = {
+      id: "preview",
+      gateSpecId: "preview",
+      candidateExperimentId: candidate.id,
+      referenceExperimentId: reference.id,
+      outcome,
+      delta: ci.point,
+      ciLo: ci.lo,
+      ciHi: ci.hi,
+      n: pairs.length,
+      candidateRate,
+      referenceRate,
+      judgeAbstainedFraction,
+      decidedAt: now,
+    };
+    return { spec, result, pairs };
+  }
+
+  // Store the pre-declared rule (idempotent on hash) BEFORE recording the result.
+  const spec = createGateSpec(db, {
+    specHash,
+    taskKey: rule.taskKey,
+    candidateModel: rule.candidateModel,
+    referenceModel: rule.referenceModel,
+    metric: rule.metric,
+    mode: rule.mode,
+    margin: rule.margin,
+    confidence: rule.confidence,
+    minCases: rule.minCases,
+    judgeAbstainMax: rule.judgeAbstainMax,
+    ...(rule.candidatePromptHash != null ? { candidatePromptHash: rule.candidatePromptHash } : {}),
+    ...(input.optimizationRunId !== undefined
+      ? { optimizationRunId: input.optimizationRunId }
+      : {}),
+    ...(rule.candidateProvider != null ? { candidateProvider: rule.candidateProvider } : {}),
+    ...(rule.referenceProvider != null ? { referenceProvider: rule.referenceProvider } : {}),
+    firewallReason: input.firewallReason,
+  });
 
   const result = recordGateResult(db, {
     gateSpecId: spec.id,

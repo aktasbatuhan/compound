@@ -222,6 +222,12 @@ export const completions = sqliteTable("completions", {
   model: text("model").notNull(),
   /** The resolved model id the provider actually served, when reported. */
   resolvedModel: text("resolved_model"),
+  /**
+   * The upstream host a routing broker actually dispatched to (issue #9).
+   * OpenRouter echoes this (e.g. "Fireworks"); NULL for a direct provider, so a
+   * single OpenRouter model id can be split host-by-host in telemetry.
+   */
+  upstreamProvider: text("upstream_provider"),
   paramsJson: text("params_json", { mode: "json" }),
   outputJson: text("output_json", { mode: "json" }).notNull(),
   usageJson: text("usage_json", { mode: "json" }),

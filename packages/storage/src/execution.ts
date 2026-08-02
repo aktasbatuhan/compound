@@ -20,6 +20,7 @@ import {
   experiments,
   spendRecords,
 } from "./schema";
+import { serviceTierOf, usageTokens } from "./telemetry";
 
 // --- budget ledger ---------------------------------------------------------
 
@@ -136,6 +137,8 @@ export interface CacheCompletionInput {
   provider: string;
   model: string;
   resolvedModel?: string | null;
+  /** Upstream host a broker (e.g. OpenRouter) dispatched to; null for direct providers (#9). */
+  upstreamProvider?: string | null;
   params: unknown;
   output: unknown;
   usage?: unknown;
@@ -156,6 +159,7 @@ export function cacheCompletion(handle: CompoundDatabase, input: CacheCompletion
       provider: input.provider,
       model: input.model,
       resolvedModel: input.resolvedModel ?? null,
+      upstreamProvider: input.upstreamProvider ?? null,
       paramsJson: input.params,
       outputJson: input.output,
       usageJson: input.usage ?? null,
@@ -302,6 +306,170 @@ export function getExperimentResults(
     .where(eq(experimentResults.experimentId, experimentId))
     .orderBy(experimentResults.caseId)
     .all();
+}
+
+/** One experiment's outcome for a single case, joined to the output it produced. */
+export interface CaseOutcomeRow {
+  experimentId: string;
+  candidateModel: string;
+  partition: CasePartition;
+  status: string;
+  passed: boolean | null;
+  score: number | null;
+  /** The model's completion (parsed message), or null if it was never executed. */
+  output: unknown;
+  costUsd: number | null;
+  startedAt: Date;
+}
+
+/**
+ * Every experiment's outcome for one case, newest first: how each candidate model
+ * scored on it and what it actually output. Joins the per-case grade to the
+ * experiment that produced it and the cached completion that holds the output — so
+ * a reviewer can see, side by side, why two models disagreed on the same case.
+ */
+export function listCaseOutcomes(handle: CompoundDatabase, caseId: string): CaseOutcomeRow[] {
+  const rows = handle.db
+    .select({
+      experimentId: experimentResults.experimentId,
+      candidateModel: experiments.candidateModel,
+      partition: experiments.partition,
+      status: experimentResults.status,
+      passed: experimentResults.passed,
+      score: experimentResults.score,
+      output: completions.outputJson,
+      costUsd: completions.costUsd,
+      startedAt: experiments.startedAt,
+    })
+    .from(experimentResults)
+    .innerJoin(experiments, eq(experimentResults.experimentId, experiments.id))
+    .leftJoin(completions, eq(experimentResults.completionFingerprint, completions.fingerprint))
+    .where(eq(experimentResults.caseId, caseId))
+    .orderBy(desc(experiments.startedAt))
+    .all();
+  return rows.map((r) => ({
+    experimentId: r.experimentId,
+    candidateModel: r.candidateModel,
+    partition: r.partition,
+    status: r.status,
+    passed: r.passed ?? null,
+    score: r.score ?? null,
+    output: r.output ?? null,
+    costUsd: r.costUsd ?? null,
+    startedAt: r.startedAt,
+  }));
+}
+
+/** An experiment's score-and-cost summary — the two axes of a model comparison. */
+export interface ExperimentScoreCost {
+  /** Total per-case rows. */
+  cases: number;
+  /** Rows with a pass/fail grade (a judge may abstain, leaving some ungraded). */
+  graded: number;
+  passed: number;
+  meanScore: number | null;
+  /** Sum of the cost of every case's completion (cached completions count at $0). */
+  totalCostUsd: number;
+  /** Cost averaged over the cases that have a completion. */
+  meanCostUsd: number | null;
+  /** Mean full-request latency (ms) over completions that recorded one; flex queue included. */
+  meanLatencyMs: number | null;
+  /** Completions that contributed a latency sample (for aggregating the mean). */
+  latencyCount: number;
+  /** Mean output tokens/sec (output tokens over full latency), matching telemetry's TPS. */
+  meanTps: number | null;
+  /** Completions that contributed a TPS sample. */
+  tpsCount: number;
+  /** The provider these completions ran on (one per experiment). */
+  provider: string | null;
+  /** The upstream host a broker (OpenRouter) dispatched to, when echoed; else null (#9). */
+  upstreamProvider: string | null;
+  /** The service tier the run used (Doubleword flex/default/scale), else null (#9 speed axis). */
+  serviceTier: string | null;
+}
+
+/**
+ * Roll one experiment up to its pass rate, mean score, and cost — joining each
+ * case's grade to the completion that produced it. This is the score half that
+ * `telemetry` (cost/latency only) does not carry, so a caller can compare models
+ * on quality and price together.
+ */
+export function experimentScoreCost(
+  handle: CompoundDatabase,
+  experimentId: string,
+): ExperimentScoreCost {
+  const rows = handle.db
+    .select({
+      passed: experimentResults.passed,
+      score: experimentResults.score,
+      costUsd: completions.costUsd,
+      latencyMs: completions.latencyMs,
+      usageJson: completions.usageJson,
+      provider: completions.provider,
+      upstreamProvider: completions.upstreamProvider,
+      paramsJson: completions.paramsJson,
+    })
+    .from(experimentResults)
+    .leftJoin(completions, eq(experimentResults.completionFingerprint, completions.fingerprint))
+    .where(eq(experimentResults.experimentId, experimentId))
+    .all();
+
+  let graded = 0;
+  let passed = 0;
+  let scoreSum = 0;
+  let scoreN = 0;
+  let totalCostUsd = 0;
+  let costN = 0;
+  let latencySum = 0;
+  let latencyCount = 0;
+  let tpsSum = 0;
+  let tpsCount = 0;
+  let provider: string | null = null;
+  let upstreamProvider: string | null = null;
+  let serviceTier: string | null = null;
+  for (const r of rows) {
+    if (r.passed !== null) {
+      graded += 1;
+      if (r.passed) passed += 1;
+    }
+    if (r.score !== null) {
+      scoreSum += r.score;
+      scoreN += 1;
+    }
+    if (r.costUsd !== null) {
+      totalCostUsd += r.costUsd;
+      costN += 1;
+    }
+    if (r.latencyMs !== null && r.latencyMs > 0) {
+      latencySum += r.latencyMs;
+      latencyCount += 1;
+      // TPS matches telemetry: output tokens over full request latency.
+      const output = usageTokens(r.usageJson).output;
+      if (output > 0) {
+        tpsSum += output / (r.latencyMs / 1000);
+        tpsCount += 1;
+      }
+    }
+    if (provider === null && r.provider !== null) provider = r.provider;
+    if (upstreamProvider === null && r.upstreamProvider != null)
+      upstreamProvider = r.upstreamProvider;
+    if (serviceTier === null) serviceTier = serviceTierOf(r.paramsJson);
+  }
+  return {
+    cases: rows.length,
+    graded,
+    passed,
+    meanScore: scoreN > 0 ? scoreSum / scoreN : null,
+    totalCostUsd,
+    meanCostUsd: costN > 0 ? totalCostUsd / costN : null,
+    meanLatencyMs: latencyCount > 0 ? latencySum / latencyCount : null,
+    latencyCount,
+    meanTps: tpsCount > 0 ? tpsSum / tpsCount : null,
+    tpsCount,
+    provider,
+    upstreamProvider,
+    serviceTier,
+  };
 }
 
 export interface ListExperimentsFilter {

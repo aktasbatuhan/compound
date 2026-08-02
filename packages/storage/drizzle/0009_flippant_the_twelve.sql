@@ -1,0 +1,1 @@
+ALTER TABLE `completions` ADD `upstream_provider` text;

@@ -24,6 +24,7 @@ const CONFIG = {
       base_url: "https://api.together.xyz/v1",
       api_key_env: "TOGETHER_API_KEY",
       type: "openai_compatible",
+      request_timeout_ms: 600000,
       pricing_usd_per_million_tokens: { "glm-5.2": { input: 0.9, output: 3.0 } },
     },
     vertex: {
@@ -77,6 +78,15 @@ describe("resolveModel — the provider axis", () => {
     expect(r.provider).toBeInstanceOf(HttpProvider);
     // The provider's own price table wins over the global one.
     expect(r.price).toEqual({ input: 0.9, output: 3.0 });
+  });
+
+  test("request_timeout_ms flows from provider config into the provider; default otherwise", () => {
+    // `together` sets request_timeout_ms: 600000; `openrouter` sets none.
+    const withOverride = resolveModel(CONFIG, "glm-5.2", { provider: "together", env: ENV });
+    const noOverride = resolveModel(CONFIG, "glm-5.2", { provider: "openrouter", env: ENV });
+    expect((withOverride.provider as unknown as { timeoutMs: number }).timeoutMs).toBe(600000);
+    // HttpProvider's built-in default is 180s.
+    expect((noOverride.provider as unknown as { timeoutMs: number }).timeoutMs).toBe(180000);
   });
 
   test("a flex-backend model on an openai_compatible provider uses CHAT, priced from the chat table", () => {
@@ -175,5 +185,45 @@ describe("resolveModel — per-provider wire ids (#19)", () => {
     const r = resolveModel(CONFIG, "gpt-4o-mini", { provider: "openrouter", env: ENV });
     expect(r.providerName).toBe("openrouter");
     expect(r.wireModel).toBe("gpt-4o-mini");
+  });
+});
+
+describe("resolveModel — OpenRouter upstream pinning (#9)", () => {
+  test("no upstream flag → no routing params (the common case)", () => {
+    const r = resolveModel(CONFIG, "gpt-4o-mini", { provider: "openrouter", env: ENV });
+    expect(r.routingParams).toBeUndefined();
+  });
+
+  test("pinning an upstream emits a provider.only routing block for the request", () => {
+    const r = resolveModel(CONFIG, "gpt-4o-mini", {
+      provider: "openrouter",
+      openrouterProvider: "fireworks",
+      env: ENV,
+    });
+    expect(r.routingParams).toEqual({
+      provider: { only: ["fireworks"], allow_fallbacks: false },
+    });
+  });
+
+  test("a quantization filter joins the routing block", () => {
+    const r = resolveModel(CONFIG, "gpt-4o-mini", {
+      provider: "openrouter",
+      openrouterProvider: "baseten",
+      openrouterQuant: "fp8",
+      env: ENV,
+    });
+    expect(r.routingParams).toEqual({
+      provider: { only: ["baseten"], allow_fallbacks: false, quantizations: ["fp8"] },
+    });
+  });
+
+  test("pinning an upstream on a non-OpenRouter provider is refused, not silently ignored", () => {
+    expect(() =>
+      resolveModel(CONFIG, "glm-5.2", {
+        provider: "together",
+        openrouterProvider: "fireworks",
+        env: ENV,
+      }),
+    ).toThrow(ExecutionConfigError);
   });
 });

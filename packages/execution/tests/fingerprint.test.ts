@@ -45,6 +45,28 @@ describe("completionFingerprint", () => {
     ).not.toBe(original);
   });
 
+  test("different OpenRouter upstreams are distinct paid calls / cache identities (#9)", () => {
+    // The routing block rides in params, so pinning fireworks vs together yields
+    // different fingerprints — the cache never serves one host's answer for another.
+    const fireworks = completionFingerprint({
+      ...base,
+      request: {
+        ...base.request,
+        params: { ...base.request.params, provider: { only: ["fireworks"] } },
+      },
+    });
+    const together = completionFingerprint({
+      ...base,
+      request: {
+        ...base.request,
+        params: { ...base.request.params, provider: { only: ["together"] } },
+      },
+    });
+    expect(fireworks).not.toBe(together);
+    // And both differ from an unpinned run, so pinning never reuses a generic hit.
+    expect(fireworks).not.toBe(completionFingerprint(base));
+  });
+
   test("is insensitive to param key order (canonical JSON)", () => {
     const a = completionFingerprint({
       ...base,

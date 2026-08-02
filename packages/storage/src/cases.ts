@@ -210,6 +210,21 @@ export function countCasesByPartition(
     .all();
 }
 
+export interface CaseTaskKeyCount {
+  taskKey: string;
+  count: number;
+}
+
+/** Case count per task key — the tasks that have curated cases, most-first. */
+export function countCasesByTaskKey(handle: CompoundDatabase): CaseTaskKeyCount[] {
+  return handle.db
+    .select({ taskKey: cases.taskKey, count: count() })
+    .from(cases)
+    .groupBy(cases.taskKey)
+    .orderBy(desc(count()))
+    .all();
+}
+
 export interface ProvenanceCount {
   provenance: CaseProvenance;
   count: number;

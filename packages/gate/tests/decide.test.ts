@@ -5,6 +5,7 @@ import {
   createDatabase,
   createExperiment,
   finishExperiment,
+  listGateResults,
   recordCaseResults,
 } from "@compound/storage";
 import { decideGate, GateInputError } from "../src/decide";
@@ -150,6 +151,42 @@ describe("decideGate", () => {
         referenceExperimentId: ref.id,
       }),
     ).toThrow(GateInputError);
+    handle.close();
+  });
+
+  test("a preview (persist: false) computes the verdict but writes nothing", () => {
+    const handle = db();
+    const cand = completedExperiment(handle, "cand", passResults(30, 27));
+    const ref = completedExperiment(handle, "ref", passResults(30, 27));
+    const { result, spec } = decideGate(handle, {
+      ...rule,
+      persist: false,
+      candidateExperimentId: cand.id,
+      referenceExperimentId: ref.id,
+    });
+    // The verdict is still computed and returned...
+    expect(result.outcome).toBe("meets_gate");
+    // ...but nothing was recorded and the seal was not "opened": no spec, no result.
+    expect(spec.id).toBe("preview");
+    expect(result.id).toBe("preview");
+    expect(listGateResults(handle)).toHaveLength(0);
+    handle.close();
+  });
+
+  test("a decision (default persist) records the rule with its provider and prompt hash", () => {
+    const handle = db();
+    const cand = completedExperiment(handle, "cand", passResults(30, 27));
+    const ref = completedExperiment(handle, "ref", passResults(30, 27));
+    decideGate(handle, {
+      ...rule,
+      candidateProvider: "openrouter",
+      candidatePromptHash: "sha256:deadbeef",
+      candidateExperimentId: cand.id,
+      referenceExperimentId: ref.id,
+    });
+    const [decided] = listGateResults(handle, 1);
+    expect(decided?.spec.candidateProvider).toBe("openrouter");
+    expect(decided?.spec.candidatePromptHash).toBe("sha256:deadbeef");
     handle.close();
   });
 

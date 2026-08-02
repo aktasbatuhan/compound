@@ -62,7 +62,35 @@ function quantile(values: number[], q: number): number {
   return sorted[Math.max(0, index)] as number;
 }
 
-function usageTokens(usageJson: unknown): { input: number; output: number } {
+/**
+ * The service tier a completion ran under (Doubleword flex/default/scale), read
+ * from its stored request params; null when none was set (#9 speed axis). Lets
+ * one provider's tiers be compared side by side instead of collapsing to a row.
+ */
+export function serviceTierOf(paramsJson: unknown): string | null {
+  const params = (paramsJson ?? {}) as { service_tier?: unknown };
+  return typeof params.service_tier === "string" ? params.service_tier : null;
+}
+
+/**
+ * The comparable "route" label for a completion: the provider, plus the upstream
+ * host a broker dispatched to (OpenRouter) and/or the service tier — so each
+ * distinct route is its own telemetry row rather than collapsing by provider.
+ */
+export function routeLabel(
+  provider: string,
+  upstreamProvider: string | null,
+  serviceTier: string | null,
+): string {
+  return (
+    provider +
+    (upstreamProvider != null ? `/${upstreamProvider}` : "") +
+    (serviceTier != null ? `/${serviceTier}` : "")
+  );
+}
+
+/** Input/output token counts from a completion's stored usage, 0 when absent. */
+export function usageTokens(usageJson: unknown): { input: number; output: number } {
   const usage = (usageJson ?? {}) as { input_tokens?: unknown; output_tokens?: unknown };
   return {
     input: typeof usage.input_tokens === "number" ? usage.input_tokens : 0,
@@ -90,6 +118,8 @@ export function telemetryRollup(handle: CompoundDatabase, taskKey?: string): Tel
       taskKey: experiments.taskKey,
       model: completions.model,
       provider: completions.provider,
+      upstreamProvider: completions.upstreamProvider,
+      paramsJson: completions.paramsJson,
       fingerprint: completions.fingerprint,
       latencyMs: completions.latencyMs,
       queueMs: completions.queueMs,
@@ -107,8 +137,12 @@ export function telemetryRollup(handle: CompoundDatabase, taskKey?: string): Tel
   const keys = new Map<string, GroupKey>();
   const groups = new Map<string, Map<string, Observation>>();
   for (const row of rows) {
-    const key = JSON.stringify([row.taskKey, row.model, row.provider]);
-    keys.set(key, { taskKey: row.taskKey, model: row.model, provider: row.provider });
+    // Each distinct route is its own row: the OpenRouter upstream (→ "Fireworks")
+    // AND the service tier (Doubleword flex/default/scale) fold into the provider
+    // label, so one model id splits host-by-host and tier-by-tier (#9).
+    const provider = routeLabel(row.provider, row.upstreamProvider, serviceTierOf(row.paramsJson));
+    const key = JSON.stringify([row.taskKey, row.model, provider]);
+    keys.set(key, { taskKey: row.taskKey, model: row.model, provider });
     let byFingerprint = groups.get(key);
     if (byFingerprint === undefined) {
       byFingerprint = new Map();

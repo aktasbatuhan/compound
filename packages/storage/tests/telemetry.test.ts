@@ -27,6 +27,10 @@ interface SeedCall {
   outputTokens: number;
   /** Async-queue portion of latency for a flex route; omit for a sync provider. */
   queueMs?: number;
+  /** Upstream host a broker (OpenRouter) served this from; omit for a direct provider (#9). */
+  upstreamProvider?: string;
+  /** Doubleword service tier (flex/default/scale); omit for the default route (#9). */
+  serviceTier?: string;
 }
 
 /** One experiment whose graded cases each point at a cached completion. */
@@ -43,11 +47,12 @@ function seedExperiment(taskKey: string, model: string, provider: string, calls:
       fingerprint: call.fingerprint,
       provider,
       model,
-      params: null,
+      params: call.serviceTier !== undefined ? { service_tier: call.serviceTier } : null,
       output: { role: "assistant", content: "x" },
       usage: { input_tokens: 100, output_tokens: call.outputTokens },
       latencyMs: call.latencyMs,
       ...(call.queueMs !== undefined ? { queueMs: call.queueMs } : {}),
+      ...(call.upstreamProvider !== undefined ? { upstreamProvider: call.upstreamProvider } : {}),
       costUsd: call.costUsd,
     });
   }
@@ -110,6 +115,66 @@ describe("telemetryRollup", () => {
     expect(groups.map((g) => g.provider)).toEqual(["provider-a", "provider-b"]);
     expect(groups[0]?.latencyP50Ms).toBe(100);
     expect(groups[1]?.latencyP50Ms).toBe(900);
+  });
+
+  test("one model id splits by OpenRouter upstream host (#9)", () => {
+    // Same model, same broker (openrouter), two upstreams → two comparable rows.
+    seedExperiment("support", "kimi-k3", "openrouter", [
+      {
+        fingerprint: "fw",
+        latencyMs: 800,
+        costUsd: 0.003,
+        outputTokens: 40,
+        upstreamProvider: "Fireworks",
+      },
+    ]);
+    seedExperiment("support", "kimi-k3", "openrouter", [
+      {
+        fingerprint: "tg",
+        latencyMs: 1500,
+        costUsd: 0.003,
+        outputTokens: 40,
+        upstreamProvider: "Together",
+      },
+    ]);
+
+    const groups = telemetryRollup(db);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.provider).sort()).toEqual([
+      "openrouter/Fireworks",
+      "openrouter/Together",
+    ]);
+  });
+
+  test("one provider splits by service tier — the Doubleword tier comparison (#9)", () => {
+    // Same model + provider, different async tiers → separate comparable rows.
+    seedExperiment("support", "kimi-k3", "doubleword", [
+      {
+        fingerprint: "flex1",
+        latencyMs: 8000,
+        queueMs: 7000,
+        costUsd: 0.003,
+        outputTokens: 40,
+        serviceTier: "flex",
+      },
+    ]);
+    seedExperiment("support", "kimi-k3", "doubleword", [
+      {
+        fingerprint: "scale1",
+        latencyMs: 900,
+        queueMs: 0,
+        costUsd: 0.003,
+        outputTokens: 40,
+        serviceTier: "scale",
+      },
+    ]);
+
+    const groups = telemetryRollup(db);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.provider).sort()).toEqual(["doubleword/flex", "doubleword/scale"]);
+    // The flex tier's latency is mostly queue; scale has none.
+    const flex = groups.find((g) => g.provider === "doubleword/flex");
+    expect(flex?.queueP50Ms).toBe(7000);
   });
 
   test("splits queue vs decode for a flex route (#8)", () => {
