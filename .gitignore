@@ -8,6 +8,9 @@ artifacts/
 *.pyc
 
 *.db
+# SQLite write-ahead-log / shared-memory sidecars
+*.db-wal
+*.db-shm
 
 .claude/worktrees/
 
