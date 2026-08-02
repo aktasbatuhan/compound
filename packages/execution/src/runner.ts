@@ -27,12 +27,11 @@ import { completionFingerprint, costFromUsage, estimateCost, type TokenPrice } f
 import type { CompletionRequest, CompletionResponse, Provider } from "./provider";
 import {
   DEFAULT_MAX_TURNS,
-  MissingRecordedResultError,
+  describeStop,
   type RecordedToolResult,
   runTrajectory,
-  ToolBlockedError,
+  stopSkipKey,
   type TrajectoryPolicy,
-  UnsupportedReplayPolicyError,
 } from "./trajectory";
 
 export interface RunExperimentOptions {
@@ -240,6 +239,15 @@ export async function runExperiment(
   if (partition === "decision_test" && options.allowDecisionTest !== true) {
     throw new DecisionPartitionRefusedError();
   }
+  // A zero/NaN turn budget would make every agentic case truncate with no call
+  // (or loop unboundedly with a negative that skips the guard); validate before
+  // creating an experiment row (#23).
+  if (
+    options.maxTurns !== undefined &&
+    (!Number.isInteger(options.maxTurns) || options.maxTurns < 1)
+  ) {
+    throw new RangeError("maxTurns must be a positive integer");
+  }
 
   const paid = isPaidEnabled(options);
   const experiment = createExperiment(db, {
@@ -333,24 +341,107 @@ export async function runExperiment(
         };
         costUsd = hit.costUsd;
       } else if (!paid) {
-        estimatedCost += estimateCost(request, options.price);
+        // Agentic projects the worst case (a call every turn) so the dry-run
+        // ceiling a user sets `--cap` against is not an under-count (#23, #2).
+        const perCall = estimateCost(request, options.price);
+        estimatedCost += options.agentic === true ? perCall * maxTurns : perCall;
         results.push({
           caseId: stored.caseId,
           status: "cache_miss_dry_run",
           detail: "would call the provider (dry run)",
         });
         continue;
+      } else if (options.agentic === true) {
+        // Agentic money-safety (#23): a trajectory can call the provider up to
+        // `maxTurns` times, so budget is enforced BEFORE every turn and spend is
+        // ledgered AFTER every turn (each under its own turn fingerprint). If the
+        // model calls a blocked tool, a recorded result is missing, or the budget
+        // runs out mid-trajectory, the turns already made are still billed — no
+        // phantom paid call, no cap overrun.
+        let trajCost = 0;
+        const traj = await runTrajectory(options.provider, {
+          request,
+          recordedToolResults,
+          policy: replayPolicy,
+          maxTurns,
+          beforeTurn: (turn, turnRequest) => {
+            const turnFingerprint = `${fingerprint}#turn:${turn}`;
+            const perCallEstimate = estimateCost(turnRequest, options.price);
+            // Flex cushions the CHECK only; the reported estimate stays raw.
+            const reservation =
+              perCallEstimate + (options.transport === "flex" ? FLEX_REQUEST_RESERVE_USD : 0);
+            requireBudgetHeadroom(db, {
+              fingerprint: turnFingerprint,
+              estimatedCost: reservation,
+              experimentId: experiment.id,
+              experimentCapUsd: options.experimentCapUsd as number,
+              globalHardLimitUsd: options.globalHardLimitUsd as number,
+            });
+            estimatedCost += perCallEstimate;
+          },
+          onTurnComplete: (turn, _turnRequest, turnResponse) => {
+            const turnFingerprint = `${fingerprint}#turn:${turn}`;
+            const turnCost = costFromUsage(turnResponse.usage, options.price);
+            trajCost += turnCost;
+            actualCost += turnCost;
+            // Persist immediately so a crash — or a policy stop below — never
+            // loses a real call's spend.
+            recordSpend(db, {
+              fingerprint: turnFingerprint,
+              costUsd: turnCost,
+              experimentId: experiment.id,
+            });
+          },
+        });
+        providerCalls += traj.turns; // count every turn's call, not just one
+        costUsd = trajCost;
+
+        if (traj.stop.reason !== "answered") {
+          // No gradeable outcome: a blocked/side-effecting tool, a missing
+          // recorded result, an unsupported policy, or the turn budget ran out.
+          // Record it as SKIPPED with the reason — never grade a partial or
+          // truncated trajectory as a pass (#23, #4). Spend is already ledgered.
+          skipped += 1;
+          skipReasons[stopSkipKey(traj.stop.reason)] =
+            (skipReasons[stopSkipKey(traj.stop.reason)] ?? 0) + 1;
+          results.push({
+            caseId: stored.caseId,
+            status: "skipped",
+            costUsd: trajCost,
+            detail: describeStop(traj.stop),
+          });
+          continue;
+        }
+
+        response = {
+          output: traj.gradedOutput,
+          usage: traj.usage,
+          finishReason: "stop",
+          resolvedModel: wireModel,
+          latencyMs: traj.latencyMs,
+        };
+        // Cache the answered aggregate so a re-run is $0. Spend was already
+        // ledgered per turn above — do NOT record it again here.
+        cacheCompletion(db, {
+          fingerprint,
+          provider: options.providerName,
+          model: options.candidateModel,
+          resolvedModel: response.resolvedModel,
+          upstreamProvider: response.upstreamProvider ?? null,
+          params: options.params ?? null,
+          output: response.output,
+          usage: response.usage,
+          finishReason: response.finishReason,
+          latencyMs: response.latencyMs,
+          queueMs: response.queueMs ?? null,
+          costUsd: trajCost,
+        });
       } else {
         const estimate = estimateCost(request, options.price);
-        // Flex reserves extra headroom for reasoning-token overrun; an agentic
-        // run may make up to `maxTurns` calls, so it reserves that many. The
-        // check is conservative while the reported estimate stays the projection.
+        // Flex reserves extra headroom for reasoning-token overrun. The check is
+        // conservative while the reported estimate stays the projection.
         const reservation =
-          options.transport === "flex"
-            ? estimate + FLEX_REQUEST_RESERVE_USD
-            : options.agentic === true
-              ? estimate * maxTurns
-              : estimate;
+          options.transport === "flex" ? estimate + FLEX_REQUEST_RESERVE_USD : estimate;
         // Enforce BOTH caps before spending a cent.
         requireBudgetHeadroom(db, {
           fingerprint,
@@ -361,49 +452,8 @@ export async function runExperiment(
         });
         estimatedCost += estimate;
 
-        if (options.agentic === true) {
-          // A blocked/side-effecting tool or missing recorded result cannot yield
-          // a deterministic trajectory — skip the case with the reason rather
-          // than fabricate an outcome or run a live side effect.
-          let traj: Awaited<ReturnType<typeof runTrajectory>>;
-          try {
-            traj = await runTrajectory(options.provider, {
-              request,
-              recordedToolResults,
-              policy: replayPolicy,
-              maxTurns,
-            });
-          } catch (error) {
-            const key =
-              error instanceof ToolBlockedError
-                ? "tool_blocked"
-                : error instanceof MissingRecordedResultError
-                  ? "missing_recorded_result"
-                  : error instanceof UnsupportedReplayPolicyError
-                    ? "unsupported_replay_policy"
-                    : undefined;
-            if (key === undefined) throw error;
-            skipped += 1;
-            skipReasons[key] = (skipReasons[key] ?? 0) + 1;
-            results.push({
-              caseId: stored.caseId,
-              status: "skipped",
-              detail: error instanceof Error ? error.message : String(error),
-            });
-            continue;
-          }
-          response = {
-            output: traj.gradedOutput,
-            usage: traj.usage,
-            finishReason: traj.truncated ? "length" : "stop",
-            resolvedModel: wireModel,
-            latencyMs: traj.latencyMs,
-          };
-          providerCalls += traj.turns; // count every turn's call, not just one
-        } else {
-          response = await options.provider.complete(request);
-          providerCalls += 1;
-        }
+        response = await options.provider.complete(request);
+        providerCalls += 1;
         costUsd = costFromUsage(response.usage, options.price);
         actualCost += costUsd;
 

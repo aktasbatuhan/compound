@@ -1,13 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Message } from "@compound/contract";
 import type { CompletionRequest, CompletionResponse, Provider } from "../src/provider";
-import {
-  MissingRecordedResultError,
-  type RecordedToolResult,
-  runTrajectory,
-  ToolBlockedError,
-  UnsupportedReplayPolicyError,
-} from "../src/trajectory";
+import { type RecordedToolResult, runTrajectory } from "../src/trajectory";
 
 /** A provider that returns a scripted sequence of outputs (clamped to the last). */
 class ScriptedProvider implements Provider {
@@ -77,14 +71,19 @@ describe("runTrajectory", () => {
     expect(toolMsgs.map((m) => m.content)).toEqual(['{"amount":23}', '{"ok":true}']);
   });
 
-  test("a blocked tool refuses to run during replay (no side effect)", async () => {
+  test("a blocked tool stops the trajectory (no side effect) but keeps the call it made", async () => {
     const provider = new ScriptedProvider([toolCall("c1", "issue_refund", { amount: 23 })]);
-    await expect(
-      runTrajectory(provider, {
-        request: baseRequest,
-        policy: { default: "recorded", perTool: { issue_refund: "blocked" } },
-      }),
-    ).rejects.toBeInstanceOf(ToolBlockedError);
+    const result = await runTrajectory(provider, {
+      request: baseRequest,
+      policy: { default: "recorded", perTool: { issue_refund: "blocked" } },
+    });
+    // The stop is reported, not thrown — so the caller can ledger the real call
+    // that the model already made before we saw the blocked tool.
+    expect(result.stop).toEqual({ reason: "tool_blocked", tool: "issue_refund" });
+    expect(result.turns).toBe(1);
+    expect(provider.calls).toHaveLength(1);
+    // No tool result was ever replayed for the blocked call.
+    expect(result.transcript.some((m) => m.role === "tool")).toBe(false);
   });
 
   test("a mocked tool is answered with the stub and the run continues", async () => {
@@ -98,18 +97,27 @@ describe("runTrajectory", () => {
     expect(result.transcript.find((m) => m.role === "tool")?.content).toBe('{"stub":true}');
   });
 
-  test("a recorded run without a matching result fails clearly", async () => {
+  test("a recorded run without a matching result stops with a clear reason", async () => {
     const provider = new ScriptedProvider([toolCall("c1", "unknown_tool", {})]);
-    await expect(
-      runTrajectory(provider, { request: baseRequest, policy: { default: "recorded" } }),
-    ).rejects.toBeInstanceOf(MissingRecordedResultError);
+    const result = await runTrajectory(provider, {
+      request: baseRequest,
+      policy: { default: "recorded" },
+    });
+    expect(result.stop).toEqual({ reason: "missing_recorded_result", tool: "unknown_tool" });
+    expect(result.truncated).toBe(false);
   });
 
   test("live_read_only is refused in v1 (documented follow-up)", async () => {
     const provider = new ScriptedProvider([toolCall("c1", "read_orders", {})]);
-    await expect(
-      runTrajectory(provider, { request: baseRequest, policy: { default: "live_read_only" } }),
-    ).rejects.toBeInstanceOf(UnsupportedReplayPolicyError);
+    const result = await runTrajectory(provider, {
+      request: baseRequest,
+      policy: { default: "live_read_only" },
+    });
+    expect(result.stop).toEqual({
+      reason: "unsupported_policy",
+      tool: "read_orders",
+      policy: "live_read_only",
+    });
   });
 
   test("argument-specific recorded results answer the matching call", async () => {
@@ -124,6 +132,44 @@ describe("runTrajectory", () => {
       policy: { default: "recorded" },
     });
     expect(result.transcript.find((m) => m.role === "tool")?.content).toBe('{"who":"B"}');
+  });
+
+  test("onTurnComplete fires for every real call — including the blocked stop turn", async () => {
+    // The model calls a blocked tool on turn 1. The call is real and must be
+    // reported so the caller can ledger it (#23, money-safety) even though the
+    // trajectory then stops with no gradeable outcome.
+    const provider = new ScriptedProvider([toolCall("c1", "issue_refund", { amount: 23 })]);
+    const completedTurns: number[] = [];
+    const checkedTurns: number[] = [];
+    const result = await runTrajectory(provider, {
+      request: baseRequest,
+      policy: { default: "recorded", perTool: { issue_refund: "blocked" } },
+      beforeTurn: (turn) => checkedTurns.push(turn),
+      onTurnComplete: (turn) => completedTurns.push(turn),
+    });
+    expect(result.stop.reason).toBe("tool_blocked");
+    expect(checkedTurns).toEqual([1]); // budget checked before the one call
+    expect(completedTurns).toEqual([1]); // and the one real call was reported
+  });
+
+  test("a beforeTurn that throws aborts the run after ledgering prior turns", async () => {
+    // Simulates a budget error on turn 2: turn 1's call was made and reported,
+    // then the check before turn 2 throws — no call is lost, none fabricated.
+    const provider = new ScriptedProvider([toolCall("c1", "loop", {}), toolCall("c2", "loop", {})]);
+    const completedTurns: number[] = [];
+    await expect(
+      runTrajectory(provider, {
+        request: baseRequest,
+        recordedToolResults: [{ tool: "loop", result: "{}" }],
+        policy: { default: "recorded" },
+        onTurnComplete: (turn) => completedTurns.push(turn),
+        beforeTurn: (turn) => {
+          if (turn === 2) throw new Error("budget exceeded");
+        },
+      }),
+    ).rejects.toThrow("budget exceeded");
+    expect(provider.calls).toHaveLength(1); // turn 2 never called the provider
+    expect(completedTurns).toEqual([1]); // turn 1's real call was ledgered
   });
 
   test("hitting the turn budget stops the run and marks it truncated", async () => {

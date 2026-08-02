@@ -390,20 +390,49 @@ describe("runExperiment agentic multi-turn (#23)", () => {
     readonly name = "mock";
     calls: CompletionRequest[] = [];
     private i = 0;
-    constructor(private readonly outputs: Message[]) {}
+    constructor(
+      private readonly outputs: Message[],
+      private readonly usage = { input_tokens: 10, output_tokens: 5 },
+    ) {}
     async complete(request: CompletionRequest): Promise<CompletionResponse> {
       this.calls.push(request);
       const output = this.outputs[Math.min(this.i, this.outputs.length - 1)] as Message;
       this.i += 1;
       return {
         output,
-        usage: { input_tokens: 10, output_tokens: 5 },
+        usage: this.usage,
         finishReason: "stop",
         resolvedModel: request.model,
         latencyMs: 1,
       };
     }
   }
+
+  /** A case whose model loops forever (always calls a tool, never answers). */
+  function seedLoopingCase(): void {
+    insertCases(db, [
+      {
+        caseId: "loop-1",
+        taskKey: "agent",
+        sourceTraceId: "t-loop-1",
+        contentHash: "loop-hash-1",
+        provenance: "human_golden",
+        partition: "optimization_train",
+        input: {
+          input: [{ role: "user", content: "loop" }],
+          tools_available: [{ name: "spin", description: "", parameters: {} }],
+          recorded_tool_results: [{ tool: "spin", result: "{}" }],
+        },
+        expected: {},
+      },
+    ]);
+  }
+
+  const spin: Message = {
+    role: "assistant",
+    content: null,
+    tool_calls: [{ id: "c1", name: "spin", arguments: {} }],
+  };
 
   function seedAgenticCase(): void {
     insertCases(db, [
@@ -477,6 +506,12 @@ describe("runExperiment agentic multi-turn (#23)", () => {
     expect(report.cases_graded).toBe(0);
     expect(report.cases_skipped).toBe(1);
     expect(report.skip_reasons?.tool_blocked).toBe(1);
+    // #1 money-safety: the model call that surfaced the blocked tool was REAL.
+    // It must be counted and ledgered, never a phantom paid call reporting $0.
+    expect(provider.calls).toHaveLength(1);
+    expect(report.provider_calls).toBe(1);
+    expect(report.actual_cost_usd as number).toBeGreaterThan(0);
+    expect(totalSpendUsd(db)).toBeCloseTo(report.actual_cost_usd as number, 9);
   });
 
   test("re-running an agentic case is served from cache at $0", async () => {
@@ -503,6 +538,66 @@ describe("runExperiment agentic multi-turn (#23)", () => {
     expect(second.calls).toHaveLength(0); // whole trajectory cached
     expect(report.cache_hits).toBe(1);
     expect(report.actual_cost_usd).toBe(0);
+  });
+
+  test("a truncated trajectory is skipped, never graded as a pass (#4)", async () => {
+    seedLoopingCase();
+    // The model never answers; with maxTurns=3 the run hits the budget. A
+    // `tool_called` assertion WOULD pass on the aggregate — but a truncated run
+    // has no gradeable outcome and must be skipped, not counted as a pass.
+    const provider = new ScriptedProvider([spin]);
+    const { report } = await runExperiment(db, {
+      taskKey: "agent",
+      candidateModel: "cand",
+      provider,
+      providerName: "mock",
+      price: PRICE,
+      assertions: [{ type: "tool_called", name: "spin" }],
+      partition: "optimization_train",
+      agentic: true,
+      replayPolicy: { default: "recorded" },
+      maxTurns: 3,
+      paidRunsEnabled: true,
+      experimentCapUsd: 5,
+      globalHardLimitUsd: 25,
+    });
+    expect(report.cases_graded).toBe(0);
+    expect(report.passed).toBe(0);
+    expect(report.cases_skipped).toBe(1);
+    expect(report.skip_reasons?.turn_budget_exhausted).toBe(1);
+    expect(report.provider_calls).toBe(3); // all three real calls counted
+    expect(totalSpendUsd(db)).toBeCloseTo(report.actual_cost_usd as number, 9);
+  });
+
+  test("budget is enforced BEFORE every turn, bounding a runaway trajectory (#2)", async () => {
+    seedLoopingCase();
+    // Each turn costs ~$1 (1M input tokens); the cap allows only a few. The run
+    // must stop mid-trajectory with a budget error — not silently make all 8
+    // calls — and every call actually made must be ledgered (no loss, no overrun
+    // of the pre-per-turn-check kind the old single up-front check allowed).
+    const provider = new ScriptedProvider([spin], { input_tokens: 1_000_000, output_tokens: 0 });
+    await expect(
+      runExperiment(db, {
+        taskKey: "agent",
+        candidateModel: "cand",
+        provider,
+        providerName: "mock",
+        price: PRICE,
+        assertions: [{ type: "tool_called", name: "spin" }],
+        partition: "optimization_train",
+        agentic: true,
+        replayPolicy: { default: "recorded" },
+        maxTurns: 8,
+        paidRunsEnabled: true,
+        experimentCapUsd: 3.5,
+        globalHardLimitUsd: 1000,
+      }),
+    ).rejects.toBeInstanceOf(BudgetExceededError);
+    // It stopped well before the 8-turn budget, and only the calls it made are
+    // in the ledger — the per-turn check bounded the spend.
+    expect(provider.calls.length).toBeGreaterThan(0);
+    expect(provider.calls.length).toBeLessThan(8);
+    expect(totalSpendUsd(db)).toBeCloseTo(provider.calls.length, 9);
   });
 });
 

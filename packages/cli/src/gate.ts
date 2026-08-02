@@ -206,6 +206,10 @@ export async function runGateCommand(
   const agentic = args.flags.agentic === true;
   const maxTurnsFlag = stringFlag(args.flags, "max-turns");
   const maxTurns = maxTurnsFlag !== undefined ? Number.parseInt(maxTurnsFlag, 10) : undefined;
+  if (maxTurns !== undefined && (Number.isNaN(maxTurns) || maxTurns <= 0)) {
+    env.write("error: --max-turns must be a positive integer");
+    return { exitCode: 2 };
+  }
   const runOne = (
     resolved: ReturnType<typeof resolveModel>,
     model: string,

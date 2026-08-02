@@ -17,7 +17,7 @@
  * follow-up, not part of v1.
  */
 import type { Message, ToolCall } from "@compound/contract";
-import type { CompletionRequest, CompletionUsage, Provider } from "./provider";
+import type { CompletionRequest, CompletionResponse, CompletionUsage, Provider } from "./provider";
 
 export const TOOL_REPLAY_POLICIES = ["recorded", "mocked", "live_read_only", "blocked"] as const;
 export type ToolReplayPolicy = (typeof TOOL_REPLAY_POLICIES)[number];
@@ -52,6 +52,37 @@ export interface RunTrajectoryOptions {
   mockResult?: string;
   /** Turn budget: model calls before the trajectory is cut off (default 8). */
   maxTurns?: number;
+  /**
+   * Called BEFORE each provider call with that turn's exact request (1-indexed).
+   * The caller uses it to enforce per-turn budget headroom against the real
+   * request — money-safety must hold on every turn, not just the first. Throwing
+   * (e.g. a budget error) aborts the trajectory; every turn already made was
+   * reported via `onTurnComplete`, so nothing billed is silently lost (#23).
+   */
+  beforeTurn?: (turn: number, request: CompletionRequest) => void;
+  /**
+   * Called AFTER each provider response with that turn's request and response,
+   * so the caller can persist spend and cache per turn. Critically, this fires
+   * even for the turn that triggers a policy stop or truncation — the model call
+   * was real and must be ledgered (#23, money-safety).
+   */
+  onTurnComplete?: (turn: number, request: CompletionRequest, response: CompletionResponse) => void;
+}
+
+/** Why a trajectory stopped. Only `answered` yields a gradeable outcome. */
+export type TrajectoryStopReason =
+  | "answered"
+  | "truncated"
+  | "tool_blocked"
+  | "missing_recorded_result"
+  | "unsupported_policy";
+
+export interface TrajectoryStop {
+  reason: TrajectoryStopReason;
+  /** The tool that caused a policy stop (blocked / missing / unsupported). */
+  tool?: string;
+  /** The offending policy for an `unsupported_policy` stop. */
+  policy?: ToolReplayPolicy;
 }
 
 export interface TrajectoryResult {
@@ -66,6 +97,8 @@ export interface TrajectoryResult {
   toolCalls: ToolCall[];
   /** Model calls made (1 for a single-shot answer). */
   turns: number;
+  /** Why the trajectory stopped; only `answered` is a gradeable outcome. */
+  stop: TrajectoryStop;
   /** Whether the run stopped because it hit the turn budget rather than answering. */
   truncated: boolean;
   /** Summed token usage across turns. */
@@ -78,29 +111,33 @@ export interface TrajectoryResult {
 
 export const DEFAULT_MAX_TURNS = 8;
 
-export class ToolBlockedError extends Error {
-  constructor(readonly tool: string) {
-    super(`tool '${tool}' is blocked by the replay policy and must not run during replay`);
-    this.name = "ToolBlockedError";
+/** Human-readable one-liner for a non-`answered` stop, for skip detail/telemetry. */
+export function describeStop(stop: TrajectoryStop): string {
+  switch (stop.reason) {
+    case "answered":
+      return "answered within the turn budget";
+    case "truncated":
+      return "hit the turn budget without answering (truncated)";
+    case "tool_blocked":
+      return `tool '${stop.tool}' is blocked by the replay policy and must not run during replay`;
+    case "missing_recorded_result":
+      return `no recorded result for tool '${stop.tool}': a 'recorded' trajectory cannot proceed`;
+    case "unsupported_policy":
+      return `replay policy '${stop.policy}' for tool '${stop.tool}' is not supported by the v1 trajectory runner`;
   }
 }
 
-export class MissingRecordedResultError extends Error {
-  constructor(readonly tool: string) {
-    super(`no recorded result for tool '${tool}': a 'recorded' trajectory cannot proceed`);
-    this.name = "MissingRecordedResultError";
-  }
-}
-
-export class UnsupportedReplayPolicyError extends Error {
-  constructor(
-    readonly tool: string,
-    readonly policy: ToolReplayPolicy,
-  ) {
-    super(
-      `replay policy '${policy}' for tool '${tool}' is not supported by the v1 trajectory runner`,
-    );
-    this.name = "UnsupportedReplayPolicyError";
+/** The skip-reason key a non-`answered` stop is counted under in the report. */
+export function stopSkipKey(reason: Exclude<TrajectoryStopReason, "answered">): string {
+  switch (reason) {
+    case "truncated":
+      return "turn_budget_exhausted";
+    case "tool_blocked":
+      return "tool_blocked";
+    case "missing_recorded_result":
+      return "missing_recorded_result";
+    case "unsupported_policy":
+      return "unsupported_replay_policy";
   }
 }
 
@@ -112,30 +149,45 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-/** Answer one tool call per the replay policy; never touches a live system in v1. */
+/** A resolved tool result, or the reason replay cannot continue. */
+type ResolveOutcome =
+  | { ok: true; result: string }
+  | {
+      ok: false;
+      reason: "tool_blocked" | "missing_recorded_result" | "unsupported_policy";
+      tool: string;
+      policy?: ToolReplayPolicy;
+    };
+
+/**
+ * Answer one tool call per the replay policy; never touches a live system in v1.
+ * Returns a stop reason instead of throwing, so the caller keeps the billing
+ * state of every turn already made before the stop (#23, money-safety).
+ */
 function resolveToolResult(
   call: ToolCall,
   policy: TrajectoryPolicy,
   recorded: readonly RecordedToolResult[],
   mockResult: string,
-): string {
+): ResolveOutcome {
   const p = policyFor(call.name, policy);
   switch (p) {
     case "blocked":
-      throw new ToolBlockedError(call.name);
+      return { ok: false, reason: "tool_blocked", tool: call.name };
     case "mocked":
-      return mockResult;
+      return { ok: true, result: mockResult };
     case "live_read_only":
       // Deliberately unsupported in v1: executing a live tool is a follow-up.
-      throw new UnsupportedReplayPolicyError(call.name, p);
+      return { ok: false, reason: "unsupported_policy", tool: call.name, policy: p };
     case "recorded": {
       const match = recorded.find(
         (r) =>
           r.tool === call.name &&
           (r.arguments === undefined || deepEqual(r.arguments, call.arguments)),
       );
-      if (match === undefined) throw new MissingRecordedResultError(call.name);
-      return match.result;
+      if (match === undefined)
+        return { ok: false, reason: "missing_recorded_result", tool: call.name };
+      return { ok: true, result: match.result };
     }
   }
 }
@@ -182,25 +234,47 @@ export async function runTrajectory(
   let latencyMs = 0;
   let finalMessage: Message = { role: "assistant", content: null };
   let turns = 0;
-  let truncated = true;
+  // Default to `truncated`: if the loop exits by exhausting the turn budget
+  // (last turn made a tool call), that is exactly what happened.
+  let stop: TrajectoryStop = { reason: "truncated" };
 
   while (turns < maxTurns) {
-    const response = await provider.complete({ ...options.request, messages: [...messages] });
+    const turnRequest: CompletionRequest = { ...options.request, messages: [...messages] };
+    // Budget headroom is enforced per turn against THIS turn's real request, not
+    // once up front — a trajectory can call the provider many times (#23).
+    options.beforeTurn?.(turns + 1, turnRequest);
+    const response = await provider.complete(turnRequest);
     turns += 1;
     latencyMs += response.latencyMs;
     if (response.usage !== null) usage = addUsage(usage, response.usage);
+    // Ledger this turn immediately — even if the tool calls below force a policy
+    // stop, this model call was real and billable.
+    options.onTurnComplete?.(turns, turnRequest, response);
     finalMessage = response.output;
     messages.push(response.output);
 
     const calls = response.output.tool_calls ?? [];
     if (calls.length === 0) {
-      truncated = false; // answered within budget
+      stop = { reason: "answered" }; // answered within budget
       break;
     }
+    let policyStop: TrajectoryStop | undefined;
     for (const call of calls) {
       toolCalls.push(call);
-      const result = resolveToolResult(call, options.policy, recorded, mockResult);
-      messages.push({ role: "tool", content: result, tool_call_id: call.id });
+      const outcome = resolveToolResult(call, options.policy, recorded, mockResult);
+      if (!outcome.ok) {
+        policyStop = {
+          reason: outcome.reason,
+          tool: outcome.tool,
+          ...(outcome.policy !== undefined ? { policy: outcome.policy } : {}),
+        };
+        break;
+      }
+      messages.push({ role: "tool", content: outcome.result, tool_call_id: call.id });
+    }
+    if (policyStop !== undefined) {
+      stop = policyStop;
+      break;
     }
   }
 
@@ -215,7 +289,8 @@ export async function runTrajectory(
     finalMessage,
     toolCalls,
     turns,
-    truncated,
+    stop,
+    truncated: stop.reason === "truncated",
     usage,
     latencyMs,
     transcript: messages,
