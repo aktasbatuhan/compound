@@ -41,6 +41,11 @@ export function canonicalJson(value: unknown): string {
  * they fall back to hashing the whole `steps` array, which still collapses
  * exact duplicates.
  *
+ * The agentic identity (first-model-call subject + folded replay script) is
+ * stamped with an explicit `identity_version` (#7), so that durable identity is
+ * unambiguous and any future change to the agentic algorithm is a clean break.
+ * Single-call identities carry no version field and are unchanged from v1.
+ *
  * Must be called AFTER redaction: two traces differing only in a secret that
  * was redacted away are the same work and should dedupe as such.
  */
@@ -61,8 +66,8 @@ export function computeContentHash(trace: Trace): string {
   // ran), matching curation's request root (#7); for a single call it is the
   // focal call. Either way the replay script is folded in, so two traces with the
   // same initial request but different tool outcomes stay distinct (#6).
-  const firstCall =
-    replayScript.length > 0 ? trace.steps.find((step) => step.type === "model_call") : undefined;
+  const isAgentic = replayScript.length > 0;
+  const firstCall = isAgentic ? trace.steps.find((step) => step.type === "model_call") : undefined;
   const requestCall = firstCall ?? focal;
 
   const subject =
@@ -72,8 +77,16 @@ export function computeContentHash(trace: Trace): string {
           model: requestCall.model ?? null,
           input: requestCall.input,
           tools_available: requestCall.tools_available ?? null,
-          // Present only for agentic traces, so non-agentic hashes are unchanged.
-          ...(replayScript.length > 0 ? { recorded_tool_results: replayScript } : {}),
+          // The agentic branch (first-model-call subject + folded replay script)
+          // carries an EXPLICIT identity version (#7). content_hash is a durable
+          // identity, so stamping the algorithm version keeps the agentic identity
+          // unambiguous and makes any future change to it a clean, non-colliding
+          // break rather than a silent re-identification of the same case. The
+          // fields exist only for agentic traces, so single-call hashes — every
+          // hash in existing databases — are byte-for-byte unchanged.
+          ...(isAgentic
+            ? { identity_version: 2 as const, recorded_tool_results: replayScript }
+            : {}),
         }
       : { kind: "steps", steps: trace.steps };
 
