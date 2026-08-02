@@ -9,6 +9,7 @@
 import {
   type CompoundDatabase,
   createGateSpec,
+  decidedCohort,
   type ExperimentResultRow,
   type ExperimentRow,
   type GateMetric,
@@ -18,8 +19,8 @@ import {
   getExperimentResults,
   type PriorDecisions,
   priorDecisions,
+  recordDecisionCohort,
   recordGateResult,
-  sealedPartitionVersion,
 } from "@compound/storage";
 import { decideOutcome } from "./rule";
 import { type GateRule, hashRule } from "./spec";
@@ -41,12 +42,13 @@ export interface DecideGateInput extends GateRule {
    */
   persist?: boolean;
   /**
-   * The peeking guard (#22): once the sealed set has been decided under an
-   * adoption gate, block a further paid decision on the SAME held-out set —
-   * repeated examination erodes its statistical guarantee. A re-curation (which
-   * changes the partition version) resets the budget. Ignored on a preview.
+   * The peeking guard (#22, #3): once this task's held-out labels have been
+   * decided, block a further paid decision that REUSES any of the same cases —
+   * repeated examination erodes the statistical guarantee, and extending the
+   * cohort by a case does not escape it. Curate a fresh, non-overlapping
+   * decision set to decide again, or pass `force`. Ignored on a preview.
    */
-  blockRepeatAfterAdoption?: boolean;
+  blockRepeatDecision?: boolean;
   /** Override the peeking block for a deliberate, stated re-decision. */
   force?: boolean;
 }
@@ -214,10 +216,12 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
   const candidateRate = pairs.length > 0 ? mean(pairs.map((p) => p.candidateScore)) : 0;
   const referenceRate = pairs.length > 0 ? mean(pairs.map((p) => p.referenceScore)) : 0;
 
-  // The peeking budget (#22): how often this exact sealed set was already
-  // decided. Computed on a preview too, so a dry run can warn before you pay.
-  const partitionVersion = sealedPartitionVersion(db, rule.taskKey);
-  const prior = priorDecisions(db, rule.taskKey, partitionVersion);
+  // The peeking budget (#22, #3): the EXACT held-out cohort these two runs
+  // decided, and how often any of those same labels were already decided.
+  // Computed on a preview too, so a dry run can warn before you pay.
+  const cohort = decidedCohort(db, candidate.id, reference.id);
+  const partitionVersion = cohort.version;
+  const prior = priorDecisions(db, rule.taskKey, cohort.contentHashes);
   const isAdoption = rule.candidatePromptHash != null || input.optimizationRunId != null;
 
   // A dry-run preview (`persist: false`) writes nothing: it neither declares the
@@ -263,16 +267,27 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
     return { spec, result, pairs, partitionVersion, priorDecisions: prior, isAdoption };
   }
 
-  // The peeking guard: once this sealed set has been adopted against, a further
-  // paid decision on the SAME held-out labels is blocked unless deliberately
-  // forced. A re-curation changes the partition version and resets the budget.
-  if (input.blockRepeatAfterAdoption && prior.adoptionCount >= 1 && input.force !== true) {
+  // The peeking guard: a paid decision that reuses ANY previously-decided label
+  // for this task is blocked unless deliberately forced — reusing part of the
+  // held-out set re-examines it just the same, so extending the cohort by a case
+  // does not escape the guard (#3). Legacy verdicts with no recorded cohort
+  // (pre-guard, or pruned experiments) also trip it: their overlap can't be
+  // proven, so an override must be explicit (#9).
+  if (
+    input.blockRepeatDecision &&
+    (prior.count >= 1 || prior.legacyCount >= 1) &&
+    input.force !== true
+  ) {
     const first = prior.firstDecidedAt?.toISOString() ?? "an earlier run";
+    const legacyNote =
+      prior.legacyCount >= 1
+        ? ` and ${prior.legacyCount} earlier verdict(s) with no recorded cohort`
+        : "";
     throw new GateInputError(
-      `the sealed decision set for '${rule.taskKey}' has already been decided ${prior.count}× ` +
-        `(${prior.adoptionCount} adoption decision(s), first ${first}); deciding it again ` +
-        "re-examines the held-out labels and erodes the guarantee. Re-curate the decision set " +
-        "for a fresh test, or pass --force with a stated escalation reason to override.",
+      `the held-out decision set for '${rule.taskKey}' has already been decided: ` +
+        `${prior.count} prior verdict(s) reuse these same cases (first ${first})${legacyNote}. ` +
+        "Deciding again re-examines the held-out labels and erodes the guarantee. Curate a " +
+        "fresh, non-overlapping decision set, or pass --force with a stated escalation reason.",
     );
   }
 
@@ -311,6 +326,9 @@ export function decideGate(db: CompoundDatabase, input: DecideGateInput): Decide
     judgeAbstainedFraction,
     decisionPartitionVersion: partitionVersion,
   });
+  // Record the exact cohort this verdict decided, so a future decision that
+  // reuses any of these labels is caught by the peeking guard (#3).
+  recordDecisionCohort(db, result.id, cohort.contentHashes);
 
   return { spec, result, pairs, partitionVersion, priorDecisions: prior, isAdoption };
 }

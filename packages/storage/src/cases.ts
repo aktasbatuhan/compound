@@ -7,7 +7,6 @@
  * callers never hold one, so they cannot see sealed data by construction
  * (docs/curation-v1.md).
  */
-import { createHash } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { CompoundDatabase } from "./db";
 import { type Pagination, paginate } from "./pagination";
@@ -209,28 +208,6 @@ export function countCasesByPartition(
     .groupBy(cases.partition)
     .orderBy(desc(count()))
     .all();
-}
-
-/**
- * A fingerprint of a task's SEALED decision_test set: a hash of its case content
- * hashes. Two properties matter for the peeking guard (#22): it is stable while
- * the held-out set is unchanged (so repeated decisions on it can be counted),
- * and it changes the moment the set is re-curated (a genuinely new held-out set
- * is a fresh test whose decision budget resets). Returns null when the task has
- * no sealed cases. Like `countCasesByPartition`, this reveals a hash, never the
- * sealed cases themselves, so it needs no firewall token.
- */
-export function sealedPartitionVersion(handle: CompoundDatabase, taskKey: string): string | null {
-  const rows = handle.db
-    .select({ contentHash: cases.contentHash })
-    .from(cases)
-    .where(and(eq(cases.taskKey, taskKey), eq(cases.partition, "decision_test")))
-    .orderBy(asc(cases.contentHash))
-    .all();
-  if (rows.length === 0) return null;
-  const digest = createHash("sha256");
-  for (const row of rows) digest.update(row.contentHash).update("\n");
-  return `sha256:${digest.digest("hex")}`;
 }
 
 export interface CaseTaskKeyCount {

@@ -11,9 +11,9 @@ import {
   listGateResults,
   migrate,
   recordCaseResults,
+  recordDecisionCohort,
   recordGateResult,
   recordOptimizationRun,
-  sealedPartitionVersion,
 } from "@compound/storage";
 import { type CommandEnvironment, parseArgs, runCommand } from "../src/commands";
 import { configGateMetric, verdictExitCode } from "../src/gate";
@@ -553,9 +553,7 @@ describe("gate", () => {
         expected: {},
       })),
     );
-    // Seed a prior decision recorded against the CURRENT sealed-set version.
-    const version = sealedPartitionVersion(db, "support");
-    expect(version).not.toBeNull();
+    // Seed a prior decision whose recorded cohort reuses these sealed cases.
     const mkExp = (model: string) =>
       createExperiment(db, {
         taskKey: "support",
@@ -577,7 +575,7 @@ describe("gate", () => {
       judgeAbstainMax: 0,
       firewallReason: "an earlier release gate",
     });
-    recordGateResult(db, {
+    const priorResult = recordGateResult(db, {
       gateSpecId: prior.id,
       candidateExperimentId: mkExp("zai-org/GLM-5.2-FP8").id,
       referenceExperimentId: mkExp("anthropic/claude-opus-4.8").id,
@@ -589,8 +587,11 @@ describe("gate", () => {
       candidateRate: 1,
       referenceRate: 1,
       judgeAbstainedFraction: 0,
-      decisionPartitionVersion: version,
+      decisionPartitionVersion: "sha256:prior-cohort",
     });
+    // The prior decided exactly these held-out labels, so the next gate over the
+    // same set overlaps it and is flagged.
+    recordDecisionCohort(db, priorResult.id, ["s1", "s2", "s3"]);
 
     await runCommand(
       [

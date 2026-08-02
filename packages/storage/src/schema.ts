@@ -410,11 +410,12 @@ export const gateResults = sqliteTable(
     referenceRate: real("reference_rate").notNull(),
     judgeAbstainedFraction: real("judge_abstained_fraction").notNull().default(0),
     /**
-     * Fingerprint of the sealed decision_test set this verdict was decided on
-     * (a hash of its case content hashes). Lets repeated decisions on the SAME
-     * held-out set be counted for the peeking guard (#22); a re-curation yields
-     * a new version, which resets the decision budget. Null for verdicts decided
-     * before the guard existed.
+     * Fingerprint of the exact held-out cohort this verdict DECIDED — a hash of
+     * the content hashes the candidate and reference experiments were paired on,
+     * not the live partition. Bound to what was actually examined, so adding a
+     * case to the partition later cannot retroactively change (or reset) it (#22,
+     * #3). A compact label; the per-case membership in `gate_decision_cases` is
+     * what the peeking guard actually queries. Null for pre-guard verdicts.
      */
     decisionPartitionVersion: text("decision_partition_version"),
     decidedAt: integer("decided_at", { mode: "timestamp_ms" })
@@ -428,6 +429,30 @@ export const gateResults = sqliteTable(
 );
 
 export type GateResultRow = typeof gateResults.$inferSelect;
+
+/**
+ * The exact held-out cases a persisted gate verdict examined — one row per
+ * decided case content hash. This is the ground truth the peeking guard queries
+ * (#22, #3): a later decision that reuses ANY of these same labels overlaps a
+ * prior decision and is blocked (unless forced), so extending the cohort by a
+ * single case can no longer reset the one-shot budget. Content hashes (not case
+ * ids) make membership stable across databases and immune to id reuse.
+ */
+export const gateDecisionCases = sqliteTable(
+  "gate_decision_cases",
+  {
+    gateResultId: text("gate_result_id")
+      .notNull()
+      .references(() => gateResults.id),
+    contentHash: text("content_hash").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.gateResultId, table.contentHash] }),
+    index("gate_decision_cases_content_hash_idx").on(table.contentHash),
+  ],
+);
+
+export type GateDecisionCaseRow = typeof gateDecisionCases.$inferSelect;
 
 // ---------------------------------------------------------------------------
 // Judge calibration (docs/judges-v1.md)

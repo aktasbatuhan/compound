@@ -339,6 +339,9 @@
         "require_decision_test": {
           "type": "boolean"
         },
+        "block_repeat_decision": {
+          "type": "boolean"
+        },
         "block_repeat_after_adoption": {
           "type": "boolean"
         }

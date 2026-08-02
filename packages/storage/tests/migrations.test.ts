@@ -51,6 +51,7 @@ describe("migrations", () => {
       "experiment_results_experiment_id_idx",
       "experiments_candidate_model_idx",
       "experiments_task_key_idx",
+      "gate_decision_cases_content_hash_idx",
       "gate_results_gate_spec_id_idx",
       "gate_results_task_lookup_idx",
       "gate_specs_spec_hash_unique",

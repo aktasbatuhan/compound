@@ -4,10 +4,12 @@ import {
   type CompoundDatabase,
   createDatabase,
   createExperiment,
+  createGateSpec,
   finishExperiment,
   insertCases,
   listGateResults,
   recordCaseResults,
+  recordGateResult,
 } from "@compound/storage";
 import { decideGate, GateInputError } from "../src/decide";
 
@@ -209,15 +211,31 @@ describe("decideGate", () => {
     );
   }
 
+  /** Graded results keyed by the SEALED case ids, so the decided cohort a gate
+   *  binds to is exactly these held-out cases (the #3 fix depends on this). */
+  function decisionResults(hashes: string[]): CaseResultInput[] {
+    return hashes.map((h) => ({
+      caseId: `seal-${h}`,
+      status: "graded" as const,
+      passed: true,
+      score: 1,
+    }));
+  }
+
+  /** A candidate+reference pair that both decided exactly the given sealed cases. */
+  function decidedOn(handle: CompoundDatabase, hashes: string[]) {
+    return {
+      candidateExperimentId: completedExperiment(handle, "cand", decisionResults(hashes)).id,
+      referenceExperimentId: completedExperiment(handle, "ref", decisionResults(hashes)).id,
+    };
+  }
+
   test("the first decision on a sealed set reports no prior decisions", () => {
     const handle = db();
     sealCases(handle, ["h1", "h2", "h3"]);
-    const cand = completedExperiment(handle, "cand", passResults(30, 27));
-    const ref = completedExperiment(handle, "ref", passResults(30, 27));
     const { partitionVersion, priorDecisions } = decideGate(handle, {
       ...rule,
-      candidateExperimentId: cand.id,
-      referenceExperimentId: ref.id,
+      ...decidedOn(handle, ["h1", "h2", "h3"]),
     });
     expect(partitionVersion).not.toBeNull();
     expect(priorDecisions.count).toBe(0);
@@ -227,11 +245,8 @@ describe("decideGate", () => {
   test("a repeat decision counts the prior ones and names the first timestamp", () => {
     const handle = db();
     sealCases(handle, ["h1", "h2", "h3"]);
-    const cand = completedExperiment(handle, "cand", passResults(30, 27));
-    const ref = completedExperiment(handle, "ref", passResults(30, 27));
-    const opts = { ...rule, candidateExperimentId: cand.id, referenceExperimentId: ref.id };
-    decideGate(handle, opts);
-    const second = decideGate(handle, opts);
+    decideGate(handle, { ...rule, ...decidedOn(handle, ["h1", "h2", "h3"]) });
+    const second = decideGate(handle, { ...rule, ...decidedOn(handle, ["h1", "h2", "h3"]) });
     expect(second.priorDecisions.count).toBe(1);
     expect(second.priorDecisions.firstDecidedAt).toBeInstanceOf(Date);
     handle.close();
@@ -239,67 +254,135 @@ describe("decideGate", () => {
 
   test("a preview does not spend the budget: prior count stays put", () => {
     const handle = db();
-    sealCases(handle, ["h1", "h2"]);
-    const cand = completedExperiment(handle, "cand", passResults(30, 27));
-    const ref = completedExperiment(handle, "ref", passResults(30, 27));
-    const opts = { ...rule, candidateExperimentId: cand.id, referenceExperimentId: ref.id };
-    decideGate(handle, { ...opts, persist: false });
-    decideGate(handle, { ...opts, persist: false });
+    sealCases(handle, ["h1", "h2", "h3"]);
+    decideGate(handle, { ...rule, ...decidedOn(handle, ["h1", "h2", "h3"]), persist: false });
+    decideGate(handle, { ...rule, ...decidedOn(handle, ["h1", "h2", "h3"]), persist: false });
     // Neither preview recorded a verdict, so a real decision still sees zero prior.
-    const real = decideGate(handle, opts);
+    const real = decideGate(handle, { ...rule, ...decidedOn(handle, ["h1", "h2", "h3"]) });
     expect(real.priorDecisions.count).toBe(0);
     handle.close();
   });
 
-  test("blockRepeatAfterAdoption blocks a repeat once the set was adopted against", () => {
+  test("blockRepeatDecision blocks any repeat that reuses the held-out labels", () => {
     const handle = db();
     sealCases(handle, ["h1", "h2", "h3"]);
-    const cand = completedExperiment(handle, "cand", passResults(30, 27));
-    const ref = completedExperiment(handle, "ref", passResults(30, 27));
-    const opts = { ...rule, candidateExperimentId: cand.id, referenceExperimentId: ref.id };
-    // First decision is an ADOPTION (an optimized prompt under test).
-    decideGate(handle, {
-      ...opts,
-      candidatePromptHash: "sha256:opt",
-      blockRepeatAfterAdoption: true,
-    });
-    // A second decision on the same sealed set is now blocked...
-    expect(() => decideGate(handle, { ...opts, blockRepeatAfterAdoption: true })).toThrow(
-      GateInputError,
-    );
+    decideGate(handle, { ...rule, ...decidedOn(handle, ["h1", "h2", "h3"]) });
+    // A second decision on the same held-out set is blocked...
+    expect(() =>
+      decideGate(handle, {
+        ...rule,
+        ...decidedOn(handle, ["h1", "h2", "h3"]),
+        blockRepeatDecision: true,
+      }),
+    ).toThrow(GateInputError);
     // ...unless deliberately forced.
-    const forced = decideGate(handle, { ...opts, blockRepeatAfterAdoption: true, force: true });
+    const forced = decideGate(handle, {
+      ...rule,
+      ...decidedOn(handle, ["h1", "h2", "h3"]),
+      blockRepeatDecision: true,
+      force: true,
+    });
     expect(forced.result.id).not.toBe("preview");
     handle.close();
   });
 
-  test("a first non-adoption decision is never blocked", () => {
+  test("extending the cohort by one case does NOT reset the guard (#3)", () => {
     const handle = db();
     sealCases(handle, ["h1", "h2", "h3"]);
-    const cand = completedExperiment(handle, "cand", passResults(30, 27));
-    const ref = completedExperiment(handle, "ref", passResults(30, 27));
-    const opts = { ...rule, candidateExperimentId: cand.id, referenceExperimentId: ref.id };
-    decideGate(handle, opts); // baseline (no prompt hash) — not an adoption
-    // Still allowed to decide again: nothing was adopted yet, so warn-only.
-    const second = decideGate(handle, { ...opts, blockRepeatAfterAdoption: true });
-    expect(second.priorDecisions.count).toBe(1);
-    expect(second.priorDecisions.adoptionCount).toBe(0);
+    decideGate(handle, { ...rule, ...decidedOn(handle, ["h1", "h2", "h3"]) });
+    // Re-curate: add a fresh case, then decide over ALL FOUR. The prior 3 labels
+    // are reused, so this overlaps the prior decision and is still blocked — the
+    // "add one case to reset the budget" bypass is closed.
+    sealCases(handle, ["h4"]);
+    const reused = decideGate(handle, {
+      ...rule,
+      ...decidedOn(handle, ["h1", "h2", "h3", "h4"]),
+    });
+    expect(reused.priorDecisions.count).toBe(1);
+    expect(() =>
+      decideGate(handle, {
+        ...rule,
+        ...decidedOn(handle, ["h1", "h2", "h3", "h4"]),
+        blockRepeatDecision: true,
+      }),
+    ).toThrow(GateInputError);
     handle.close();
   });
 
-  test("re-curating the decision set resets the budget (new partition version)", () => {
+  test("a genuinely fresh, non-overlapping decision set is not blocked (#3)", () => {
+    const handle = db();
+    sealCases(handle, ["h1", "h2", "h3", "h9", "h10"]);
+    decideGate(handle, {
+      ...rule,
+      ...decidedOn(handle, ["h1", "h2", "h3"]),
+      blockRepeatDecision: true,
+    });
+    // A decision over disjoint held-out labels shares nothing with the prior one.
+    const fresh = decideGate(handle, {
+      ...rule,
+      ...decidedOn(handle, ["h9", "h10"]),
+      blockRepeatDecision: true,
+    });
+    expect(fresh.priorDecisions.count).toBe(0);
+    expect(fresh.priorDecisions.legacyCount).toBe(0);
+    expect(fresh.result.id).not.toBe("preview");
+    handle.close();
+  });
+
+  test("a legacy verdict with no recorded cohort trips the guard until forced (#9)", () => {
     const handle = db();
     sealCases(handle, ["h1", "h2", "h3"]);
-    const cand = completedExperiment(handle, "cand", passResults(30, 27));
-    const ref = completedExperiment(handle, "ref", passResults(30, 27));
-    const opts = { ...rule, candidateExperimentId: cand.id, referenceExperimentId: ref.id };
-    const first = decideGate(handle, { ...opts, candidatePromptHash: "sha256:opt" });
-    // Re-curation adds a new sealed case → the partition version changes.
+    // A pre-guard verdict: recorded WITHOUT cohort membership (as the migration
+    // backfill would leave one whose experiments were pruned). Its overlap can't
+    // be proven, so an enabled guard must not silently allow a fresh decision.
+    const spec = createGateSpec(handle, {
+      specHash: "sha256:legacy",
+      taskKey: "support",
+      candidateModel: "cand",
+      referenceModel: "ref",
+      metric: "pass_rate",
+      mode: "non_inferiority",
+      margin: 0.05,
+      confidence: 0.95,
+      minCases: 20,
+      judgeAbstainMax: 0,
+      firewallReason: "a pre-guard release gate",
+    });
+    const legacy = decidedOn(handle, ["h1", "h2", "h3"]);
+    recordGateResult(handle, {
+      gateSpecId: spec.id,
+      candidateExperimentId: legacy.candidateExperimentId,
+      referenceExperimentId: legacy.referenceExperimentId,
+      outcome: "meets_gate",
+      delta: 0,
+      ciLo: 0,
+      ciHi: 0,
+      n: 3,
+      candidateRate: 1,
+      referenceRate: 1,
+      judgeAbstainedFraction: 0,
+      decisionPartitionVersion: null,
+    });
+    const next = { ...rule, ...decidedOn(handle, ["h1", "h2", "h3"]) };
+    const preview = decideGate(handle, { ...next, persist: false });
+    expect(preview.priorDecisions.legacyCount).toBe(1);
+    expect(() => decideGate(handle, { ...next, blockRepeatDecision: true })).toThrow(
+      GateInputError,
+    );
+    const forced = decideGate(handle, { ...next, blockRepeatDecision: true, force: true });
+    expect(forced.result.id).not.toBe("preview");
+    handle.close();
+  });
+
+  test("the decided version reflects the cohort, not the live partition (#3)", () => {
+    const handle = db();
+    sealCases(handle, ["h1", "h2", "h3"]);
+    const first = decideGate(handle, { ...rule, ...decidedOn(handle, ["h1", "h2", "h3"]) });
+    // Growing the partition must NOT change the version of a decision made over
+    // the original three cases — the version is bound to what was decided.
     sealCases(handle, ["h4"]);
-    const afterRecurate = decideGate(handle, { ...opts, blockRepeatAfterAdoption: true });
-    expect(afterRecurate.partitionVersion).not.toBe(first.partitionVersion);
-    // A genuinely new held-out set is a fresh test: no prior decisions, not blocked.
-    expect(afterRecurate.priorDecisions.count).toBe(0);
+    const sameCohort = decideGate(handle, { ...rule, ...decidedOn(handle, ["h1", "h2", "h3"]) });
+    expect(sameCohort.partitionVersion).toBe(first.partitionVersion);
     handle.close();
   });
 

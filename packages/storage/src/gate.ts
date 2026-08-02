@@ -6,14 +6,19 @@
  * before results exist, and a spec hash is unique, so re-declaring the identical
  * rule reuses the same row rather than minting a second one.
  */
-import { and, desc, eq } from "drizzle-orm";
+
+import { createHash } from "node:crypto";
+import { desc, eq, inArray } from "drizzle-orm";
 import type { CompoundDatabase } from "./db";
 import {
+  cases,
+  experimentResults,
   type GateMetric,
   type GateMode,
   type GateOutcome,
   type GateResultRow,
   type GateSpecRow,
+  gateDecisionCases,
   gateResults,
   gateSpecs,
 } from "./schema";
@@ -122,51 +127,133 @@ export interface GateResultWithSpec {
   spec: GateSpecRow;
 }
 
+/**
+ * The exact held-out cohort two experiments decided on: the cases present in
+ * BOTH result sets, identified by content hash. This is what a gate actually
+ * examined, so the peeking guard is keyed to reality, not to the current shape
+ * of the partition (#22, #3). Returns a stable version hash of the sorted
+ * content hashes and the membership list.
+ */
+export function decidedCohort(
+  handle: CompoundDatabase,
+  candidateExperimentId: string,
+  referenceExperimentId: string,
+): { contentHashes: string[]; version: string | null } {
+  const candIds = handle.db
+    .select({ caseId: experimentResults.caseId })
+    .from(experimentResults)
+    .where(eq(experimentResults.experimentId, candidateExperimentId))
+    .all()
+    .map((r) => r.caseId);
+  const refIds = new Set(
+    handle.db
+      .select({ caseId: experimentResults.caseId })
+      .from(experimentResults)
+      .where(eq(experimentResults.experimentId, referenceExperimentId))
+      .all()
+      .map((r) => r.caseId),
+  );
+  const sharedIds = candIds.filter((id) => refIds.has(id));
+  if (sharedIds.length === 0) return { contentHashes: [], version: null };
+  const contentHashes = handle.db
+    .select({ contentHash: cases.contentHash })
+    .from(cases)
+    .where(inArray(cases.caseId, sharedIds))
+    .all()
+    .map((r) => r.contentHash)
+    .sort();
+  if (contentHashes.length === 0) return { contentHashes: [], version: null };
+  const digest = createHash("sha256");
+  for (const h of contentHashes) digest.update(h).update("\n");
+  return { contentHashes, version: `sha256:${digest.digest("hex")}` };
+}
+
+/** Record the exact cases a persisted verdict decided (the peeking-guard ground truth). */
+export function recordDecisionCohort(
+  handle: CompoundDatabase,
+  gateResultId: string,
+  contentHashes: readonly string[],
+): void {
+  if (contentHashes.length === 0) return;
+  for (const contentHash of contentHashes) {
+    handle.db
+      .insert(gateDecisionCases)
+      .values({ gateResultId, contentHash })
+      .onConflictDoNothing()
+      .run();
+  }
+}
+
 export interface PriorDecisions {
-  /** Verdicts already recorded on this sealed set (excludes the one being decided). */
+  /** Prior verdicts whose decided cohort OVERLAPS the one being decided. */
   count: number;
-  /** When the sealed set was first decided, or null if it never has been. */
+  /** When such an overlapping set was first decided, or null if never. */
   firstDecidedAt: Date | null;
-  /** How many of those prior verdicts were adoption decisions (an optimized prompt under test). */
+  /** How many overlapping priors put an optimized prompt under test (informational). */
   adoptionCount: number;
+  /**
+   * Prior verdicts for this task with NO recorded cohort membership (decided
+   * before the guard, or their experiments were pruned). Their overlap can't be
+   * proven, so an enabled guard treats their presence as a reason to require an
+   * explicit --force (#9).
+   */
+  legacyCount: number;
 }
 
 /**
- * How many times a task's SEALED decision set (identified by its partition
- * version) has already been decided — the multiple-comparisons budget for #22.
- * A null version (no sealed cases, or a pre-guard verdict) counts as never
- * decided.
+ * How the held-out labels being decided have ALREADY been examined — the
+ * multiple-comparisons budget for #22/#3. A prior verdict counts when its
+ * recorded cohort shares ANY case with `cohortHashes`, so reusing even part of
+ * the sealed set (e.g. 100 of 101 cases) is caught; extending the cohort by one
+ * case no longer resets the budget. Priors with no recorded membership are
+ * surfaced separately as `legacyCount`.
  */
 export function priorDecisions(
   handle: CompoundDatabase,
   taskKey: string,
-  partitionVersion: string | null,
+  cohortHashes: readonly string[],
 ): PriorDecisions {
-  const empty: PriorDecisions = { count: 0, firstDecidedAt: null, adoptionCount: 0 };
-  if (partitionVersion === null) return empty;
+  const empty: PriorDecisions = {
+    count: 0,
+    firstDecidedAt: null,
+    adoptionCount: 0,
+    legacyCount: 0,
+  };
+  if (cohortHashes.length === 0) return empty;
+  const cohortSet = new Set(cohortHashes);
   const rows = handle.db
     .select({
+      id: gateResults.id,
       decidedAt: gateResults.decidedAt,
       candidatePromptHash: gateSpecs.candidatePromptHash,
       optimizationRunId: gateSpecs.optimizationRunId,
     })
     .from(gateResults)
     .innerJoin(gateSpecs, eq(gateResults.gateSpecId, gateSpecs.id))
-    .where(
-      and(
-        eq(gateSpecs.taskKey, taskKey),
-        eq(gateResults.decisionPartitionVersion, partitionVersion),
-      ),
-    )
+    .where(eq(gateSpecs.taskKey, taskKey))
     .all();
   if (rows.length === 0) return empty;
+
   let firstDecidedAt: Date | null = null;
   let adoptionCount = 0;
+  let overlapCount = 0;
+  let legacyCount = 0;
   for (const row of rows) {
+    const members = handle.db
+      .select({ contentHash: gateDecisionCases.contentHash })
+      .from(gateDecisionCases)
+      .where(eq(gateDecisionCases.gateResultId, row.id))
+      .all();
+    if (members.length === 0) {
+      legacyCount += 1;
+      continue;
+    }
+    if (!members.some((m) => cohortSet.has(m.contentHash))) continue;
+    overlapCount += 1;
     if (firstDecidedAt === null || row.decidedAt < firstDecidedAt) firstDecidedAt = row.decidedAt;
     if (row.candidatePromptHash != null || row.optimizationRunId != null) adoptionCount += 1;
   }
-  return { count: rows.length, firstDecidedAt, adoptionCount };
+  return { count: overlapCount, firstDecidedAt, adoptionCount, legacyCount };
 }
 
 /** Every decided gate, newest first, each joined to the rule it was decided under. */

@@ -122,10 +122,12 @@ export const GateSchema = z.looseObject({
   max_regression: z.number().optional(),
   require_decision_test: z.boolean().optional(),
   /**
-   * The peeking guard (#22): once an optimized prompt has been adopted against a
-   * task's sealed decision set, block a further paid decision on that same
-   * held-out set (a re-curation resets it). Defaults to warn-only.
+   * The peeking guard (#22, #3): block a further paid decision that reuses any
+   * of a task's already-decided held-out labels. Curate a fresh, non-overlapping
+   * decision set to decide again, or pass --force. Defaults to warn-only.
    */
+  block_repeat_decision: z.boolean().optional(),
+  /** Deprecated alias for `block_repeat_decision`; both enable the guard. */
   block_repeat_after_adoption: z.boolean().optional(),
 });
 

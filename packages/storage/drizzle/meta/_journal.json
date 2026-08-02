@@ -78,6 +78,13 @@
       "when": 1785633199765,
       "tag": "0010_little_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1785678876135,
+      "tag": "0011_giant_anthem",
+      "breakpoints": true
     }
   ]
 }

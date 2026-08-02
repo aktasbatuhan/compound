@@ -278,9 +278,12 @@ export async function runGateCommand(
       // Only a paid, deliberate run persists the spec + verdict; a dry run is a
       // side-effect-free preview (issue #20).
       persist: wantsPaid,
-      // The peeking guard (#22): block a repeat decision after an adoption when
-      // the task's gate policy opts in; --force overrides with a stated reason.
-      blockRepeatAfterAdoption: config.gate?.block_repeat_after_adoption === true,
+      // The peeking guard (#22, #3): block a repeat decision that reuses any
+      // held-out label when the gate policy opts in; --force overrides with a
+      // stated reason. `block_repeat_after_adoption` stays a deprecated alias.
+      blockRepeatDecision:
+        config.gate?.block_repeat_decision === true ||
+        config.gate?.block_repeat_after_adoption === true,
       force: args.flags.force === true,
       candidateExperimentId: candidateRun.experimentId,
       referenceExperimentId: referenceRun.experimentId,
@@ -292,14 +295,18 @@ export async function runGateCommand(
 
     // Peeking warning (#22): this sealed set has been decided before. On a paid
     // decision it means a real re-examination; on a preview it's a heads-up.
-    if (prior.count > 0) {
+    if (prior.count > 0 || prior.legacyCount > 0) {
       const first = prior.firstDecidedAt?.toISOString() ?? "an earlier run";
       const lead = wantsPaid ? "warning" : "note";
+      const legacyNote =
+        prior.legacyCount > 0
+          ? ` (+${prior.legacyCount} earlier verdict(s) with no recorded cohort)`
+          : "";
       env.write(
-        `${lead}: the sealed decision set for '${taskKey}' has already been decided ` +
-          `${prior.count}× (first ${first}` +
+        `${lead}: the held-out decision set for '${taskKey}' has already been decided ` +
+          `${prior.count}× reusing these cases (first ${first}` +
           (prior.adoptionCount > 0 ? `, ${prior.adoptionCount} adoption` : "") +
-          "); each re-decision on the same held-out set weakens its guarantee.",
+          `)${legacyNote}; each re-decision on the same held-out labels weakens its guarantee.`,
       );
     }
 
