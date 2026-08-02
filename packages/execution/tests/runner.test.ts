@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Assertion } from "@compound/assertions";
-import { validate } from "@compound/contract";
+import { type Message, validate } from "@compound/contract";
 import { curateTask } from "@compound/curation";
 import {
   BudgetExceededError,
   type CompoundDatabase,
   createDatabase,
   createImportBatch,
+  insertCases,
   insertTraces,
   migrate,
   telemetryRollup,
@@ -380,6 +381,128 @@ describe("runExperiment money-safety", () => {
         partition: "decision_test",
       }),
     ).rejects.toBeInstanceOf(DecisionPartitionRefusedError);
+  });
+});
+
+describe("runExperiment agentic multi-turn (#23)", () => {
+  /** A provider that walks a scripted sequence of assistant messages. */
+  class ScriptedProvider implements Provider {
+    readonly name = "mock";
+    calls: CompletionRequest[] = [];
+    private i = 0;
+    constructor(private readonly outputs: Message[]) {}
+    async complete(request: CompletionRequest): Promise<CompletionResponse> {
+      this.calls.push(request);
+      const output = this.outputs[Math.min(this.i, this.outputs.length - 1)] as Message;
+      this.i += 1;
+      return {
+        output,
+        usage: { input_tokens: 10, output_tokens: 5 },
+        finishReason: "stop",
+        resolvedModel: request.model,
+        latencyMs: 1,
+      };
+    }
+  }
+
+  function seedAgenticCase(): void {
+    insertCases(db, [
+      {
+        caseId: "agentic-1",
+        taskKey: "agent",
+        sourceTraceId: "t-agent-1",
+        contentHash: "agent-hash-1",
+        provenance: "human_golden",
+        partition: "optimization_train",
+        input: {
+          input: [{ role: "user", content: "dispute my $23 charge" }],
+          tools_available: [{ name: "dispute_charge", description: "", parameters: {} }],
+          recorded_tool_results: [{ tool: "dispute_charge", result: '{"ok":true}' }],
+        },
+        expected: {},
+      },
+    ]);
+  }
+
+  const dispute: Message = {
+    role: "assistant",
+    content: null,
+    tool_calls: [{ id: "c1", name: "dispute_charge", arguments: { amount: 23 } }],
+  };
+
+  test("grades a whole trajectory with the one TS grader (tool_call_arg over turns)", async () => {
+    seedAgenticCase();
+    const provider = new ScriptedProvider([dispute, { role: "assistant", content: "done" }]);
+    const { report } = await runExperiment(db, {
+      taskKey: "agent",
+      candidateModel: "cand",
+      provider,
+      providerName: "mock",
+      price: PRICE,
+      // A #21 argument assertion grades the tool call MADE DURING the trajectory.
+      assertions: [
+        { type: "tool_call_arg", name: "dispute_charge", arg: "amount", match: { equals: 23 } },
+      ],
+      partition: "optimization_train",
+      agentic: true,
+      replayPolicy: { default: "recorded" },
+      paidRunsEnabled: true,
+      experimentCapUsd: 5,
+      globalHardLimitUsd: 25,
+    });
+    expect(report.cases_graded).toBe(1);
+    expect(report.pass_rate).toBe(1);
+    // Two turns → two provider calls counted (not one).
+    expect(report.provider_calls).toBe(2);
+    expect(provider.calls.length).toBe(2);
+  });
+
+  test("a blocked tool skips the case with a reason (no side effect)", async () => {
+    seedAgenticCase();
+    const provider = new ScriptedProvider([dispute, { role: "assistant", content: "done" }]);
+    const { report } = await runExperiment(db, {
+      taskKey: "agent",
+      candidateModel: "cand",
+      provider,
+      providerName: "mock",
+      price: PRICE,
+      assertions: [{ type: "tool_called", name: "dispute_charge" }],
+      partition: "optimization_train",
+      agentic: true,
+      replayPolicy: { default: "recorded", perTool: { dispute_charge: "blocked" } },
+      paidRunsEnabled: true,
+      experimentCapUsd: 5,
+      globalHardLimitUsd: 25,
+    });
+    expect(report.cases_graded).toBe(0);
+    expect(report.cases_skipped).toBe(1);
+    expect(report.skip_reasons?.tool_blocked).toBe(1);
+  });
+
+  test("re-running an agentic case is served from cache at $0", async () => {
+    seedAgenticCase();
+    const shared = {
+      taskKey: "agent",
+      candidateModel: "cand",
+      providerName: "mock",
+      price: PRICE,
+      assertions: [{ type: "tool_called", name: "dispute_charge" }] as Assertion[],
+      partition: "optimization_train" as const,
+      agentic: true,
+      replayPolicy: { default: "recorded" as const },
+      paidRunsEnabled: true,
+      experimentCapUsd: 5,
+      globalHardLimitUsd: 25,
+    };
+    await runExperiment(db, {
+      ...shared,
+      provider: new ScriptedProvider([dispute, { role: "assistant", content: "done" }]),
+    });
+    const second = new ScriptedProvider([dispute, { role: "assistant", content: "done" }]);
+    const { report } = await runExperiment(db, { ...shared, provider: second });
+    expect(second.calls).toHaveLength(0); // whole trajectory cached
+    expect(report.cache_hits).toBe(1);
+    expect(report.actual_cost_usd).toBe(0);
   });
 });
 

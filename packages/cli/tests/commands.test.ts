@@ -421,6 +421,18 @@ describe("experiment", () => {
     expect(output()).toContain("measurement-only");
   });
 
+  test("--agentic announces the multi-turn replay policy (issue #23)", async () => {
+    const { env, output } = testEnvironment();
+    await importAndCurate(env);
+    const result = await runCommand(
+      ["experiment", "support", "zai-org/GLM-5.2-FP8", "--agentic"],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("agentic:");
+    expect(output()).toContain("replay: recorded");
+  });
+
   test("an unknown model is a clear config error", async () => {
     const { env, output } = testEnvironment();
     await importAndCurate(env);

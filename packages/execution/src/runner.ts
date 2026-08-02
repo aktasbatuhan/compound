@@ -25,6 +25,15 @@ import {
 } from "@compound/storage";
 import { completionFingerprint, costFromUsage, estimateCost, type TokenPrice } from "./fingerprint";
 import type { CompletionRequest, CompletionResponse, Provider } from "./provider";
+import {
+  DEFAULT_MAX_TURNS,
+  MissingRecordedResultError,
+  type RecordedToolResult,
+  runTrajectory,
+  ToolBlockedError,
+  type TrajectoryPolicy,
+  UnsupportedReplayPolicyError,
+} from "./trajectory";
 
 export interface RunExperimentOptions {
   taskKey: string;
@@ -98,6 +107,20 @@ export interface RunExperimentOptions {
    * Opt-in; it only matters on a paid run (a dry run makes no calls).
    */
   fresh?: boolean;
+  /**
+   * Run each case as a multi-turn AGENTIC trajectory (issue #23) instead of a
+   * single call: drive the candidate across turns, replaying tool results under
+   * `replayPolicy`, and grade the aggregate output (final answer + every tool
+   * call). Scripted tool results come from each case's
+   * `input.recorded_tool_results`. The whole trajectory is one cached completion
+   * keyed by its initial request + the policy, so the gate/telemetry machinery
+   * is unchanged.
+   */
+  agentic?: boolean;
+  /** Per-tool replay policy for an agentic run (default: everything `recorded`). */
+  replayPolicy?: TrajectoryPolicy;
+  /** Turn budget per agentic case (default 8). */
+  maxTurns?: number;
 }
 
 export interface CaseRunResult {
@@ -269,12 +292,26 @@ export async function runExperiment(
         continue;
       }
 
+      // Agentic (#23): scripted tool results ride in the case input; the replay
+      // policy defaults to `recorded`. Both steer the trajectory, so they join
+      // the fingerprint (a single-call run passes neither and is unchanged).
+      const recordedToolResults: RecordedToolResult[] =
+        options.agentic === true
+          ? ((stored.input as { recorded_tool_results?: RecordedToolResult[] })
+              ?.recorded_tool_results ?? [])
+          : [];
+      const replayPolicy: TrajectoryPolicy = options.replayPolicy ?? { default: "recorded" };
+      const maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
+
       const fingerprint = completionFingerprint(
         {
           provider: options.providerName,
           request,
           providerRevision: options.providerRevision,
           transportOverride: options.transportOverride,
+          ...(options.agentic === true
+            ? { agentic: { policy: replayPolicy, recorded: recordedToolResults, maxTurns } }
+            : {}),
         },
         options.trial ?? 0,
       );
@@ -305,10 +342,15 @@ export async function runExperiment(
         continue;
       } else {
         const estimate = estimateCost(request, options.price);
-        // Flex reserves extra headroom for reasoning-token overrun; the check is
-        // conservative while the reported estimate stays the real projection.
+        // Flex reserves extra headroom for reasoning-token overrun; an agentic
+        // run may make up to `maxTurns` calls, so it reserves that many. The
+        // check is conservative while the reported estimate stays the projection.
         const reservation =
-          options.transport === "flex" ? estimate + FLEX_REQUEST_RESERVE_USD : estimate;
+          options.transport === "flex"
+            ? estimate + FLEX_REQUEST_RESERVE_USD
+            : options.agentic === true
+              ? estimate * maxTurns
+              : estimate;
         // Enforce BOTH caps before spending a cent.
         requireBudgetHeadroom(db, {
           fingerprint,
@@ -319,9 +361,50 @@ export async function runExperiment(
         });
         estimatedCost += estimate;
 
-        response = await options.provider.complete(request);
+        if (options.agentic === true) {
+          // A blocked/side-effecting tool or missing recorded result cannot yield
+          // a deterministic trajectory — skip the case with the reason rather
+          // than fabricate an outcome or run a live side effect.
+          let traj: Awaited<ReturnType<typeof runTrajectory>>;
+          try {
+            traj = await runTrajectory(options.provider, {
+              request,
+              recordedToolResults,
+              policy: replayPolicy,
+              maxTurns,
+            });
+          } catch (error) {
+            const key =
+              error instanceof ToolBlockedError
+                ? "tool_blocked"
+                : error instanceof MissingRecordedResultError
+                  ? "missing_recorded_result"
+                  : error instanceof UnsupportedReplayPolicyError
+                    ? "unsupported_replay_policy"
+                    : undefined;
+            if (key === undefined) throw error;
+            skipped += 1;
+            skipReasons[key] = (skipReasons[key] ?? 0) + 1;
+            results.push({
+              caseId: stored.caseId,
+              status: "skipped",
+              detail: error instanceof Error ? error.message : String(error),
+            });
+            continue;
+          }
+          response = {
+            output: traj.gradedOutput,
+            usage: traj.usage,
+            finishReason: traj.truncated ? "length" : "stop",
+            resolvedModel: wireModel,
+            latencyMs: traj.latencyMs,
+          };
+          providerCalls += traj.turns; // count every turn's call, not just one
+        } else {
+          response = await options.provider.complete(request);
+          providerCalls += 1;
+        }
         costUsd = costFromUsage(response.usage, options.price);
-        providerCalls += 1;
         actualCost += costUsd;
 
         // Persist before grading, so a crash after the paid call never loses it.

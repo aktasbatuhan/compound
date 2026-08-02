@@ -35,6 +35,14 @@ export interface FingerprintInput {
    * caches still hit.
    */
   transportOverride?: string;
+  /**
+   * Agentic trajectory identity (issue #23), present only for a multi-turn run.
+   * The whole trajectory is cached under its INITIAL request, so the replay
+   * policy and scripted tool results — which steer the trajectory to a different
+   * outcome — must join the fingerprint. Absent for a single-call run, whose
+   * identity (and warm cache) is therefore unchanged.
+   */
+  agentic?: unknown;
 }
 
 /**
@@ -54,6 +62,8 @@ export function completionFingerprint(input: FingerprintInput, trial = 0): strin
     // Present only for a forced non-native transport, so a native run's identity
     // (and its warm cache) is unchanged; a chat-vs-flex override never collides.
     ...(input.transportOverride !== undefined ? { transport: input.transportOverride } : {}),
+    // Present only for an agentic run, so a single-call fingerprint is unchanged.
+    ...(input.agentic !== undefined ? { agentic: input.agentic } : {}),
     // Trial 0 keeps the base identity so it reuses any legacy cache entry.
     ...(trial > 0 ? { trial } : {}),
   };

@@ -7,13 +7,15 @@
  * and a `--cap` per-run ceiling.
  */
 import type { Assertion } from "@compound/assertions";
-import { loadConfig } from "@compound/config";
+import { type CompoundConfig, loadConfig } from "@compound/config";
 import {
   DecisionPartitionRefusedError,
   ExecutionConfigError,
   moneyControls,
   resolveModel,
   runExperiment,
+  type ToolReplayPolicy,
+  type TrajectoryPolicy,
 } from "@compound/execution";
 import type { CasePartition } from "@compound/storage";
 import type { CommandEnvironment, CommandResult, ParsedArgs } from "./commands";
@@ -22,6 +24,19 @@ import { DEFAULT_CONFIG_PATH, DEFAULT_DATABASE_PATH } from "./commands";
 function stringFlag(flags: ParsedArgs["flags"], name: string): string | undefined {
   const value = flags[name];
   return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * The agentic replay policy for a task, from `task_keys.<task>.replay` in
+ * compound.yaml (issue #23). Defaults to `recorded` — replay scripted tool
+ * results, never touch a live system. Shared by `experiment` and `gate`.
+ */
+export function replayPolicyFromConfig(config: CompoundConfig, taskKey: string): TrajectoryPolicy {
+  const replay = config.task_keys?.[taskKey]?.replay;
+  return {
+    default: (replay?.default_tool_policy ?? "recorded") as ToolReplayPolicy,
+    ...(replay?.per_tool ? { perTool: replay.per_tool as Record<string, ToolReplayPolicy> } : {}),
+  };
 }
 
 const PARTITIONS: CasePartition[] = [
@@ -42,7 +57,7 @@ export async function runExperimentCommand(
       "error: usage: compound experiment <task_key> <model> [--provider P] " +
         "[--transport chat_completions|flex] [--service-tier T] " +
         "[--openrouter-provider SLUG] [--openrouter-quant Q] [--trial N] [--fresh] " +
-        "[--max-tokens N] [--partition P] [--paid --cap N]",
+        "[--agentic [--max-turns N]] [--max-tokens N] [--partition P] [--paid --cap N]",
     );
     return { exitCode: 2 };
   }
@@ -62,6 +77,15 @@ export async function runExperimentCommand(
   // provider-side prompt caching) so TPS/latency figures are honest. It never
   // touches the correctness cache a gate reads, so use it for speed comparisons.
   const fresh = args.flags.fresh === true;
+  // Agentic (#23): drive the candidate across turns, replaying tool results
+  // under the task's config replay policy, and grade the whole trajectory.
+  const agentic = args.flags.agentic === true;
+  const maxTurnsFlag = stringFlag(args.flags, "max-turns");
+  const maxTurns = maxTurnsFlag !== undefined ? Number.parseInt(maxTurnsFlag, 10) : undefined;
+  if (maxTurns !== undefined && (Number.isNaN(maxTurns) || maxTurns <= 0)) {
+    env.write("error: --max-turns must be a positive integer");
+    return { exitCode: 2 };
+  }
   const maxTokensFlag = stringFlag(args.flags, "max-tokens");
   const maxTokens = maxTokensFlag !== undefined ? Number.parseInt(maxTokensFlag, 10) : undefined;
   if (maxTokens !== undefined && (Number.isNaN(maxTokens) || maxTokens <= 0)) {
@@ -151,6 +175,8 @@ export async function runExperimentCommand(
       ...(runParams !== undefined ? { params: runParams } : {}),
       ...(trial > 0 ? { trial } : {}),
       ...(fresh ? { fresh: true } : {}),
+      ...(agentic ? { agentic: true, replayPolicy: replayPolicyFromConfig(config, taskKey) } : {}),
+      ...(maxTurns !== undefined ? { maxTurns } : {}),
       // The config schema is loose on assertion params (the engine owns the
       // exact shapes); the engine validates per-type at evaluation.
       assertions: (config.assertions?.[taskKey] ?? []) as Assertion[],
@@ -175,6 +201,14 @@ export async function runExperimentCommand(
         (serviceTier !== undefined ? ` (service_tier: ${serviceTier})` : ""),
     );
     if (trial > 0) env.write(`  trial:        ${trial}`);
+    if (agentic) {
+      const policy = replayPolicyFromConfig(config, taskKey);
+      env.write(
+        `  agentic:      multi-turn (replay: ${policy.default}` +
+          (maxTurns !== undefined ? `, max turns: ${maxTurns}` : "") +
+          ")",
+      );
+    }
     if (fresh) {
       env.write(
         "  fresh:        on (cache-bust; measurement-only — real compute per call, " +

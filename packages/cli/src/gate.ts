@@ -21,6 +21,7 @@ import { decideGate, GateInputError } from "@compound/gate";
 import { type GateMetric, type GateMode, getOptimizationRun } from "@compound/storage";
 import type { CommandEnvironment, CommandResult, ParsedArgs } from "./commands";
 import { DEFAULT_CONFIG_PATH, DEFAULT_DATABASE_PATH } from "./commands";
+import { replayPolicyFromConfig } from "./experiment";
 
 function stringFlag(flags: ParsedArgs["flags"], name: string): string | undefined {
   const value = flags[name];
@@ -200,6 +201,11 @@ export async function runGateCommand(
   }
 
   const maxCases = stringFlag(args.flags, "max");
+  // Agentic (#23): gate a multi-turn task by driving each side across turns
+  // under the task's replay policy; the sealed-partition + pairing are unchanged.
+  const agentic = args.flags.agentic === true;
+  const maxTurnsFlag = stringFlag(args.flags, "max-turns");
+  const maxTurns = maxTurnsFlag !== undefined ? Number.parseInt(maxTurnsFlag, 10) : undefined;
   const runOne = (
     resolved: ReturnType<typeof resolveModel>,
     model: string,
@@ -220,6 +226,8 @@ export async function runGateCommand(
       experimentCapUsd,
       globalHardLimitUsd: controls.globalHardLimitUsd,
       dryRun: !wantsPaid,
+      ...(agentic ? { agentic: true, replayPolicy: replayPolicyFromConfig(config, taskKey) } : {}),
+      ...(maxTurns !== undefined ? { maxTurns } : {}),
       ...(systemPromptOverride !== undefined ? { systemPromptOverride } : {}),
       ...(maxCases !== undefined ? { maxCases: Number.parseInt(maxCases, 10) } : {}),
     });
