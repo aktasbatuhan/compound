@@ -33,9 +33,13 @@ export function canonicalJson(value: unknown): string {
  * Hash the replayable request of a trace.
  *
  * Computed on the focal model call's `{model, input, tools_available}` — the
- * request a candidate model would actually be given. Traces with no focal step
- * are not replayable, so they fall back to hashing the whole `steps` array,
- * which still collapses exact duplicates.
+ * request a candidate model would actually be given. When the trace also ran
+ * tools, the recorded replay script (each `tool_execution`'s name/input/output,
+ * in order) is folded in too (#6): a different script IS a different agentic
+ * case, so two traces with the same focal request but different tool outcomes
+ * must not collapse into one. Traces with no focal step are not replayable, so
+ * they fall back to hashing the whole `steps` array, which still collapses
+ * exact duplicates.
  *
  * Must be called AFTER redaction: two traces differing only in a secret that
  * was redacted away are the same work and should dedupe as such.
@@ -48,6 +52,10 @@ export function computeContentHash(trace: Trace): string {
           (step) => step.step_id === trace.focal_step_id && step.type === "model_call",
         );
 
+  const replayScript = trace.steps
+    .filter((step) => step.type === "tool_execution")
+    .map((step) => ({ name: step.name, input: step.input ?? null, output: step.output ?? null }));
+
   const subject =
     focal !== undefined && focal.type === "model_call"
       ? {
@@ -55,6 +63,8 @@ export function computeContentHash(trace: Trace): string {
           model: focal.model ?? null,
           input: focal.input,
           tools_available: focal.tools_available ?? null,
+          // Present only for agentic traces, so non-agentic hashes are unchanged.
+          ...(replayScript.length > 0 ? { recorded_tool_results: replayScript } : {}),
         }
       : { kind: "steps", steps: trace.steps };
 
