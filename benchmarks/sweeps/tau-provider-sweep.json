@@ -1,0 +1,214 @@
+{
+ "benchmark": "tau_bench",
+ "manifest": "benchmarks/manifests/tau_bench.json",
+ "comment": "Provider sweep: three open models pinned to curated OpenRouter upstreams (quant/price spread). Prices are declared decision context, captured from /endpoints on 2026-08-03 in USD per million tokens.",
+ "user_model": {
+  "provider": "openrouter",
+  "model": "openai/gpt-5.6-luna",
+  "max_tokens": 2048,
+  "usd_in_per_m": 0.1,
+  "usd_out_per_m": 0.6
+ },
+ "agent_max_tokens": 4096,
+ "trials": 1,
+ "max_steps": 30,
+ "task_splits": {
+  "telecom": "full"
+ },
+ "configs": [
+  {
+   "model": "moonshotai/kimi-k3",
+   "upstream": "morph",
+   "quant": "unknown",
+   "usd_in_per_m": 2.9,
+   "usd_out_per_m": 14.0
+  },
+  {
+   "model": "moonshotai/kimi-k3",
+   "upstream": "digitalocean",
+   "quant": "unknown",
+   "usd_in_per_m": 3.0,
+   "usd_out_per_m": 15.0
+  },
+  {
+   "model": "moonshotai/kimi-k3",
+   "upstream": "modal/mxfp4",
+   "quant": "mxfp4",
+   "usd_in_per_m": 3.0,
+   "usd_out_per_m": 15.0
+  },
+  {
+   "model": "moonshotai/kimi-k3",
+   "upstream": "baseten/fp8",
+   "quant": "fp8",
+   "usd_in_per_m": 3.0,
+   "usd_out_per_m": 15.0
+  },
+  {
+   "model": "moonshotai/kimi-k3",
+   "upstream": "fireworks",
+   "quant": "unknown",
+   "usd_in_per_m": 3.0,
+   "usd_out_per_m": 15.0
+  },
+  {
+   "model": "moonshotai/kimi-k3",
+   "upstream": "together",
+   "quant": "unknown",
+   "usd_in_per_m": 3.0,
+   "usd_out_per_m": 15.0
+  },
+  {
+   "model": "moonshotai/kimi-k3",
+   "upstream": "moonshotai/mxfp4",
+   "quant": "mxfp4",
+   "usd_in_per_m": 3.0,
+   "usd_out_per_m": 15.0
+  },
+  {
+   "model": "moonshotai/kimi-k3",
+   "upstream": "wafer",
+   "quant": "fp8",
+   "usd_in_per_m": 3.0,
+   "usd_out_per_m": 15.0
+  },
+  {
+   "model": "moonshotai/kimi-k3",
+   "upstream": "fireworks/fast",
+   "quant": "unknown",
+   "usd_in_per_m": 4.5,
+   "usd_out_per_m": 22.5
+  },
+  {
+   "model": "deepseek/deepseek-v4-flash-0731",
+   "upstream": "deepinfra/fp4",
+   "quant": "fp4",
+   "usd_in_per_m": 0.09,
+   "usd_out_per_m": 0.18
+  },
+  {
+   "model": "deepseek/deepseek-v4-flash-0731",
+   "upstream": "fireworks",
+   "quant": "unknown",
+   "usd_in_per_m": 0.14,
+   "usd_out_per_m": 0.28
+  },
+  {
+   "model": "deepseek/deepseek-v4-flash-0731",
+   "upstream": "novita/fp8",
+   "quant": "fp8",
+   "usd_in_per_m": 0.14,
+   "usd_out_per_m": 0.28
+  },
+  {
+   "model": "deepseek/deepseek-v4-flash-0731",
+   "upstream": "cloudflare/fp8",
+   "quant": "fp8",
+   "usd_in_per_m": 0.14,
+   "usd_out_per_m": 0.28
+  },
+  {
+   "model": "deepseek/deepseek-v4-flash-0731",
+   "upstream": "deepseek/fp8",
+   "quant": "fp8",
+   "usd_in_per_m": 0.14,
+   "usd_out_per_m": 0.28
+  },
+  {
+   "model": "deepseek/deepseek-v4-flash-0731",
+   "upstream": "parasail/fp8",
+   "quant": "fp8",
+   "usd_in_per_m": 0.14,
+   "usd_out_per_m": 0.28
+  },
+  {
+   "model": "deepseek/deepseek-v4-flash-0731",
+   "upstream": "gmicloud/fp8",
+   "quant": "fp8",
+   "usd_in_per_m": 0.14,
+   "usd_out_per_m": 0.28
+  },
+  {
+   "model": "z-ai/glm-5.2",
+   "upstream": "decart/fp4",
+   "quant": "fp4",
+   "usd_in_per_m": 0.72,
+   "usd_out_per_m": 1.8
+  },
+  {
+   "model": "z-ai/glm-5.2",
+   "upstream": "deepinfra/fp4",
+   "quant": "fp4",
+   "usd_in_per_m": 0.75,
+   "usd_out_per_m": 2.4
+  },
+  {
+   "model": "z-ai/glm-5.2",
+   "upstream": "novita/fp8",
+   "quant": "fp8",
+   "usd_in_per_m": 0.75,
+   "usd_out_per_m": 2.37
+  },
+  {
+   "model": "z-ai/glm-5.2",
+   "upstream": "chutes/fp4",
+   "quant": "fp4",
+   "usd_in_per_m": 1.25,
+   "usd_out_per_m": 3.95
+  },
+  {
+   "model": "z-ai/glm-5.2",
+   "upstream": "z-ai/fp8",
+   "quant": "fp8",
+   "usd_in_per_m": 1.4,
+   "usd_out_per_m": 4.4
+  },
+  {
+   "model": "z-ai/glm-5.2",
+   "upstream": "fireworks",
+   "quant": "unknown",
+   "usd_in_per_m": 1.4,
+   "usd_out_per_m": 4.4
+  },
+  {
+   "model": "z-ai/glm-5.2",
+   "upstream": "baseten/fp8",
+   "quant": "fp8",
+   "usd_in_per_m": 1.4,
+   "usd_out_per_m": 4.4
+  },
+  {
+   "model": "z-ai/glm-5.2",
+   "upstream": "together",
+   "quant": "unknown",
+   "usd_in_per_m": 1.4,
+   "usd_out_per_m": 4.4
+  },
+  {
+   "model": "moonshotai/kimi-k3",
+   "provider": "doubleword",
+   "upstream": "doubleword/realtime",
+   "quant": "unknown",
+   "usd_in_per_m": 3.0,
+   "usd_out_per_m": 15.0
+  },
+  {
+   "model": "zai-org/GLM-5.2-FP8",
+   "provider": "doubleword",
+   "upstream": "doubleword/realtime",
+   "quant": "fp8",
+   "usd_in_per_m": 0.93,
+   "usd_out_per_m": 3.0
+  },
+  {
+   "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+   "provider": "doubleword",
+   "upstream": "doubleword/realtime",
+   "quant": "unknown",
+   "usd_in_per_m": 0.09,
+   "usd_out_per_m": 0.18
+  }
+ ],
+ "doubleword_api_base": "https://api.doubleword.ai/v1",
+ "modes_note": "Doubleword async (-25%) and batch (-50%) tiers run on the background /responses route, which an interactive tau episode cannot use; chat.completions accepts service_tier but does not echo it, so tier-flagged runs stay unverified until reconciled against billing. Shape run measures the realtime tier only."
+}

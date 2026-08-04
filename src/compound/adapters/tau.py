@@ -17,6 +17,13 @@ class TauModel:
     api_base: str | None = None
     reasoning_effort: str | None = None
     max_tokens: int | None = None
+    #: OpenRouter upstream tag (e.g. "baseten/fp8") to pin the serving host; the
+    #: request then refuses fallbacks so every episode is served by that host.
+    openrouter_provider: str | None = None
+    #: Service tier flag forwarded in the request body (e.g. Doubleword "flex").
+    #: CAUTION: Doubleword's chat route accepts but does not echo this — treat a
+    #: tier-flagged run as unverified until reconciled against billing.
+    service_tier: str | None = None
 
     def litellm_name(self) -> str:
         if self.provider == "openrouter":
@@ -33,16 +40,42 @@ class TauModel:
             args["reasoning_effort"] = self.reasoning_effort
         if self.max_tokens is not None:
             args["max_tokens"] = self.max_tokens
+        extra_body: dict = {}
+        if self.openrouter_provider:
+            if self.provider != "openrouter":
+                raise ValueError("openrouter_provider requires provider='openrouter'")
+            # litellm forwards extra_body verbatim; OpenRouter honors provider.only
+            # and, with allow_fallbacks off, errors rather than silently rerouting.
+            extra_body["provider"] = {
+                "only": [self.openrouter_provider],
+                "allow_fallbacks": False,
+            }
+        if self.service_tier:
+            extra_body["service_tier"] = self.service_tier
+        if extra_body:
+            args["extra_body"] = extra_body
         return args
+
+    def slug(self) -> str:
+        """Filesystem-safe identity for output naming, including the pinned host."""
+        parts = [self.model.replace("/", "--")]
+        if self.reasoning_effort:
+            parts.append(f"reasoning-{self.reasoning_effort}")
+        if self.openrouter_provider:
+            parts.append(f"at-{self.openrouter_provider.replace('/', '-')}")
+        if self.provider == "doubleword":
+            parts.append(f"at-doubleword-{self.service_tier or 'realtime'}")
+        return "--".join(parts)
 
 
 def task_ids_by_domain(
-    manifest_path: str | Path, partition: Partition
+    manifest_path: str | Path, partition: Partition | None
 ) -> dict[str, list[str]]:
+    """Group manifest task ids by domain; `partition=None` selects every partition."""
     manifest = json.loads(Path(manifest_path).read_text())
     grouped: dict[str, list[str]] = defaultdict(list)
     for case in manifest["cases"]:
-        if case["partition"] != partition.value:
+        if partition is not None and case["partition"] != partition.value:
             continue
         domain, task_id = case["case_id"].split(":", 1)
         grouped[domain].append(task_id)
@@ -52,7 +85,7 @@ def task_ids_by_domain(
 def run_tau_partition(
     *,
     manifest_path: str | Path,
-    partition: Partition,
+    partition: Partition | None,
     agent_model: TauModel,
     user_model: TauModel,
     candidate_instruction: str,
@@ -60,6 +93,8 @@ def run_tau_partition(
     max_steps: int,
     output_dir: str | Path,
     telemetry_path: str | Path | None = None,
+    task_split_overrides: dict[str, str] | None = None,
+    domains: set[str] | None = None,
 ) -> list[Path]:
     """Run selected tau tasks inside tau's own pinned environment.
 
@@ -97,16 +132,23 @@ def run_tau_partition(
     if agent_name not in registry.get_agents():
         registry.register_agent_factory(create_agent, agent_name)
 
-    destination = Path(output_dir)
+    # tau resolves a RELATIVE save_to under its own data directory; resolve so
+    # results land here and the telemetry ingest below can actually find them.
+    destination = Path(output_dir).resolve()
     destination.mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
+    partition_label = partition.value if partition is not None else "all"
     for domain, task_ids in task_ids_by_domain(manifest_path, partition).items():
-        model_slug = agent_model.model.replace("/", "--")
-        if agent_model.reasoning_effort:
-            model_slug += f"--reasoning-{agent_model.reasoning_effort}"
-        output = destination / f"{domain}-{partition.value}-{model_slug}.json"
+        if domains is not None and domain not in domains:
+            continue
+        output = destination / f"{domain}-{partition_label}-{agent_model.slug()}.json"
         config = TextRunConfig(
             domain=domain,
+            # Domains default to their "base" task split; the manifest may
+            # reference ids that only exist in another split (telecom → "full"),
+            # so allow a per-domain split override. (The *_full task-set aliases
+            # are broken in this tau revision — the split is the working lever.)
+            task_split_name=(task_split_overrides or {}).get(domain, "base"),
             task_ids=task_ids,
             num_trials=trials,
             max_steps=max_steps,
@@ -128,6 +170,7 @@ def run_tau_partition(
                 agent_model=agent_model.model,
                 user_provider=user_model.provider,
                 user_model=user_model.model,
+                agent_upstream=agent_model.openrouter_provider,
             )
         outputs.append(output)
     return outputs

@@ -101,6 +101,7 @@ def ingest_tau_results(
     user_provider: str,
     user_model: str,
     source_label: str | None = None,
+    agent_upstream: str | None = None,
 ) -> int:
     """Normalize tau message-level timings and usage into the shared JSONL schema.
 
@@ -158,6 +159,10 @@ def ingest_tau_results(
                     "provider": provider,
                     "requested_model": model,
                     "resolved_model": raw.get("model"),
+                    # The upstream host we PINNED (agent side only) and the one
+                    # OpenRouter reports having SERVED; a mismatch is a routing bug.
+                    "requested_upstream": agent_upstream if role == "assistant" else None,
+                    "served_upstream": raw.get("provider"),
                     "status": "ok",
                     "api_surface": "chat.completions",
                     "latency_ms": (
