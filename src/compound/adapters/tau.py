@@ -12,11 +12,17 @@ from compound.telemetry import ingest_tau_results
 
 @dataclass(frozen=True, slots=True)
 class TauModel:
+    #: "openrouter", "doubleword", or any label for an OpenAI-compatible host
+    #: (vLLM, Fireworks direct, Groq, a local server, ...). Non-openrouter
+    #: providers speak the OpenAI chat API at ``api_base`` and authenticate with
+    #: the key found in ``api_key_env``.
     provider: str
     model: str
     api_base: str | None = None
     reasoning_effort: str | None = None
     max_tokens: int | None = None
+    #: Env var holding the API key for a custom OpenAI-compatible host.
+    api_key_env: str | None = None
     #: OpenRouter upstream tag (e.g. "baseten/fp8") to pin the serving host; the
     #: request then refuses fallbacks so every episode is served by that host.
     openrouter_provider: str | None = None
@@ -28,9 +34,27 @@ class TauModel:
     def litellm_name(self) -> str:
         if self.provider == "openrouter":
             return f"openrouter/{self.model}"
+        # Every other provider is an OpenAI-compatible host addressed by api_base.
+        if self.provider != "doubleword" and not self.api_base:
+            raise ValueError(
+                f"provider {self.provider!r} is OpenAI-compatible and needs api_base"
+            )
+        return f"openai/{self.model}"
+
+    def resolve_api_key_env(self) -> str | None:
+        """Env var whose value must land in OPENAI_API_KEY before the run.
+
+        OpenRouter is handled natively by litellm (OPENROUTER_API_KEY), so it
+        needs no override; every OpenAI-compatible host authenticates through
+        the OPENAI_API_KEY litellm sends to api_base.
+        """
+        if self.provider == "openrouter":
+            return None
+        if self.api_key_env:
+            return self.api_key_env
         if self.provider == "doubleword":
-            return f"openai/{self.model}"
-        raise ValueError(f"unsupported tau provider: {self.provider}")
+            return "DOUBLEWORD_API_KEY"
+        raise ValueError(f"provider {self.provider!r} needs api_key_env")
 
     def llm_args(self) -> dict:
         args: dict = {}
@@ -65,6 +89,9 @@ class TauModel:
             parts.append(f"at-{self.openrouter_provider.replace('/', '-')}")
         if self.provider == "doubleword":
             parts.append(f"at-doubleword-{self.service_tier or 'realtime'}")
+        elif self.provider != "openrouter":
+            tier = f"-{self.service_tier}" if self.service_tier else ""
+            parts.append(f"at-{self.provider}{tier}")
         return "--".join(parts)
 
 
@@ -113,16 +140,18 @@ def run_tau_partition(
     telemetry_path: str | Path | None = None,
     task_split_overrides: dict[str, str] | None = None,
     domains: set[str] | None = None,
+    case_ids: set[str] | None = None,
 ) -> list[Path]:
     """Run selected tau tasks inside tau's own pinned environment.
 
     This function intentionally imports tau lazily so the Compound core stays isolated from
     benchmark dependencies.
     """
-    if agent_model.provider == "doubleword":
-        key = os.getenv("DOUBLEWORD_API_KEY")
+    key_env = agent_model.resolve_api_key_env()
+    if key_env:
+        key = os.getenv(key_env)
         if not key:
-            raise RuntimeError("DOUBLEWORD_API_KEY is required")
+            raise RuntimeError(f"{key_env} is required")
         os.environ["OPENAI_API_KEY"] = key
 
     from tau2.agent.llm_agent import SYSTEM_PROMPT, LLMAgent
@@ -161,6 +190,10 @@ def run_tau_partition(
     for domain, task_ids in task_ids_by_domain(manifest_path, partition).items():
         if domains is not None and domain not in domains:
             continue
+        if case_ids is not None:
+            task_ids = [t for t in task_ids if f"{domain}:{t}" in case_ids]
+            if not task_ids:
+                continue
         output = destination / f"{domain}-{partition_label}-{agent_model.slug()}.json"
         config = TextRunConfig(
             domain=domain,

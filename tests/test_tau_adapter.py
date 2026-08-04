@@ -96,3 +96,24 @@ def test_nl_judge_rerouted_through_openrouter(monkeypatch) -> None:
     assert NL_ASSERTIONS_JUDGE.startswith("openrouter/")
     assert config.DEFAULT_LLM_NL_ASSERTIONS == NL_ASSERTIONS_JUDGE
     assert evaluator.DEFAULT_LLM_NL_ASSERTIONS == NL_ASSERTIONS_JUDGE
+
+
+def test_tau_model_custom_openai_compatible_host() -> None:
+    import pytest
+
+    custom = TauModel(
+        "myvllm", "org/model", api_base="http://localhost:8000/v1", api_key_env="MY_KEY"
+    )
+    assert custom.litellm_name() == "openai/org/model"
+    assert custom.resolve_api_key_env() == "MY_KEY"
+    assert custom.slug() == "org--model--at-myvllm"
+    tiered = TauModel("myvllm", "m", api_base="http://x", api_key_env="K", service_tier="batch")
+    assert tiered.slug() == "m--at-myvllm-batch"
+    # A custom host is unusable without an endpoint or a key source.
+    with pytest.raises(ValueError):
+        TauModel("myvllm", "m").litellm_name()
+    with pytest.raises(ValueError):
+        TauModel("myvllm", "m", api_base="http://x").resolve_api_key_env()
+    # Built-ins keep their defaults: openrouter needs no override, doubleword has one.
+    assert TauModel("openrouter", "m").resolve_api_key_env() is None
+    assert TauModel("doubleword", "m").resolve_api_key_env() == "DOUBLEWORD_API_KEY"

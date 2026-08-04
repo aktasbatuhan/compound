@@ -47,10 +47,24 @@ class SweepConfig:
     usd_out_per_m: float
     provider: str = "openrouter"
     service_tier: str | None = None
+    #: Custom OpenAI-compatible host: endpoint + env var holding its key.
+    api_base: str | None = None
+    api_key_env: str | None = None
 
     @property
     def label(self) -> str:
         return f"{self.model}@{self.upstream}"
+
+    def required_key_env(self) -> str:
+        if self.provider == "openrouter":
+            return "OPENROUTER_API_KEY"
+        if self.api_key_env:
+            return self.api_key_env
+        if self.provider == "doubleword":
+            return "DOUBLEWORD_API_KEY"
+        raise ValueError(
+            f"config {self.label!r}: provider {self.provider!r} needs api_key_env"
+        )
 
 
 def load_spec(path: Path) -> dict:
@@ -64,6 +78,8 @@ def load_spec(path: Path) -> dict:
             usd_out_per_m=float(c["usd_out_per_m"]),
             provider=c.get("provider", "openrouter"),
             service_tier=c.get("service_tier"),
+            api_base=c.get("api_base"),
+            api_key_env=c.get("api_key_env"),
         )
         for c in spec["configs"]
     ]
@@ -124,12 +140,8 @@ def run(
     if not configs:
         print(f"error: --only {only!r} matches no config", file=sys.stderr)
         return 2
-    needed_keys = {
-        "openrouter": "OPENROUTER_API_KEY",
-        "doubleword": "DOUBLEWORD_API_KEY",
-    }
     missing = {
-        needed_keys[c.provider] for c in configs if not os.getenv(needed_keys[c.provider])
+        c.required_key_env() for c in configs if not os.getenv(c.required_key_env())
     }
     if missing:
         print(f"error: missing env for --run: {', '.join(sorted(missing))}", file=sys.stderr)
@@ -145,20 +157,27 @@ def run(
         if c.label in done:
             print(f"skip (completed): {c.label}")
             continue
-        if c.provider == "doubleword":
-            agent = TauModel(
-                provider="doubleword",
-                model=c.model,
-                api_base=spec.get("doubleword_api_base", "https://api.doubleword.ai/v1"),
-                max_tokens=spec.get("agent_max_tokens"),
-                service_tier=c.service_tier,
-            )
-        else:
+        if c.provider == "openrouter":
             agent = TauModel(
                 provider="openrouter",
                 model=c.model,
                 max_tokens=spec.get("agent_max_tokens"),
                 openrouter_provider=c.upstream,
+            )
+        else:
+            # doubleword or any custom OpenAI-compatible host from the spec.
+            default_base = (
+                spec.get("doubleword_api_base", "https://api.doubleword.ai/v1")
+                if c.provider == "doubleword"
+                else None
+            )
+            agent = TauModel(
+                provider=c.provider,
+                model=c.model,
+                api_base=c.api_base or default_base,
+                api_key_env=c.api_key_env,
+                max_tokens=spec.get("agent_max_tokens"),
+                service_tier=c.service_tier,
             )
         print(f"run: {c.label}")
         started = time.time()
