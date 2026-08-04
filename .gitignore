@@ -13,6 +13,7 @@ artifacts/
 *.db-shm
 
 .claude/worktrees/
+.playwright-mcp/
 
 # TypeScript / Bun
 node_modules/
@@ -30,3 +31,8 @@ packages/*/README.md
 
 # Local Langfuse experiment harness (real-trace generation) — not published
 langfuse-demo/
+
+# MMLU manifest embeds question + answer payload (an eval answer key); keep it
+# out of the public repo and regenerate deterministically with
+# `python -m compound.bench prepare mmlu` (hash-based partitions are stable).
+benchmarks/manifests/mmlu.json

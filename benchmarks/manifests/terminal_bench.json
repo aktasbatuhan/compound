@@ -1,0 +1,726 @@
+{
+ "benchmark": "terminal_bench",
+ "source": "terminal-bench-core==0.1.1",
+ "cases": [
+  {
+   "case_id": "blind-maze-explorer-5x5",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "games",
+    "max_agent_timeout_sec": 900.0
+   }
+  },
+  {
+   "case_id": "blind-maze-explorer-algorithm",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 900.0
+   }
+  },
+  {
+   "case_id": "blind-maze-explorer-algorithm.easy",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 900.0
+   }
+  },
+  {
+   "case_id": "blind-maze-explorer-algorithm.hard",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 900.0
+   }
+  },
+  {
+   "case_id": "build-initramfs-qemu",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "build-linux-kernel-qemu",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 1800.0
+   }
+  },
+  {
+   "case_id": "build-tcc-qemu",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "cartpole-rl-training",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "model-training",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "chess-best-move",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "games",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "conda-env-conflict-resolution",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "debugging",
+    "max_agent_timeout_sec": 1000.0
+   }
+  },
+  {
+   "case_id": "configure-git-webserver",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "count-dataset-tokens",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "model-training",
+    "max_agent_timeout_sec": 600.0
+   }
+  },
+  {
+   "case_id": "crack-7z-hash",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "security",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "crack-7z-hash.easy",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "security",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "crack-7z-hash.hard",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "security",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "create-bucket",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "file-operations",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "cron-broken-network",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "csv-to-parquet",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "data-science",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "decommissioning-service-with-sensitive-data",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "file-operations",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "download-youtube",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "file-operations",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "eval-mteb",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "data-science",
+    "max_agent_timeout_sec": 1800.0
+   }
+  },
+  {
+   "case_id": "eval-mteb.hard",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "data-science",
+    "max_agent_timeout_sec": 1800.0
+   }
+  },
+  {
+   "case_id": "extract-moves-from-video",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "file-operations",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "extract-safely",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "security",
+    "max_agent_timeout_sec": 300.0
+   }
+  },
+  {
+   "case_id": "fibonacci-server",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "fix-git",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "fix-pandas-version",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "debugging",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "fix-permissions",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "get-bitcoin-nodes",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "git-multibranch",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 480.0
+   }
+  },
+  {
+   "case_id": "git-workflow-hack",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "security",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "gpt2-codegolf",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "grid-pattern-transform",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 600.0
+   }
+  },
+  {
+   "case_id": "hello-world",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "file-operations",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "heterogeneous-dates",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "file-operations",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "hf-model-inference",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "data-science",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "incompatible-python-fasttext",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "debugging",
+    "max_agent_timeout_sec": 600.0
+   }
+  },
+  {
+   "case_id": "incompatible-python-fasttext.base_with_hint",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "debugging",
+    "max_agent_timeout_sec": 600.0
+   }
+  },
+  {
+   "case_id": "intrusion-detection",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "jupyter-notebook-server",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "data-science",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "modernize-fortran-build",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "new-encrypt-command",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "security",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "nginx-request-logging",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "oom",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "data-science",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "openssl-selfsigned-cert",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "security",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "organization-json-generator",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "file-operations",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "password-recovery",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "security",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "path-tracing",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "path-tracing-reverse",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "play-zork",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "games",
+    "max_agent_timeout_sec": 2000.0
+   }
+  },
+  {
+   "case_id": "polyglot-c-py",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "polyglot-rust-c",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "processing-pipeline",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "prove-plus-comm",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "pytorch-model-cli",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "model-training",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "pytorch-model-cli.easy",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "model-training",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "pytorch-model-cli.hard",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "model-training",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "qemu-alpine-ssh",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 600.0
+   }
+  },
+  {
+   "case_id": "qemu-startup",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 600.0
+   }
+  },
+  {
+   "case_id": "raman-fitting",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "scientific-computing",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "raman-fitting.easy",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "scientific-computing",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "reshard-c4-data",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "data-science",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "run-pdp11-code",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "security",
+    "max_agent_timeout_sec": 1000.0
+   }
+  },
+  {
+   "case_id": "sanitize-git-repo",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "security",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "sanitize-git-repo.hard",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "security",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "security-vulhub-minio",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "security",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "simple-sheets-put",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "file-operations",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "simple-web-scraper",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "easy",
+    "category": "data-science",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "solana-data",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "sqlite-db-truncate",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "debugging",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "sqlite-with-gcov",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "system-administration",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "super-benchmark-upet",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "model-training",
+    "max_agent_timeout_sec": 2400.0
+   }
+  },
+  {
+   "case_id": "swe-bench-astropy-1",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "debugging",
+    "max_agent_timeout_sec": 1000.0
+   }
+  },
+  {
+   "case_id": "swe-bench-astropy-2",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "debugging",
+    "max_agent_timeout_sec": 1000.0
+   }
+  },
+  {
+   "case_id": "swe-bench-fsspec",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "debugging",
+    "max_agent_timeout_sec": 1000.0
+   }
+  },
+  {
+   "case_id": "swe-bench-langcodes",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "debugging",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "tmux-advanced-workflow",
+   "partition": "decision_test",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "debugging",
+    "max_agent_timeout_sec": 360.0
+   }
+  },
+  {
+   "case_id": "train-fasttext",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "model-training",
+    "max_agent_timeout_sec": 600.0
+   }
+  },
+  {
+   "case_id": "vim-terminal-task",
+   "partition": "optimizer_validation",
+   "metadata": {
+    "difficulty": "medium",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 180.0
+   }
+  },
+  {
+   "case_id": "write-compressor",
+   "partition": "optimizer_train",
+   "metadata": {
+    "difficulty": "hard",
+    "category": "software-engineering",
+    "max_agent_timeout_sec": 360.0
+   }
+  }
+ ]
+}
