@@ -82,6 +82,24 @@ def task_ids_by_domain(
     return dict(grouped)
 
 
+NL_ASSERTIONS_JUDGE = "openrouter/openai/gpt-4.1"
+
+
+def route_nl_judge_via_openrouter() -> None:
+    """Point tau's nl_assertions judge at OpenRouter.
+
+    tau grades nl_assertions tasks with an OpenAI-billed judge; the same model
+    snapshot is served on OpenRouter, so rerouting it removes the extra
+    credential (and survives the OPENAI_API_KEY override doubleword runs need).
+    The evaluator imports the constant by value, so both bindings are patched.
+    """
+    import tau2.config
+    import tau2.evaluator.evaluator_nl_assertions as nl_evaluator
+
+    tau2.config.DEFAULT_LLM_NL_ASSERTIONS = NL_ASSERTIONS_JUDGE
+    nl_evaluator.DEFAULT_LLM_NL_ASSERTIONS = NL_ASSERTIONS_JUDGE
+
+
 def run_tau_partition(
     *,
     manifest_path: str | Path,
@@ -111,6 +129,8 @@ def run_tau_partition(
     from tau2.data_model.simulation import TextRunConfig
     from tau2.registry import registry
     from tau2.run import run_domain
+
+    route_nl_judge_via_openrouter()
 
     class CompoundAgent(LLMAgent):
         @property

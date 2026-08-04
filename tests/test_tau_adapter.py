@@ -63,3 +63,36 @@ def test_tau_manifest_groups_ids_by_domain(tmp_path) -> None:
         "retail": ["1", "3"],
         "airline": ["2"],
     }
+
+
+def test_nl_judge_rerouted_through_openrouter(monkeypatch) -> None:
+    # tau's nl_assertions judge defaults to an OpenAI-billed model; the reroute
+    # must rebind BOTH the config constant and the evaluator's by-value import,
+    # or doubleword runs (which repoint OPENAI_API_KEY) break the reward.
+    import sys
+    import types
+
+    from compound.adapters.tau import NL_ASSERTIONS_JUDGE, route_nl_judge_via_openrouter
+
+    tau2 = types.ModuleType("tau2")
+    config = types.ModuleType("tau2.config")
+    config.DEFAULT_LLM_NL_ASSERTIONS = "gpt-4.1-2025-04-14"
+    evaluator_pkg = types.ModuleType("tau2.evaluator")
+    evaluator = types.ModuleType("tau2.evaluator.evaluator_nl_assertions")
+    evaluator.DEFAULT_LLM_NL_ASSERTIONS = config.DEFAULT_LLM_NL_ASSERTIONS
+    tau2.config = config
+    tau2.evaluator = evaluator_pkg
+    evaluator_pkg.evaluator_nl_assertions = evaluator
+    for name, mod in {
+        "tau2": tau2,
+        "tau2.config": config,
+        "tau2.evaluator": evaluator_pkg,
+        "tau2.evaluator.evaluator_nl_assertions": evaluator,
+    }.items():
+        monkeypatch.setitem(sys.modules, name, mod)
+
+    route_nl_judge_via_openrouter()
+
+    assert NL_ASSERTIONS_JUDGE.startswith("openrouter/")
+    assert config.DEFAULT_LLM_NL_ASSERTIONS == NL_ASSERTIONS_JUDGE
+    assert evaluator.DEFAULT_LLM_NL_ASSERTIONS == NL_ASSERTIONS_JUDGE
