@@ -62,6 +62,39 @@ The gate emits one of five verdicts: **meets gate**, **fails**, **insufficient d
 **judge abstained**, **no reliable improvement**. If the data cannot support a decision,
 Compound says so instead of rounding noise up to a recommendation.
 
+## See the market you are buying from
+
+Compound ships a general-purpose report generator (`compound.viz`): one self-contained
+HTML file with an efficient-frontier chart, a speed-vs-quality chart, per-model filters,
+and the full route table. Provider logos mark the serving host; ring color marks the
+model. This is real data from our pinned-host sweep: three open models, 30 routes,
+the same 13 tool-calling tasks.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/frontier-dark.png">
+  <img alt="Cost vs quality across 30 pinned inference routes, with the Pareto frontier" src="assets/frontier-light.png">
+</picture>
+
+The dashed line is the Pareto frontier. The cheapest model on its best hosts beats every
+route of a model 25 to 40 times its price, and identical weights swing several tasks of
+quality depending on who serves them.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/speed-dark.png">
+  <img alt="Speed vs quality across the same routes" src="assets/speed-light.png">
+</picture>
+
+The fastest hosts are not the best ones: the top-TPS routes sit at the bottom of their
+models' quality range.
+
+Any evaluation source that emits the row contract gets the same report; the tau-bench
+sweep is one adapter:
+
+```bash
+PYTHONPATH=src python -m compound.tau_report --output artifacts/tau-sweep/report.html
+PYTHONPATH=src python -m compound.viz --rows rows.json --output report.html   # any source
+```
+
 ## Why it is easy
 
 - **No eval set to write.** Your production traffic is the corpus; curation surfaces
