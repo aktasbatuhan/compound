@@ -1,218 +1,154 @@
-# Compound
+<div align="center">
 
-## Product (TypeScript, `packages/`)
+# compound
 
-The ingest path is working end to end. From a Langfuse export to queryable, redacted traces:
+**Backtest every model switch on your own traffic.**
+
+Compound turns production traces into a standing answer to one question:
+*can I move this workload to a cheaper model or a faster provider without losing quality?*
+It replays candidates against your graded history, optimizes them until they clear your bar,
+and hands you a verdict with a confidence interval, never a vibe.
+
+`local-first` · `money-safe by default` · `statistically honest` · `Apache-2.0`
+
+</div>
+
+---
+
+## The problem
+
+Every leaderboard tells you which model is best on average. None of them can tell you
+whether the switch is safe on **your** workload, and the gap is not academic:
+
+- **The serving host moves quality as much as the model does.** In our pinned-host sweep,
+  identical open-model weights swung from 8/13 to 11/13 tasks solved purely by changing
+  the inference provider. The fastest hosts were the worst ones.
+- **Evals rot.** Hand-written eval sets go stale the week after you write them, so most
+  teams ship model switches on a demo and a prayer.
+- **Experiments burn money invisibly.** One retry loop against a paid API and your
+  evaluation budget is gone before the first honest number lands.
+
+Routers pick the best of your options. Nobody proves your options on your traffic.
+
+## What Compound does
+
+One `compound.yaml`, one content-addressed cache, five layers:
+
+| # | Layer | What happens | Status |
+|---|---|---|---|
+| 1 | **Ingest** | Traces you already produce (Langfuse export, portable JSON) become redacted, provenance-typed eval cases with a sealed decision partition. No eval authoring. | today |
+| 2 | **Backtest** | Any model x provider x quant replays against your graded corpus from the cache. Free assertions filter before judge tokens; re-deciding costs $0. | today |
+| 3 | **Optimize** | The real [GEPA](https://github.com/gepa-ai/gepa) library evolves a cheaper candidate's prompt on train/val cases, never the sealed set. "No improvement" is a first-class outcome. | today |
+| 4 | **Verify live** | Fresh traffic replays against standing candidates; live signals confirm or veto the backtest. | roadmap |
+| 5 | **Switch** | The verdict drives the router you already run: staged rollout, audit trail, automatic rollback. | roadmap |
+
+## The payoff
+
+```console
+$ compound curate support
+  84 traces -> 62 cases · sealed: 10 · train: 40 · val: 12
+
+$ compound gate support --candidate kimi-k3 --reference opus-5 \
+      --reason "quarterly cost review"
+  reference  opus-5   task_success  0.94
+  candidate  kimi-k3  task_success  0.93
+  delta = -0.01   95% CI [-0.04, +0.02]   rule: max_regression 0.02
+
+  VERDICT  MEETS GATE  (non-inferior at the declared bar)
+  est. savings: $15.00 -> $0.14 /M out · re-decision from cache: $0
+```
+
+The gate emits one of five verdicts: **meets gate**, **fails**, **insufficient data**,
+**judge abstained**, **no reliable improvement**. If the data cannot support a decision,
+Compound says so instead of rounding noise up to a recommendation.
+
+## Why it is easy
+
+- **No eval set to write.** Your production traffic is the corpus; curation surfaces
+  what needs review instead of asking you to author test cases.
+- **Money-safe by default.** Without `--paid` nothing spends a cent: you get the cost
+  estimate. Paid runs require an enabled budget, a hard USD limit, and a per-run `--cap`.
+  Every completion is content-addressed and cached, so re-runs and re-decisions are $0.
+- **Provider pinning is first-class.** `--openrouter-provider <slug>` isolates one
+  serving host with fallbacks disabled, and the *served* host is verified on every call.
+- **Your agent can drive it.** The repo ships a
+  [`compound-backtest` skill](.claude/skills/compound-backtest/SKILL.md): any coding agent
+  runs the loop under the same money rules you would.
+
+## Honest by design
+
+The parts most eval tools skip are the parts that make a verdict trustworthy:
+
+- **A sealed decision partition.** Optimizers, prompt selection, and judge tuning never
+  see it; opening it requires a stated `--reason`.
+- **Pre-declared rules.** The non-inferiority bar is fixed and content-hashed before
+  anyone looks at results; an optimized prompt is re-gated as a new declaration, never a
+  quiet edit.
+- **Calibration-gated judges.** An LLM judge feeds a gate only after out-agreeing human
+  labels (Cohen's kappa with a bootstrap CI). Until then it abstains.
+- **Intervals, never bare means.** Paired-bootstrap confidence bounds on every comparison.
+
+## Quickstart
 
 ```bash
 bun install
-bun run --filter '@compound/cli' typecheck     # or: bun test packages
 bun run packages/cli/src/main.ts import export.jsonl --importer langfuse  # or --importer json
-bun run packages/cli/src/main.ts curate support   # traces -> partitioned eval cases
-bun run packages/cli/src/main.ts experiment support <model>   # dry run; add --paid --cap USD
-bun run packages/cli/src/main.ts gate support --candidate M --reference M --reason "..."  # the verdict
-bun run packages/cli/src/main.ts judge calibrate support   # measure the judge vs human labels
-bun run packages/cli/src/main.ts judge grade support <experiment_id>   # judge a run's outputs
-bun run packages/cli/src/main.ts status
-bun run packages/cli/src/main.ts serve         # local API on 127.0.0.1:4319
-cd packages/dashboard && bun run dev           # dashboard on localhost:3000 (needs the API up)
+bun run packages/cli/src/main.ts curate <task-key>
+bun run packages/cli/src/main.ts experiment <task-key> <model>            # dry run, $0
+bun run packages/cli/src/main.ts experiment <task-key> <model> --paid --cap 2.00
+bun run packages/cli/src/main.ts gate <task-key> --candidate M --reference M --reason "..."
+bun run packages/cli/src/main.ts view compare <task-key>                  # cost/latency/TPS/quality per route
+bun run packages/cli/src/main.ts serve                                    # local API on 127.0.0.1:4319
+cd packages/dashboard && bun run dev                                      # dashboard on localhost:3000
 ```
 
-The dashboard (`@compound/dashboard`, Next.js) is a view over the API: a labeling/review
-workflow, cases, a task×model matrix with **gate verdicts**, a gate-decisions audit page, the
-diagnostic queue, and imports. It holds no data and re-implements no logic — set
-`COMPOUND_API_URL` to point it at a non-default API.
-
-`experiment` is money-safe by default: without `--paid` it makes zero provider calls and reports
-the estimated cost. `--paid` needs `budget.paid_runs_enabled: true`, a positive
-`budget.hard_limit_usd`, and a `--cap`. Every completion is cached, so a re-run is $0. Paid runs
-work against chat-completions providers (OpenRouter, OpenAI-compatible) and, via the Flex
-Responses route, Doubleword's cheap background candidates (`backend: flex`).
-
-`gate` is the payoff: it runs a candidate and a reference on a task's **sealed decision
-partition** and applies a **pre-declared** non-inferiority rule to emit one of five verdicts —
-meets gate / fails / insufficient data / judge abstained / no reliable improvement — with a
-paired-bootstrap confidence interval, never a bare mean. Opening the sealed set requires a
-stated `--reason` (the firewall). The gate itself makes no provider calls; it decides over two
-runs, so a re-decision from cache is $0. Assertion-gradeable tasks are gateable today; fuzzy
-tasks become gateable through the judge. See `docs/gate-decision-v1.md`.
-
-`judge` grades free-text quality an assertion can't — but on **earned trust**: a judge feeds a
-gate only after `judge calibrate` measures its agreement with human labels (Cohen's κ, with a
-bootstrap CI) above the task's threshold, on the human-reviewed calibration partition. Until
-then it **abstains**, and the gate returns "judge abstained" rather than trust an untrusted
-opinion. Calibration is pinned to the judge's model, prompt version, and rubric; changing any of
-them requires re-calibrating. `judge grade` writes verdicts into the same per-case rows the gate
-reads, so a calibrated judge makes fuzzy tasks gateable. It reuses the ledger and cache, so it is
-money-safe and a re-grade is $0. See `docs/judges-v1.md`.
-
-`optimize` closes a gap without switching models: when a candidate is behind but within a
-closable band (eligibility-checked against the gate result), `compound optimize <task>
---candidate M` drives the **real GEPA library** (Python) to improve the candidate's system
-prompt on the task's train/val cases — **never the sealed set**. Grading never forks across
-languages: the Python adapter calls back into the one TS grader (`compound grade-batch`), so
-`@compound/assertions` stays the single source of truth. The result is stored as an artifact with
-before/after validation scores; it is a **proposal** — adopting it means re-gating it on the
-sealed set plus a human approval. That adoption step is
-`compound gate <task> --candidate M --prompt-artifact <optimization_run_id> --reason "..."`:
-the candidate runs with the optimized prompt (the reference untouched), the prompt's content
-hash joins the pre-declared rule — so an adoption gate is a different declaration than the
-baseline gate, never a quiet edit of it — and the verdict records which artifact was under
-test. See `docs/optimization-v1.md`.
-
-Packages: `contract` (the portable trace contract), `config` (one `compound.yaml` schema
-shared with the Python engine), `storage` (SQLite/Drizzle), `ingest` (Langfuse + plain-JSON
-normalizers), `redaction` (pre-persistence), `pipeline` (ingest composition), `curation` (cases,
-provenance, sealed partitions), `assertions` (deterministic grading, incl. a `text_similarity`
-tier), `execution` (candidate runner, budget ledger, cache), `gate` (paired non-inferiority
-decision), `judge` (calibration-gated LLM judge), `optimize` (GEPA eligibility + orchestration),
-`api` (Hono), `cli`. The Python engine (`src/compound/`) holds GEPA and the benchmark stack.
-
-Design docs: `docs/product-plan-20260722.md`, `docs/trace-contract-v1.md`,
-`docs/ingest-pipeline-v1.md`, `docs/curation-v1.md`, `docs/api-design-v1.md`,
-`docs/gate-decision-v1.md`, `docs/langfuse-import-mapping.md`,
-`docs/reference/openai-evals-graders-reference-20260725.md`.
-
-Note: the trace contract stays marked **draft** until a real Langfuse export imports
-losslessly. The ingest fixtures are synthetic, built from the documented schema.
-
-## Benchmark engine (Python, `src/compound/`)
-
-Compound is currently benchmark-first: prove that cheaper open models can meet a fixed
-quality gate — with prompt optimization where it helps — before building trace ingestion
-or a dashboard.
-
-Status (2026-07-22): the DS-1000 line is closed. Three GEPA prompt campaigns failed to beat
-the unmodified GLM 5.2 `minimal` route, and the pre-declared final sealed gate then rejected
-that route against the 80–90%-of-reference bar
-(`docs/ds1000-final-sealed-gate-results-20260722.md`). DS-1000 fresh evidence is exhausted.
-The BFCL single-turn baseline matrix is the active screening surface.
-
-The initial proof pack is deliberately small and reproducible:
-
-- DS-1000: 30 stratified single-shot data-processing cases.
-- BFCL: 30 cases split evenly between single-turn and multi-turn tool use.
-- tau-bench: 20 cases balanced across airline, retail, and telecom, with three trials.
-
-Each manifest is divided into optimizer-train, optimizer-validation, and decision-test.
-The optimizer runner rejects decision-test access unless final evaluation explicitly enables it.
-
-## Local setup
-
-Always run the Python engine through the project environment. `uv run pytest` without a synced
-`dev` extra can fall back to a globally installed pytest, which may import a stale `gepa` from
-your user site directory and produce failures that look like library API drift.
-`tests/test_environment.py` guards against this and tells you to re-sync.
-
-```bash
-uv sync --extra dev
-cp .env.example .env
-uv run compound validate-config
-uv run compound prepare-manifests
-uv run pytest -q
-uv run ruff check .
-```
-
-After preparing sources and building the DS-1000 evaluator image, run the bounded recursive
-optimization proof with:
-
-```bash
-uv run compound run-ds1000-proof --max-metric-calls 20
-```
-
-The scaled GEPA v2 path uses perturbation-family isolation, correctness-dominant objectives,
-trial-aware caches, disjoint GEPA train/validation IDs, and a resumable capped run:
-
-```bash
-uv run compound prepare-ds1000-gepa-v2
-docker build -f docker/ds1000-numpy.Dockerfile \
-  -t compound-ds1000-numpy:20260720-v3 .
-uv run compound probe-ds1000-gepa-v2 --reasoning-effort low
-uv run compound run-ds1000-gepa-v2 \
-  --reasoning-effort low --max-metric-calls 120 --max-tokens 4096 \
-  --validation-trials 2 --decision-trials 2 --experiment-cap-usd 4
-```
-
-The proof uses only the NumPy/Pandas optimizer-train and optimizer-validation cases. GEPA never
-receives decision-test cases. Model calls and grader outputs are content-addressed and cached,
-and every paid call is recorded against the hard cap in `artifacts/budget.json`.
-
-Only after the optimizer has stopped, open the decision-test firewall for the final comparison:
-
-```bash
-uv run compound evaluate-ds1000-decision artifacts/optimization/<run-id>
-```
-
-For GEPA v2, use the corresponding one-time decision gate:
-
-```bash
-uv run compound evaluate-ds1000-gepa-v2-decision \
-  artifacts/optimization/<v2-run-id>
-```
-
-Successful and failed provider calls are appended to
-`artifacts/telemetry/model_calls.jsonl`. Each record includes provider, requested and resolved
-model, latency, token counts, reasoning tokens, finish reason, and end-to-end output TPS. Generate
-an aggregate model/provider report with:
-
-```bash
-uv run compound telemetry-report --output artifacts/telemetry/summary.json
-```
-
-The TPS value is completion tokens divided by full request latency, so it intentionally includes
-provider queueing and time-to-first-token; it is not a server-only decode benchmark.
-
-Screen models on a fresh origin-isolated DS-1000 cohort (excludes every prior `ds1000*`
-manifest automatically), then run selected models with repeated trials:
-
-```bash
-uv run compound prepare-ds1000-baseline-matrix --output benchmarks/manifests/<name>.json
-uv run compound run-ds1000-baseline-matrix \
-  --manifest benchmarks/manifests/<name>.json \
-  --model zai-org/GLM-5.2-FP8 --reasoning-effort minimal \
-  --trials-per-case 3 --experiment-cap-usd 2.5 --output artifacts/baselines/<name>.json
-```
-
-Note: the flex path reserves $0.02 of cap headroom per new request up front, so the cap must
-exceed `0.02 × cases × trials` even when the real spend is far lower. `--reasoning-effort`
-applies only to Doubleword flex candidates and is part of the completion fingerprint.
-
-Doubleword Flex transport compatibility can be smoke-tested with
-`uv run compound run-doubleword-flex-smoke`.
-
-The BFCL single-turn baseline matrix uses the official bfcl-eval prompting and AST checkers
-(multi-turn cases are recorded but never graded — they need the official live harness):
-
-```bash
-uv sync --extra dev --extra bfcl
-uv run compound run-bfcl-baseline-matrix --experiment-cap-usd 4.0
-```
-
-Legacy flat DS-1000 trace caches can be split without repeating model calls:
-
-```bash
-uv run compound migrate-ds1000-cache --archive
-```
-
-Regrade a frozen run under a corrected evaluator image exclusively from cached completions:
-
-```bash
-uv run compound regrade-ds1000-run artifacts/optimization/<run-id> \
-  --evaluator-image compound-ds1000-numpy:20260717-v2 \
-  --case-id ds1000_395
-```
-
-Credentials stay in `.env`, which is ignored by Git:
+Everything runs locally with no account: SQLite storage, your keys in `.env`
+(git-ignored), your traces never leave your machine.
 
 ```env
 OPENROUTER_API_KEY=
 DOUBLEWORD_API_KEY=
 ```
 
-OpenRouter supplies the GPT-5.6 Sol and Claude Opus 4.8 reference runs. Doubleword supplies
-the GLM 5.2 and Nemotron 3 Ultra candidate runs. No paid evaluation should start without a
-configured run budget. Paid calls are disabled by default in `compound.yaml`; enabling them
-also requires a positive hard USD limit.
+## The benchmark engine (Python)
 
-Benchmark checkouts are cached under `.compound/sources/` and are not committed. The selected
-case IDs and exact source revisions are committed under `benchmarks/manifests/`.
+`src/compound/` holds the machinery behind our published numbers: pinned-host provider
+sweeps and GEPA prompt optimization over live interactive benchmark episodes, with the
+same sealed-partition and budget-cap discipline as the product.
+
+```bash
+uv sync --extra dev
+uv run compound validate-config && uv run pytest -q
+
+# provider sweep: one model, many pinned hosts, full tau-bench protocol
+PYTHONPATH=src python -m compound.tau_sweep --estimate     # free cost sheet
+PYTHONPATH=src python -m compound.tau_sweep --run          # spends within declared caps
+
+# GEPA: evolve an agent instruction on train/val, one-shot gate on the sealed set
+PYTHONPATH=src python -m compound.tau_gepa --estimate
+```
+
+tau-bench is the first adapter, not the last: see
+[#33](https://github.com/aktasbatuhan/compound/issues/33) for the generic benchmark
+adapter interface and Terminal-Bench.
+
+## Mission
+
+Inference is becoming a market: every open model ships on ten hosts within weeks, at
+different speeds, prices, and quantizations, and the spread changes monthly. Teams that
+treat "which model, which host, which prompt" as a one-time choice overpay and under-serve.
+
+Compound's mission is to make that choice **a measured, repeatable decision on your own
+traffic**: backtested like a trading strategy, gated like a deployment, and eventually
+automated like both, with a stop-loss. The proof is ambient; the switch is earned.
+
+## Status
+
+Layers 1-3 work today and are tested end to end (`bun test`, `uv run pytest`). Layers 4-5
+and the continuous loop are tracked in the
+[issues](https://github.com/aktasbatuhan/compound/issues). Expect sharp edges; expect
+honest verdicts.
+
+## License
+
+[Apache-2.0](LICENSE)
