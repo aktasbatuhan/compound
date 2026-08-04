@@ -121,6 +121,7 @@ def render(
     cost_label: str = "cost per unit (USD, log scale)",
     latency_label: str = "median latency (seconds, log scale)",
     quality_axis: str | None = None,
+    subtitle: str | None = None,
 ) -> str:
     models = sorted({r.model for r in rows})
     providers = sorted({r.provider for r in rows})
@@ -130,6 +131,23 @@ def render(
 
     def mvar(model: str) -> str:
         return f"var(--m-{models.index(model)})"
+
+    def header_svg(x0: float) -> str:
+        """In-SVG model legend + optional subtitle, so a screenshot of a single
+        chart is self-explanatory: which ring color is which model, on what."""
+        parts = ['<g class="hdr">']
+        lx = x0
+        for m in models:
+            parts.append(f'<circle cx="{lx + 6:.0f}" cy="22" r="6" fill="none" '
+                         f'stroke="{mvar(m)}" stroke-width="2.5"/>')
+            parts.append(f'<text x="{lx + 18:.0f}" y="26" class="lgd" '
+                         f'fill="var(--ink)">{html.escape(m)}</text>')
+            lx += 18 + 7.2 * len(m) + 28
+        if subtitle:
+            parts.append(f'<text x="{x0}" y="50" class="subtitle" '
+                         f'fill="var(--ink-soft)">{html.escape(subtitle)}</text>')
+        parts.append("</g>")
+        return "".join(parts)
 
     def marker(r: Route, cx: float, cy: float, tip: str) -> str:
         t = f"<title>{html.escape(tip)}</title>"
@@ -164,8 +182,8 @@ def render(
         return [(v, fmt(v)) for v in raw if lo <= v <= hi]
 
     def scatter(sel, W, H, xfn, xticks, xlabel, xval, frontier=False, chart_id=""):
-        x0, x1, y0, y1 = 70, W - 24, 30, H - 64
-        out = []
+        x0, x1, y0, y1 = 70, W - 24, 88, H - 64
+        out = [header_svg(x0)]
         for i in range(6):
             q = q_lo + i * (q_hi - q_lo) / 5
             y = sy(q, y0, y1)
@@ -225,11 +243,11 @@ def render(
         return (f'<svg id="{chart_id}" viewBox="0 0 {W} {H}" role="img">'
                 + "".join(out) + "".join(body) + "</svg>")
 
-    cost_chart = scatter(rows, 980, 600, logfn(cost_lo, cost_hi),
+    cost_chart = scatter(rows, 980, 658, logfn(cost_lo, cost_hi),
                          ticks_log(cost_lo, cost_hi, lambda v: f"${v:g}"),
                          cost_label, lambda r: r.cost, frontier=True, chart_id="svg-cost")
     lat_rows = [r for r in rows if r.lat_p50]
-    lat_chart = scatter(lat_rows, 980, 600, logfn(lat_lo, lat_hi),
+    lat_chart = scatter(lat_rows, 980, 658, logfn(lat_lo, lat_hi),
                         ticks_log(lat_lo, lat_hi, lambda v: f"{v:g}s"),
                         latency_label, lambda r: r.lat_p50, chart_id="svg-speed") if lat_rows else ""
 
@@ -293,6 +311,8 @@ body:not([data-filter="all"]) .frontier {{ opacity:0.12; }}
 .tick {{ font:11px var(--mono); fill:var(--ink-faint); }}
 .axis {{ font:12px var(--mono); fill:var(--ink-soft); letter-spacing:0.06em; }}
 .pt-label {{ font:10.5px var(--mono); }}
+.lgd {{ font:13px var(--mono); }}
+.subtitle {{ font:12px var(--mono); letter-spacing:0.02em; }}
 .frontier {{ fill:none; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:5 4; opacity:0.5; }}
 .tbl {{ overflow-x:auto; border:1px solid var(--line); border-radius:8px; }}
 table {{ border-collapse:collapse; width:100%; font-family:var(--mono); font-size:12.5px;
@@ -347,6 +367,8 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--title", default="Route comparison")
     parser.add_argument("--note", default="")
+    parser.add_argument("--subtitle", default=None,
+                        help="one line drawn inside each chart (models legend + this)")
     parser.add_argument("--cost-label", default="cost per unit (USD, log scale)")
     parser.add_argument("--logo-cache", type=Path, default=None)
     args = parser.parse_args()
@@ -355,7 +377,8 @@ def main() -> int:
         print("no rows")
         return 1
     write_report(rows, args.output, title=args.title, note=args.note,
-                 logo_cache=args.logo_cache, cost_label=args.cost_label)
+                 logo_cache=args.logo_cache, cost_label=args.cost_label,
+                 subtitle=args.subtitle)
     print(f"{len(rows)} routes -> {args.output}")
     return 0
 

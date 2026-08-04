@@ -66,33 +66,44 @@ Compound says so instead of rounding noise up to a recommendation.
 
 Compound ships a general-purpose report generator (`compound.viz`): one self-contained
 HTML file with an efficient-frontier chart, a speed-vs-quality chart, per-model filters,
-and the full route table. Provider logos mark the serving host; ring color marks the
-model. This is real data from our pinned-host sweep: three open models, 30 routes,
-the same 13 tool-calling tasks.
+and the full route table. Provider logos mark the serving host; **ring color marks the
+model** (see the legend baked into each chart).
+
+> The charts below are from **one example run** — three open models
+> (`deepseek-v4-flash`, `glm-5.2`, `kimi-k3`) across their pinned OpenRouter and
+> Doubleword hosts, scored on the same 13 tau2-bench airline+retail tasks, 1 trial.
+> They illustrate the output shape, not a leaderboard. Point Compound at your own
+> models, hosts, and tasks and you get the same report on your numbers — commands below.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/frontier-dark.png">
-  <img alt="Cost vs quality across 30 pinned inference routes, with the Pareto frontier" src="assets/frontier-light.png">
+  <img alt="Example run: cost vs quality across 30 pinned inference routes for three open models, with the Pareto frontier and an in-chart model legend" src="assets/frontier-light.png">
 </picture>
 
-The dashed line is the Pareto frontier. The cheapest model on its best hosts beats every
-route of a model 25 to 40 times its price, and identical weights swing several tasks of
-quality depending on who serves them.
+The dashed line is the Pareto frontier. In this run the cheapest model on its best hosts
+beats every route of a model 25 to 40 times its price, and identical weights swing several
+tasks of quality depending on who serves them.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/speed-dark.png">
-  <img alt="Speed vs quality across the same routes" src="assets/speed-light.png">
+  <img alt="Example run: speed vs quality across the same routes, colored by model" src="assets/speed-light.png">
 </picture>
 
 The fastest hosts are not the best ones: the top-TPS routes sit at the bottom of their
 models' quality range.
 
-Any evaluation source that emits the row contract gets the same report; the tau-bench
-sweep is one adapter:
+**Run the same viz on your own data.** Any evaluation source that emits the
+[row contract](src/compound/viz.py) gets this report; the tau-bench sweep is just one
+adapter. Regenerate the example, or render straight from your own rows:
 
 ```bash
-PYTHONPATH=src python -m compound.tau_report --output artifacts/tau-sweep/report.html
-PYTHONPATH=src python -m compound.viz --rows rows.json --output report.html   # any source
+# reproduce the example charts from the sweep episodes
+PYTHONPATH=src python -m compound.tau_report --output report.html --rows-out rows.json
+
+# render from any rows.json (your benchmark, your telemetry), with your own labels
+PYTHONPATH=src python -m compound.viz --rows rows.json --output report.html \
+    --title "My models across providers" \
+    --subtitle "internal eval · 200 cases · 3 trials"
 ```
 
 ## Why it is easy
@@ -161,9 +172,50 @@ PYTHONPATH=src python -m compound.tau_sweep --run          # spends within decla
 PYTHONPATH=src python -m compound.tau_gepa --estimate
 ```
 
-tau-bench is the first adapter, not the last: see
-[#33](https://github.com/aktasbatuhan/compound/issues/33) for the generic benchmark
-adapter interface and Terminal-Bench.
+### The benchmark library
+
+One front door runs any task subset from any shipped benchmark, and `run` is a
+dry run unless you add `--go`:
+
+| Benchmark | What it measures | How it grades |
+|---|---|---|
+| `tau2` | interactive tool-calling support (airline/retail/telecom) | live user simulator + official reward |
+| `bfcl` | single-turn function-call generation | official AST checker |
+| `ds1000` | data-science code generation | official tests in a pinned container |
+| `mmlu` | multiple-choice knowledge, 57 subjects | exact letter match, no judge |
+| `terminal_bench` | agentic terminal tasks | official harness in Docker |
+
+```bash
+PYTHONPATH=src python -m compound.bench list
+PYTHONPATH=src python -m compound.bench tasks tau2 --contains retail
+PYTHONPATH=src python -m compound.bench run tau2 --model zai-org/GLM-5.2-FP8 \
+    --tasks retail:10,airline:3 --go
+```
+
+Two benchmarks fetch their tasks on demand (kept out of the repo); build their
+partitioned manifest once:
+
+```bash
+PYTHONPATH=src python -m compound.bench prepare mmlu            # samples cais/mmlu
+PYTHONPATH=src python -m compound.bench prepare terminal_bench  # needs the dataset downloaded
+PYTHONPATH=src python -m compound.bench run mmlu --model deepseek/deepseek-v4-flash-0731 \
+    --partition decision_test --go
+```
+
+Any OpenAI-compatible host can serve the model — vLLM, Fireworks direct, Groq,
+your own box — no adapter code required:
+
+```bash
+PYTHONPATH=src python -m compound.bench run tau2 --model my-model \
+    --provider myhost --api-base http://localhost:8000/v1 --api-key-env MYHOST_API_KEY
+```
+
+The same fields (`provider`, `api_base`, `api_key_env`) work per-config in sweep
+specs, so a custom host can sit in the same frontier chart as the pinned
+OpenRouter routes. Adding a benchmark is one registry entry backed by a
+partitioned manifest; see
+[#33](https://github.com/aktasbatuhan/compound/issues/33) for the adapter
+interface.
 
 ## Mission
 

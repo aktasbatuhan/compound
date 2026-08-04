@@ -108,12 +108,18 @@ def main() -> int:
     if args.rows_out:
         args.rows_out.write_text(json.dumps([asdict(r) for r in rows], indent=1))
         print(f"{len(rows)} rows -> {args.rows_out}")
+    models = sorted({r.model for r in rows})
+    domains = "+".join(SCORING_DOMAINS)
     write_report(
         rows, args.output,
         title=f"Same model, different host: quality, cost and speed across {len(rows)} routes",
         note="Interactive tau-bench episodes (agent, user simulator, live domain tools, official "
              "reward), each route pinned to one serving host with fallbacks disabled and the "
              "served host verified per call.",
+        subtitle=(
+            f"Example run · {len(models)} open models across pinned hosts · "
+            f"tau2-bench {domains} tasks, 1 trial"
+        ),
         cost_label="cost per episode (USD, log scale, declared prices)",
         latency_label="median time per model call (seconds, log scale)",
     )
