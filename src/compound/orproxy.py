@@ -95,6 +95,10 @@ class _Handler(BaseHTTPRequestHandler):
         headers.setdefault("HTTP-Referer", "https://github.com/aktasbatuhan/compound")
         headers.setdefault("X-Title", "compound-bench")
 
+        debug_path = os.getenv("ORPROXY_DEBUG_LOG")
+        if debug_path and data:
+            with open(debug_path, "a") as dbg:
+                dbg.write(">>> REQUEST\n" + data.decode("utf-8", "replace")[:4000] + "\n")
         req = urlrequest.Request(url, data=data, headers=headers, method=method)
         try:
             with urlrequest.urlopen(req, timeout=600) as upstream:
@@ -110,6 +114,9 @@ class _Handler(BaseHTTPRequestHandler):
                     self.wfile.flush()
         except urlerror.HTTPError as exc:
             payload = exc.read()
+            if debug_path:
+                with open(debug_path, "a") as dbg:
+                    dbg.write(f"<<< {exc.code} {payload.decode('utf-8', 'replace')[:2000]}\n")
             self.send_response(exc.code)
             self.send_header("Content-Type", exc.headers.get("Content-Type", "application/json"))
             self.end_headers()
