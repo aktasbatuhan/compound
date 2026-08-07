@@ -11,6 +11,12 @@ and hands you a verdict with a confidence interval, never a vibe.
 
 `local-first` · `money-safe by default` · `statistically honest` · `Apache-2.0`
 
+<br>
+
+![Compound CLI: run one model across many serving hosts on any benchmark](assets/cli-demo.gif)
+
+<sub>Same model, many hosts, one flag. Pick a benchmark and a task subset; every dry run is free.</sub>
+
 </div>
 
 ---
