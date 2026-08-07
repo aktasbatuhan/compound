@@ -192,15 +192,20 @@ PYTHONPATH=src python -m compound.bench run tau2 --model zai-org/GLM-5.2-FP8 \
     --tasks retail:10,airline:3 --go
 ```
 
-Two benchmarks fetch their tasks on demand (kept out of the repo); build their
-partitioned manifest once:
+Each benchmark that needs an engine or a fetched dataset has a one-time
+`prepare` step, so a fresh clone can run any of them:
 
 ```bash
+PYTHONPATH=src python -m compound.bench prepare tau2            # clones + installs sierra-research/tau2-bench
 PYTHONPATH=src python -m compound.bench prepare mmlu            # samples cais/mmlu
 PYTHONPATH=src python -m compound.bench prepare terminal_bench  # needs the dataset downloaded
 PYTHONPATH=src python -m compound.bench run mmlu --model deepseek/deepseek-v4-flash-0731 \
     --partition decision_test --go
 ```
+
+`prepare tau2` installs the public tau2-bench into the current environment; a
+`run tau2 --go` without it stops with a pointer instead of an import error. Dry
+runs (no `--go`) preview the plan without it.
 
 Any OpenAI-compatible host can serve the model — vLLM, Fireworks direct, Groq,
 your own box — no adapter code required:
@@ -216,6 +221,52 @@ OpenRouter routes. Adding a benchmark is one registry entry backed by a
 partitioned manifest; see
 [#33](https://github.com/aktasbatuhan/compound/issues/33) for the adapter
 interface.
+
+### Same model, many hosts: `--providers`
+
+The point of Compound is the switch decision, and that decision turns on the
+fact that **the same model is not the same product on every host**. So picking
+hosts is one flag. Drop in your keys, name the providers, pick a benchmark and a
+task subset, and get a per-host cost / latency / quality table with charts.
+
+A **provider token** names where a model is served, independent of the model:
+
+| Token | Meaning |
+|---|---|
+| `openrouter/<upstream>` | pin one OpenRouter upstream, fallbacks off (`openrouter/deepinfra`, `openrouter/baseten/fp8`) |
+| `doubleword/<tier>` | Doubleword, `realtime` or `flex` |
+| `direct/<name>` | any OpenAI-compatible host from `compound.yaml` `providers.<name>` |
+
+```bash
+# tau2 across five hosts of one model, 3 trials, the same 14 tasks (dry run drops --go)
+PYTHONPATH=src python -m compound.bench run tau2 \
+    --model deepseek/deepseek-v4-flash-0731 \
+    --providers openrouter/deepinfra/fp4,openrouter/baseten/fp8,openrouter/deepseek/fp8,doubleword/realtime,doubleword/flex \
+    --tasks airline:6,retail:20 --trials 3 --max-tokens 8192 \
+    --output artifacts/dsflash --go
+
+# one report: per-host accuracy, cost/task, latency, TPS, and which upstream actually served
+PYTHONPATH=src python -m compound.bench_report artifacts/dsflash \
+    --prices doubleword-flex=0.70,2.25 --prices doubleword-realtime=0.93,3.00
+# -> artifacts/dsflash/report/{summary.json,episodes.csv,per_task.csv,transcripts.jsonl,charts.html}
+```
+
+Cost comes from OpenRouter's own per-call accounting where present, and from the
+declared `--prices` you pass for hosts that do not report it; the report also
+records the upstream each episode was **actually** served by, so a pinned run can
+be checked, not trusted.
+
+**Agentic harnesses too.** Third-party harnesses (terminal-bench) build their own
+model calls and cannot pin an OpenRouter upstream. `compound.orproxy` fixes that:
+a localhost OpenAI-compatible proxy that stamps the pinning into every request,
+so the same `--providers` list works there with only your OpenRouter key.
+
+```bash
+PYTHONPATH=src python -m compound.bench run terminal_bench \
+    --model deepseek/deepseek-v4-flash-0731 \
+    --providers openrouter/deepinfra/fp4,doubleword/flex \
+    --tasks hello-world --go        # needs Docker; each host runs behind its own proxy
+```
 
 ## Mission
 

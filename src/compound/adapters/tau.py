@@ -30,6 +30,10 @@ class TauModel:
     #: CAUTION: Doubleword's chat route accepts but does not echo this — treat a
     #: tier-flagged run as unverified until reconciled against billing.
     service_tier: str | None = None
+    #: Per-request wall-clock timeout (seconds). Without it a wedged request (seen
+    #: on the Doubleword async/flex tier, which can queue for minutes) hangs the
+    #: whole run indefinitely; with it a stuck call raises and tau2 retries.
+    timeout: float | None = 600.0
 
     def litellm_name(self) -> str:
         if self.provider == "openrouter":
@@ -64,6 +68,8 @@ class TauModel:
             args["reasoning_effort"] = self.reasoning_effort
         if self.max_tokens is not None:
             args["max_tokens"] = self.max_tokens
+        if self.timeout is not None:
+            args["timeout"] = self.timeout
         extra_body: dict = {}
         if self.openrouter_provider:
             if self.provider != "openrouter":

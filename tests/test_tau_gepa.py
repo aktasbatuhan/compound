@@ -44,6 +44,22 @@ def test_sim_feedback_extracts_signal() -> None:
     assert first_user.startswith("I need to cancel")
 
 
+def test_group_task_ids_dedupes_per_domain() -> None:
+    """A GEPA reflective minibatch can hold the same task twice. tau2's get_tasks
+    rejects a task_ids list longer than the unique tasks it loads (this crashed a
+    run mid-reflection), so grouping must dedupe while preserving order."""
+    from compound.tau_gepa import _group_task_ids
+
+    dup = TauTask("retail", "20")
+    batch = [dup, dup, TauTask("retail", "33"), TauTask("airline", "6"), dup]
+    grouped = _group_task_ids(batch)
+
+    assert grouped == {"retail": ["20", "33"], "airline": ["6"]}
+    # no domain list carries a duplicate id
+    for ids in grouped.values():
+        assert len(ids) == len(set(ids))
+
+
 def test_gepa_optimize_integration_offline(tmp_path) -> None:
     """Drive the REAL gepa engine with a stubbed episode runner: proves the
     loader/adapter/reflection wiring end-to-end without spending a cent."""

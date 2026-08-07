@@ -53,7 +53,13 @@ REFLECTION_PRICES = TokenPrices(input_per_million=5.00, output_per_million=30.00
 
 MANIFEST_PATH = Path("benchmarks/manifests/tau_bench.json")
 MAX_STEPS = 30
-AGENT_MAX_TOKENS = 4096
+AGENT_MAX_TOKENS = 8192
+# The Doubleword flex (async) tier can legitimately queue a request for minutes
+# (observed tail ~200s), but with no client timeout a wedged request hangs the
+# whole run forever (one episode stalled 4.6h before we killed it). Cap each
+# request generously so a stuck call raises and tau2's retries can recover.
+AGENT_TIMEOUT_S = 600
+USER_TIMEOUT_S = 120
 SEED_CANDIDATE = {"agent_instruction": ""}
 REFLECTION_TEMPLATE = (
     "Rewrite this customer-service agent instruction using the evidence below. Keep only "
@@ -128,6 +134,23 @@ def _candidate_hash(instruction: str) -> str:
     return hashlib.sha256(instruction.encode()).hexdigest()[:12]
 
 
+def _group_task_ids(tasks: list[TauTask]) -> dict[str, list[str]]:
+    """Group task ids by domain, deduped, order preserved.
+
+    GEPA's reflective minibatches can sample the same task twice; tau2's
+    get_tasks rejects a task_ids list longer than the unique tasks it loads
+    (len(tasks) != len(task_ids), with an empty "missing" set), which crashed a
+    run mid-reflection. Dedup here; evaluate() maps every batch item back by
+    (domain, task_id), so duplicates still resolve to the single run.
+    """
+    by_domain: dict[str, list[str]] = {}
+    for task in tasks:
+        ids = by_domain.setdefault(task.domain, [])
+        if task.task_id not in ids:
+            ids.append(task.task_id)
+    return by_domain
+
+
 class EpisodeRunner:
     """Runs tau episodes for (candidate, tasks); caches per candidate on disk.
 
@@ -176,9 +199,7 @@ class EpisodeRunner:
         _register_agent()
         _CURRENT_INSTRUCTION["text"] = instruction
         chash = tag or _candidate_hash(instruction)
-        by_domain: dict[str, list[str]] = {}
-        for task in tasks:
-            by_domain.setdefault(task.domain, []).append(task.task_id)
+        by_domain = _group_task_ids(tasks)
 
         results: dict[tuple[str, str], list[dict]] = {}
         for domain, ids in sorted(by_domain.items()):
@@ -200,10 +221,11 @@ class EpisodeRunner:
                 llm_args_agent={
                     "api_base": CANDIDATE_API_BASE,
                     "max_tokens": AGENT_MAX_TOKENS,
+                    "timeout": AGENT_TIMEOUT_S,
                     "extra_body": {"service_tier": CANDIDATE_SERVICE_TIER},
                 },
                 llm_user=f"openrouter/{USER_MODEL}",
-                llm_args_user={"max_tokens": 2048},
+                llm_args_user={"max_tokens": 2048, "timeout": USER_TIMEOUT_S},
                 save_to=str(save_to.resolve()),
                 auto_resume=True,
             )

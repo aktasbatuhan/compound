@@ -16,6 +16,7 @@ Setup (one-time, ~80 task definitions):
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -78,13 +79,17 @@ def run_terminal_bench(
     agent: str = DEFAULT_AGENT,
     n_concurrent: int = 2,
     dataset_dir: str | Path = DATASET_DIR,
+    extra_env: dict[str, str] | None = None,
+    run_id: str | None = None,
 ) -> int:
     """Run a task subset through the official harness. Returns its exit code.
 
     ``model`` is a litellm-style name (e.g. ``openrouter/moonshotai/kimi-k3``);
     the harness bills through the matching provider env key. A custom
     OpenAI-compatible host works via ``openai/<model>`` plus OPENAI_API_BASE and
-    OPENAI_API_KEY in the environment.
+    OPENAI_API_KEY in the environment. ``extra_env`` overlays the subprocess
+    environment, which is how a per-host proxy (:mod:`compound.orproxy`) points
+    the harness at a pinned upstream without touching this process' env.
     """
     if shutil.which("docker") is None:
         raise SystemExit("error: terminal-bench needs Docker running")
@@ -107,7 +112,13 @@ def run_terminal_bench(
         str(n_concurrent),
         "--no-livestream",
     ]
+    # A unique run-id namespaces the harness' Docker compose project names, so
+    # several hosts can run the same task concurrently without colliding on a
+    # container name (the names are otherwise `<task>-<trial>-<timestamp>`).
+    if run_id:
+        command.extend(["--run-id", run_id])
     for case_id in case_ids:
         command.extend(["--task-id", case_id])
     print("exec:", " ".join(command))
-    return subprocess.call(command)
+    env = {**os.environ, **extra_env} if extra_env else None
+    return subprocess.call(command, env=env)
