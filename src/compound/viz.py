@@ -53,6 +53,7 @@ PROVIDER_DOMAINS = {
     "novita": "novita.ai", "openai": "openai.com", "parasail": "parasail.io",
     "together": "together.ai", "wafer": "wafer.ai", "z-ai": "z.ai",
     "cerebras": "cerebras.ai", "anthropic": "anthropic.com",
+    "ionstream": "ionstream.ai",
 }
 MODEL_PALETTE = [("#3358d4", "#7d9bff"), ("#177a63", "#4fbfa2"), ("#c2571f", "#e8895a"),
                  ("#8e44ad", "#c39bd3"), ("#b23b2e", "#e8735f"), ("#1c6e8c", "#5ab6d8")]
