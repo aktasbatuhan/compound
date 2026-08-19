@@ -39,15 +39,13 @@ Routers pick the best of your options. Nobody proves your options on your traffi
 
 ## What Compound does
 
-One `compound.yaml`, one content-addressed cache, five layers:
+One `compound.yaml`, one content-addressed cache, three layers:
 
-| # | Layer | What happens | Status |
-|---|---|---|---|
-| 1 | **Ingest** | Traces you already produce (Langfuse export, portable JSON) become redacted, provenance-typed eval cases with a sealed decision partition. No eval authoring. | today |
-| 2 | **Backtest** | Any model x provider x quant replays against your graded corpus from the cache. Free assertions filter before judge tokens; re-deciding costs $0. | today |
-| 3 | **Optimize** | The real [GEPA](https://github.com/gepa-ai/gepa) library evolves a cheaper candidate's prompt on train/val cases, never the sealed set. "No improvement" is a first-class outcome. | today |
-| 4 | **Verify live** | Fresh traffic replays against standing candidates; live signals confirm or veto the backtest. | roadmap |
-| 5 | **Switch** | The verdict drives the router you already run: staged rollout, audit trail, automatic rollback. | roadmap |
+| # | Layer | What happens |
+|---|---|---|
+| 1 | **Ingest** | Traces you already produce (Langfuse export, portable JSON) become redacted, provenance-typed eval cases with a sealed decision partition. No eval authoring. |
+| 2 | **Backtest** | Any model x provider x quant replays against your graded corpus from the cache. Free assertions filter before judge tokens; re-deciding costs $0. |
+| 3 | **Optimize** | The real [GEPA](https://github.com/gepa-ai/gepa) library evolves a cheaper candidate's prompt on train/val cases, never the sealed set. "No improvement" is a first-class outcome. |
 
 ## The payoff
 
@@ -312,10 +310,10 @@ automated like both, with a stop-loss. The proof is ambient; the switch is earne
 
 ## Status
 
-Layers 1-3 work today and are tested end to end (`bun test`, `uv run pytest`). Layers 4-5
-and the continuous loop are tracked in the
-[issues](https://github.com/aktasbatuhan/compound/issues). Expect sharp edges; expect
-honest verdicts.
+Everything above works today and is tested end to end (`bun test`, `uv run pytest`).
+What comes next — live verification, automated switching, the continuous loop — is
+tracked in the [issues](https://github.com/aktasbatuhan/compound/issues). Expect sharp
+edges; expect honest verdicts.
 
 ## License
 
