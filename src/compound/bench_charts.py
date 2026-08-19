@@ -1,7 +1,9 @@
 """Render a provider-sweep summary to a self-contained, theme-aware HTML page.
 
-Two panels, both keyed on the decision a switch turns on:
+Three panels, all keyed on the decision a switch turns on:
 
+* per-host profile radars (quality, reliability, speed, determinism, cost, TPS
+  -- whichever of those the run measured), so a host's shape reads at a glance;
 * success vs context window, one mark per task per host, coloured by how many
   trials passed, so a long-context weakness (shared or host-specific) is visible
   at a glance; and
@@ -151,6 +153,97 @@ def _cost_chart(hosts: list[str], summary: dict[str, Any]) -> str:
     return "\n".join(s)
 
 
+def radar_axes(summary: dict[str, Any], rows: list[dict]) -> dict[str, dict[str, float]]:
+    """Raw per-host axis values for the profile radars, from whatever the run measured.
+
+    Axes where no host has data (e.g. cost without ``--prices``) are dropped;
+    determinism needs multi-trial data. Higher is always better here, so
+    latency and cost enter inverted.
+    """
+    hosts = list(summary["hosts"])
+    axes: dict[str, dict[str, float]] = {h: {} for h in hosts}
+    for h in hosts:
+        s = summary["hosts"][h]
+        episodes = s.get("episodes") or 0
+        clean = episodes - (s.get("infra_errors") or 0)
+        if s.get("accuracy") is not None:
+            axes[h]["quality"] = s["accuracy"]
+        if episodes:
+            axes[h]["reliability"] = clean / episodes
+        if s.get("median_latency_s") and s.get("accuracy"):
+            # a host with zero successes has no meaningful serving-speed
+            # signal: failing instantly is not "fast"
+            axes[h]["speed"] = 1 / s["median_latency_s"]
+        if s.get("median_tps"):
+            axes[h]["TPS"] = s["median_tps"]
+        if s.get("cost_per_task_usd"):
+            axes[h]["cost"] = 1 / s["cost_per_task_usd"]
+        per = [r for r in rows if r["host"] == h and int(r["trials"]) > 1]
+        if per:
+            flips = sum(1 for r in per if 0 < int(r["solved"]) < int(r["trials"]))
+            # a host that never solves anything is only "deterministic" at failing
+            solved_any = any(int(r["solved"]) for r in per)
+            axes[h]["determinism"] = (1 - flips / len(per)) if solved_any else 0.0
+    # keep only axes at least two hosts can be compared on
+    names = [a for a in ("quality", "reliability", "speed", "determinism", "cost", "TPS")
+             if sum(1 for h in hosts if a in axes[h]) >= 2]
+    return {h: {a: axes[h].get(a, 0.0) for a in names} for h in hosts}
+
+
+def _radar_grid(summary: dict[str, Any], rows: list[dict], hosts: list[str]) -> str:
+    """Small-multiple spider charts, one per host, min-max normalized per axis."""
+    import math
+
+    raw = radar_axes(summary, rows)
+    names = list(next(iter(raw.values()), {}).keys())
+    if len(names) < 3:
+        return '<text x="0" y="20" class="sub">not enough measured axes for profiles</text>'
+    norm: dict[str, dict[str, float]] = {}
+    for a in names:
+        vals = [raw[h][a] for h in hosts]
+        lo, hi = min(vals), max(vals)
+        for h in hosts:
+            v = (raw[h][a] - lo) / (hi - lo) if hi > lo else 1.0
+            norm.setdefault(h, {})[a] = 0.08 + 0.92 * v
+    n_ax = len(names)
+    cell_w, cell_h, r0 = 300, 252, 76
+    cols = min(3, len(hosts))
+    rows_n = (len(hosts) + cols - 1) // cols
+    W, H = cell_w * cols, 44 + cell_h * rows_n
+    s = [f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" class="chart">']
+    s.append('<text x="0" y="20" class="ttl">Provider profiles</text>')
+    s.append('<text x="0" y="38" class="sub">Outer edge = best host on that axis '
+             '(min-max normalized). Axes reflect what this run measured.</text>')
+    spoke = lambda cx, cy, i, frac: (  # noqa: E731
+        cx + r0 * frac * math.sin(2 * math.pi * i / n_ax),
+        cy - r0 * frac * math.cos(2 * math.pi * i / n_ax),
+    )
+    for idx, host in enumerate(hosts):
+        cx = (idx % cols) * cell_w + cell_w / 2
+        cy = 44 + (idx // cols) * cell_h + 106
+        for frac in (0.5, 1.0):
+            d = " ".join(f"{x:.0f},{y:.0f}" for x, y in
+                         (spoke(cx, cy, i, frac) for i in range(n_ax)))
+            s.append(f'<polygon points="{d}" fill="none" class="grid"/>')
+        for i, a in enumerate(names):
+            x, y = spoke(cx, cy, i, 1.0)
+            s.append(f'<line x1="{cx:.0f}" y1="{cy:.0f}" x2="{x:.0f}" y2="{y:.0f}" class="grid"/>')
+            ly = y + (11 if y > cy else -5)
+            anchor = "middle" if abs(x - cx) < 12 else ("start" if x > cx else "end")
+            s.append(f'<text x="{x:.0f}" y="{ly:.0f}" class="tick" '
+                     f'text-anchor="{anchor}">{html.escape(a)}</text>')
+        fill = "var(--dw)" if _is_dw(host) else "var(--dot)"
+        d = " ".join(f"{x:.1f},{y:.1f}" for x, y in
+                     (spoke(cx, cy, i, norm[host][a]) for i, a in enumerate(names)))
+        s.append(f'<polygon points="{d}" fill="{fill}" fill-opacity=".28" '
+                 f'stroke="{fill}" stroke-width="1.6"/>')
+        cls = "lab dw" if _is_dw(host) else "lab"
+        s.append(f'<text x="{cx:.0f}" y="{cy + r0 + 32:.0f}" class="{cls}" '
+                 f'text-anchor="middle">{html.escape(host)}</text>')
+    s.append("</svg>")
+    return "\n".join(s)
+
+
 def render_charts(summary: dict[str, Any], report_dir: Path) -> Path:
     """Write ``report_dir/charts.html`` from the summary + per_task.csv."""
     rows = list(csv.DictReader((report_dir / "per_task.csv").open()))
@@ -171,6 +264,7 @@ def render_charts(summary: dict[str, Any], report_dir: Path) -> Path:
         '<span><b style="background:var(--p1)"></b>some</span>'
         '<span><b style="background:var(--p0)"></b>none</span>'
         '<span><b style="background:var(--dw)"></b>Doubleword</span></div>'
+        f'<div class="card">{_radar_grid(summary, rows, hosts)}</div>'
         f'<div class="card">{_context_chart(rows, hosts, accuracy)}</div>'
         f'<div class="card">{_cost_chart(hosts, summary)}</div>'
         "</div></body></html>"

@@ -93,10 +93,18 @@ def summarize(trials: list[dict], prices: dict[str, tuple[float, float]]) -> dic
         for t in rows:
             if not t["solved"] and t["failure_mode"] not in (None, "unset"):
                 fails[t["failure_mode"]] = fails.get(t["failure_mode"], 0) + 1
+        # unknown_agent_error is the harness's label when the agent aborted on
+        # an API-level failure (rate-limit, capability 4xx) — the provider,
+        # not the model, killed the episode. Approximate but trace-verified
+        # on real sweeps; parse/timeout stay attributed to the model run.
+        infra = sum(
+            1 for t_ in rows
+            if not t_["solved"] and t_["failure_mode"] == "unknown_agent_error"
+        )
         per_host[host] = {
             "episodes": len(rows),
             "graded": len(rows),
-            "infra_errors": 0,
+            "infra_errors": infra,
             "accuracy": round(solved / len(rows), 4) if rows else None,
             "cost_per_task_usd": round(statistics.fmean(costs), 6) if costs else None,
             "median_latency_s": round(statistics.median(lat), 2) if lat else None,

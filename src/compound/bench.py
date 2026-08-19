@@ -402,7 +402,31 @@ def _run_sweep(args: argparse.Namespace, case_ids: list[str]) -> int:
             f"error: --providers supports tau2 and terminal_bench, not {args.benchmark}"
         )
     print(f"sweep output -> {output}")
+    _auto_report(args.benchmark, output)
     return 0
+
+
+def _auto_report(benchmark: str, output: Path) -> None:
+    """Build the report (tables + charts incl. provider radars) after a sweep.
+
+    Best-effort by design: a finished paid run must never be marked failed
+    because chart generation hiccuped. Cost axes appear when the run recorded
+    provider-reported cost; add ``--prices`` via the report CLI to fill gaps.
+    """
+    try:
+        if benchmark == "tau2":
+            from compound.bench_report import build_report
+
+            build_report(output, {})
+        elif benchmark == "terminal_bench":
+            from compound.tb_report import build_report
+
+            build_report(output, {})
+        else:
+            return
+        print(f"report -> {output}/report/charts.html (profiles, context, cost)")
+    except Exception as exc:  # noqa: BLE001
+        print(f"report generation skipped ({exc}); run the report module manually")
 
 
 def _manifest_cases(args: argparse.Namespace, bench: Benchmark) -> list[dict]:
