@@ -18,14 +18,15 @@ def test_openrouter_token_pins_upstream():
     assert spec.required_key_env() == "OPENROUTER_API_KEY"
     assert spec.label == "deepinfra"
     assert spec.proxy_injection() == {
-        "provider": {"only": ["deepinfra"], "allow_fallbacks": False}
+        "provider": {"only": ["deepinfra"], "allow_fallbacks": False, "require_parameters": True}
     }
 
 
 def test_openrouter_upstream_may_carry_quant_tag():
     spec = parse_provider("openrouter/baseten/fp8")
-    assert spec.upstream == "baseten/fp8"
-    assert spec.proxy_injection()["provider"]["only"] == ["baseten/fp8"]
+    assert spec.upstream == "baseten/fp8"  # label keeps the quant tag
+    # provider.only pins the base provider slug (the quant-tagged id 404s)
+    assert spec.proxy_injection()["provider"]["only"] == ["baseten"]
 
 
 def test_doubleword_realtime_has_no_service_tier():
@@ -62,7 +63,7 @@ def test_to_tau_model_openrouter_injects_provider_only():
     spec = parse_provider("openrouter/deepinfra")
     model = spec.to_tau_model("deepseek/deepseek-v4-flash-0731", max_tokens=8192)
     args = model.llm_args()
-    assert args["extra_body"]["provider"] == {"only": ["deepinfra"], "allow_fallbacks": False}
+    assert args["extra_body"]["provider"] == {"only": ["deepinfra"], "allow_fallbacks": False, "require_parameters": True}
     assert args["max_tokens"] == 8192
     assert model.litellm_name() == "openrouter/deepseek/deepseek-v4-flash-0731"
 

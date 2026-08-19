@@ -12,13 +12,22 @@ Reads the per-host episode dumps a tau2 ``--providers`` sweep writes under
     charts.html       success-vs-context and cost-vs-quality, theme-aware
 
 Cost is taken from OpenRouter's own per-call accounting
-(``raw_data.usage.cost``) when present; for hosts that do not report it
-(Doubleword), pass ``--prices label=in,out`` (USD per million tokens) to derive
-it from token counts. The upstream echo (``raw_data.provider``) is surfaced so a
-run can be checked: a pinned host should serve every episode itself.
+(``raw_data.usage.cost``) when present. Hosts that do not report per-call cost
+(Doubleword) are priced one of two ways:
+
+* ``--dw-model <id> --dw-usage-since <date>`` reads the **billed** cost from the
+  ``dw`` CLI for the run window and recovers the exact per-tier effective rates
+  (see :mod:`compound.dw_usage`) — preferred, since it needs no rate-card guess;
+* ``--prices label=in,out`` (USD per million tokens) derives cost from token
+  counts against a hand-entered rate card — fallback when the CLI is unavailable.
+
+The upstream echo (``raw_data.provider``) is surfaced so a run can be checked: a
+pinned host should serve every episode itself.
 
 CLI:
     python -m compound.bench_report artifacts/bench/tau2-sweep
+    python -m compound.bench_report <run> \\
+        --dw-model deepseek-ai/DeepSeek-V4-Flash-0731 --dw-usage-since 2026-08-09
     python -m compound.bench_report <run> --prices doubleword-flex=0.70,2.25
 """
 
@@ -239,10 +248,47 @@ def _parse_prices(items: list[str] | None) -> dict[str, tuple[float, float]]:
     return prices
 
 
-def build_report(run_dir: Path, prices: dict[str, tuple[float, float]]) -> dict[str, Any]:
+def _dw_billed_prices(
+    episodes: list[Episode], model: str, since: str, until: str | None, dw_bin: str
+) -> dict[str, tuple[float, float]]:
+    """Per-tier Doubleword prices from real ``dw usage`` billing for the window.
+
+    Returns ``{host: (rate, rate)}`` in USD/M (blended in/out) for whichever
+    Doubleword tiers appear in the run, recovered from the billed total and the
+    run's own realtime/flex token split. Empty if no DW hosts are present.
+    """
+    from compound.dw_usage import FLEX_LABEL, REALTIME_LABEL, derive_tier_rates, fetch_usage
+
+    def tier_tokens(label: str) -> int:
+        return sum(e.prompt_tokens + e.completion_tokens for e in episodes if e.host == label)
+
+    rt_tok, flex_tok = tier_tokens(REALTIME_LABEL), tier_tokens(FLEX_LABEL)
+    if not rt_tok and not flex_tok:
+        return {}
+    usage = fetch_usage(model, since=since, until=until, dw_bin=dw_bin)
+    rates = derive_tier_rates(usage, realtime_tokens=rt_tok, flex_tokens=flex_tok)
+    return {host: (rate, rate) for host, rate in rates.items()}
+
+
+def build_report(
+    run_dir: Path,
+    prices: dict[str, tuple[float, float]],
+    *,
+    dw_model: str | None = None,
+    dw_usage_since: str | None = None,
+    dw_usage_until: str | None = None,
+    dw_bin: str = "dw",
+) -> dict[str, Any]:
     episodes = iter_episodes(run_dir)
     if not episodes:
         raise SystemExit(f"error: no episodes found under {run_dir}/*/episodes/*/results.json")
+    if dw_usage_since:
+        if not dw_model:
+            raise SystemExit("error: --dw-usage-since requires --dw-model")
+        # Billed DW rates override any --prices for the Doubleword tiers.
+        prices = {**prices, **_dw_billed_prices(
+            episodes, dw_model, dw_usage_since, dw_usage_until, dw_bin
+        )}
     out = run_dir / "report"
     out.mkdir(parents=True, exist_ok=True)
     summary = summarize(episodes, prices)
@@ -264,8 +310,17 @@ def main() -> int:
         "--prices", action="append",
         help="declared price for a host lacking per-call cost: label=in,out (USD/M tokens)",
     )
+    # Billing-grade Doubleword cost from the `dw` CLI, in place of a guessed --prices.
+    parser.add_argument("--dw-model", help="Doubleword model id for `dw usage`")
+    parser.add_argument("--dw-usage-since", help="scope `dw usage` to the run start (YYYY-MM-DD)")
+    parser.add_argument("--dw-usage-until", help="optional `dw usage` window end")
+    parser.add_argument("--dw-bin", default="dw", help="path to the dw CLI (default: dw)")
     args = parser.parse_args()
-    summary = build_report(args.run_dir, _parse_prices(args.prices))
+    summary = build_report(
+        args.run_dir, _parse_prices(args.prices),
+        dw_model=args.dw_model, dw_usage_since=args.dw_usage_since,
+        dw_usage_until=args.dw_usage_until, dw_bin=args.dw_bin,
+    )
     print(f"report -> {args.run_dir}/report ({summary['_episodes']} episodes)")
     for host, s in summary["hosts"].items():
         acc = f"{s['accuracy'] * 100:.0f}%" if s["accuracy"] is not None else "n/a"

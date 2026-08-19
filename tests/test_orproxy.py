@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib import error as urlerror
 from urllib import request as urlrequest
 
 import pytest
@@ -11,11 +12,14 @@ from compound.orproxy import inject, serve_provider, target_url
 from compound.providers_registry import ProviderSpec, parse_provider
 
 
+PIN = {"only": ["deepinfra"], "allow_fallbacks": False, "require_parameters": True}
+
+
 def test_inject_adds_openrouter_provider_only():
     spec = parse_provider("openrouter/deepinfra")
     body = {"model": "deepseek/deepseek-v4-flash-0731", "messages": []}
     out = inject(body, spec)
-    assert out["provider"] == {"only": ["deepinfra"], "allow_fallbacks": False}
+    assert out["provider"] == PIN
     assert out["messages"] == []  # untouched
     assert body == {"model": "deepseek/deepseek-v4-flash-0731", "messages": []}  # non-destructive
 
@@ -23,7 +27,7 @@ def test_inject_adds_openrouter_provider_only():
 def test_inject_overrides_caller_supplied_routing():
     spec = parse_provider("openrouter/baseten/fp8")
     out = inject({"provider": {"only": ["someone-else"]}}, spec)
-    assert out["provider"]["only"] == ["baseten/fp8"]
+    assert out["provider"]["only"] == ["baseten"]  # base provider slug, not the tag
 
 
 def test_inject_adds_service_tier_for_flex():
@@ -99,5 +103,119 @@ def test_proxy_forwards_with_pinning_and_auth(monkeypatch):
     rec = _FakeUpstream.received
     assert rec["path"] == "/v1/chat/completions"  # base ends /v1, request /v1 stripped then rejoined
     assert rec["auth"] == "Bearer sekret"
-    assert rec["body"]["provider"] == {"only": ["deepinfra"], "allow_fallbacks": False}
+    assert rec["body"]["provider"] == PIN
     assert rec["body"]["messages"][0]["content"] == "yo"
+
+
+class _FlakyUpstream(BaseHTTPRequestHandler):
+    """429s twice (with Retry-After), then succeeds; also serves a permanent 400."""
+
+    hits = 0
+
+    def log_message(self, *a):  # noqa: D401
+        return
+
+    def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length") or 0)
+        self.rfile.read(length)
+        _FlakyUpstream.hits += 1
+        if self.path.endswith("/always-400"):
+            payload = json.dumps({"error": {"code": 400, "message": "bad capability"}}).encode()
+            self.send_response(400)
+        elif _FlakyUpstream.hits <= 2:
+            payload = json.dumps({"error": {"code": 429, "message": "rate limited"}}).encode()
+            self.send_response(429)
+            self.send_header("Retry-After", "0")
+        else:
+            payload = json.dumps({"id": "ok-after-retries"}).encode()
+            self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(payload)
+
+
+def _flaky_server():
+    _FlakyUpstream.hits = 0
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _FlakyUpstream)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def test_open_with_retries_survives_transient_429s():
+    from compound.orproxy import open_with_retries
+
+    server = _flaky_server()
+    port = server.server_address[1]
+    try:
+        req = lambda: urlrequest.Request(  # noqa: E731
+            f"http://127.0.0.1:{port}/v1/chat/completions", data=b"{}", method="POST"
+        )
+        with open_with_retries(req, attempts=4, base_delay=0, sleep=lambda s: None) as resp:
+            got = json.loads(resp.read())
+    finally:
+        server.shutdown()
+    assert got["id"] == "ok-after-retries"
+    assert _FlakyUpstream.hits == 3  # two 429s absorbed, third try succeeded
+
+
+def test_open_with_retries_does_not_retry_400():
+    import pytest as _pytest
+
+    from compound.orproxy import open_with_retries
+
+    server = _flaky_server()
+    port = server.server_address[1]
+    try:
+        req = lambda: urlrequest.Request(  # noqa: E731
+            f"http://127.0.0.1:{port}/v1/always-400", data=b"{}", method="POST"
+        )
+        with _pytest.raises(urlerror.HTTPError) as exc_info:
+            open_with_retries(req, attempts=4, base_delay=0, sleep=lambda s: None)
+    finally:
+        server.shutdown()
+    assert exc_info.value.code == 400
+    assert _FlakyUpstream.hits == 1  # capability errors surface immediately
+
+
+def test_open_with_retries_gives_up_and_surfaces_last_429():
+    import pytest as _pytest
+
+    from compound.orproxy import open_with_retries
+
+    server = _flaky_server()
+    port = server.server_address[1]
+    try:
+        req = lambda: urlrequest.Request(  # noqa: E731
+            f"http://127.0.0.1:{port}/v1/chat/completions", data=b"{}", method="POST"
+        )
+        with _pytest.raises(urlerror.HTTPError) as exc_info:
+            open_with_retries(req, attempts=2, base_delay=0, sleep=lambda s: None)
+    finally:
+        server.shutdown()
+    assert exc_info.value.code == 429  # exhausted retries surface unchanged
+    assert _FlakyUpstream.hits == 2
+
+
+def test_proxy_end_to_end_retries_through_flaky_upstream(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sekret")
+    monkeypatch.setenv("ORPROXY_RETRY_BASE", "0")
+    server = _flaky_server()
+    up_port = server.server_address[1]
+    spec = ProviderSpec(
+        token="openrouter/deepinfra",
+        kind="openrouter",
+        base_url=f"http://127.0.0.1:{up_port}/v1",
+        api_key_env="OPENROUTER_API_KEY",
+        upstream="deepinfra",
+    )
+    try:
+        with serve_provider(spec) as base:
+            req = urlrequest.Request(
+                base + "/chat/completions", data=b'{"model":"m"}',
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with urlrequest.urlopen(req, timeout=10) as resp:
+                got = json.loads(resp.read())
+    finally:
+        server.shutdown()
+    assert got["id"] == "ok-after-retries"  # client never saw the 429s

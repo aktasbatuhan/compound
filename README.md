@@ -191,21 +191,23 @@ dry run unless you add `--go`:
 | `mmlu` | multiple-choice knowledge, 57 subjects | exact letter match, no judge |
 | `terminal_bench` | agentic terminal tasks | official harness in Docker |
 
+`uv sync --extra dev` installs a `compound-bench` command; every example below
+uses it (or run the module directly with `PYTHONPATH=src python -m compound.bench`).
+
 ```bash
-PYTHONPATH=src python -m compound.bench list
-PYTHONPATH=src python -m compound.bench tasks tau2 --contains retail
-PYTHONPATH=src python -m compound.bench run tau2 --model zai-org/GLM-5.2-FP8 \
-    --tasks retail:10,airline:3 --go
+compound-bench list
+compound-bench tasks tau2 --contains retail
+compound-bench run tau2 --model zai-org/GLM-5.2-FP8 --tasks retail:10,airline:3 --go
 ```
 
 Each benchmark that needs an engine or a fetched dataset has a one-time
 `prepare` step, so a fresh clone can run any of them:
 
 ```bash
-PYTHONPATH=src python -m compound.bench prepare tau2            # clones + installs sierra-research/tau2-bench
-PYTHONPATH=src python -m compound.bench prepare mmlu            # samples cais/mmlu
-PYTHONPATH=src python -m compound.bench prepare terminal_bench  # needs the dataset downloaded
-PYTHONPATH=src python -m compound.bench run mmlu --model deepseek/deepseek-v4-flash-0731 \
+compound-bench prepare tau2            # clones + installs sierra-research/tau2-bench
+compound-bench prepare mmlu            # samples cais/mmlu
+compound-bench prepare terminal_bench  # needs the dataset downloaded
+compound-bench run mmlu --model deepseek/deepseek-v4-flash-0731 \
     --partition decision_test --go
 ```
 
@@ -217,7 +219,7 @@ Any OpenAI-compatible host can serve the model — vLLM, Fireworks direct, Groq,
 your own box — no adapter code required:
 
 ```bash
-PYTHONPATH=src python -m compound.bench run tau2 --model my-model \
+compound-bench run tau2 --model my-model \
     --provider myhost --api-base http://localhost:8000/v1 --api-key-env MYHOST_API_KEY
 ```
 
@@ -243,9 +245,24 @@ A **provider token** names where a model is served, independent of the model:
 | `doubleword/<tier>` | Doubleword, `realtime` or `flex` |
 | `direct/<name>` | any OpenAI-compatible host from `compound.yaml` `providers.<name>` |
 
+You do not have to know the upstream slugs. `providers <model>` reads them off
+OpenRouter and prints paste-ready tokens with quant, context, price, and whether
+each host is up:
+
+```bash
+compound-bench providers deepseek/deepseek-v4-flash-0731
+# PROVIDER TOKEN              QUANT   CONTEXT   $IN/M  $OUT/M  STATUS
+# openrouter/deepinfra/fp4    fp4        1.0M  $0.090  $0.180  up
+# openrouter/baseten/fp8      fp8        1.0M  $0.130  $0.260  up
+# openrouter/deepseek/fp8     fp8        1.0M  $0.140  $0.280  up
+# ...
+# sweep the ones that are up:
+#   --providers openrouter/deepinfra/fp4,openrouter/baseten/fp8,openrouter/deepseek/fp8,...
+```
+
 ```bash
 # tau2 across five hosts of one model, 3 trials, the same 14 tasks (dry run drops --go)
-PYTHONPATH=src python -m compound.bench run tau2 \
+compound-bench run tau2 \
     --model deepseek/deepseek-v4-flash-0731 \
     --providers openrouter/deepinfra/fp4,openrouter/baseten/fp8,openrouter/deepseek/fp8,doubleword/realtime,doubleword/flex \
     --tasks airline:6,retail:20 --trials 3 --max-tokens 8192 \
@@ -256,6 +273,9 @@ PYTHONPATH=src python -m compound.bench_report artifacts/dsflash \
     --prices doubleword-flex=0.70,2.25 --prices doubleword-realtime=0.93,3.00
 # -> artifacts/dsflash/report/{summary.json,episodes.csv,per_task.csv,transcripts.jsonl,charts.html}
 ```
+
+A `--go` run checks up front that every credential the chosen hosts need is
+present, and stops naming the missing one before it spends a cent.
 
 Cost comes from OpenRouter's own per-call accounting where present, and from the
 declared `--prices` you pass for hosts that do not report it; the report also
@@ -268,7 +288,7 @@ a localhost OpenAI-compatible proxy that stamps the pinning into every request,
 so the same `--providers` list works there with only your OpenRouter key.
 
 ```bash
-PYTHONPATH=src python -m compound.bench run terminal_bench \
+compound-bench run terminal_bench \
     --model deepseek/deepseek-v4-flash-0731 \
     --providers openrouter/deepinfra/fp4,doubleword/flex \
     --tasks hello-world --go        # needs Docker; each host runs behind its own proxy

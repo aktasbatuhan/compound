@@ -29,6 +29,7 @@ bfcl = [
 
 [project.scripts]
 compound = "compound.cli:main"
+compound-bench = "compound.bench:main"
 
 [build-system]
 requires = ["hatchling"]

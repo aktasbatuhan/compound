@@ -28,6 +28,7 @@ import json
 import os
 import sys
 import threading
+import time
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -35,6 +36,69 @@ from urllib import error as urlerror
 from urllib import request as urlrequest
 
 from compound.providers_registry import ProviderSpec, parse_provider
+
+#: Transient upstream failures worth retrying. A shared-pool 429 aborted 25
+#: terminal-bench episodes in one sweep because the agent harness treats any
+#: HTTP error as fatal; retrying here, before the client sees anything, makes
+#: rate-limit weather invisible to every harness behind the proxy. 4xx
+#: capability/auth errors (400/401/404) are NOT retried — those must surface.
+RETRYABLE_STATUSES = frozenset({408, 429, 500, 502, 503, 524, 529})
+
+
+def retry_delays(attempts: int, base: float, cap: float = 30.0) -> list[float]:
+    """Exponential backoff schedule between ``attempts`` tries (len = attempts-1)."""
+    return [min(base * (2**i), cap) for i in range(max(attempts - 1, 0))]
+
+
+def _retry_after_seconds(headers: Any, fallback: float, cap: float = 60.0) -> float:
+    """Honor an upstream ``Retry-After`` (seconds form) when present and sane."""
+    try:
+        value = float((headers.get("Retry-After") or "").strip())
+    except (AttributeError, ValueError):
+        return fallback
+    return min(value, cap) if value > 0 else fallback
+
+
+def open_with_retries(
+    make_request,
+    *,
+    attempts: int | None = None,
+    base_delay: float | None = None,
+    sleep=time.sleep,
+    log=lambda msg: print(msg, file=sys.stderr),
+):
+    """urlopen with backoff on transient failures; returns the open response.
+
+    ``make_request()`` builds a fresh :class:`urllib.request.Request` per try (a
+    Request must not be reused after a failed send). Non-retryable HTTP errors
+    and exhausted retries re-raise for the caller to surface unchanged.
+    Tunables (env): ``ORPROXY_RETRIES`` total attempts (default 6),
+    ``ORPROXY_RETRY_BASE`` first backoff in seconds (default 2).
+    """
+    if attempts is None:
+        attempts = int(os.getenv("ORPROXY_RETRIES", "6"))
+    if base_delay is None:
+        base_delay = float(os.getenv("ORPROXY_RETRY_BASE", "2"))
+    delays = retry_delays(attempts, base_delay)
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return urlrequest.urlopen(make_request(), timeout=600)
+        except urlerror.HTTPError as exc:
+            if exc.code not in RETRYABLE_STATUSES or attempt == attempts - 1:
+                raise
+            exc.read()  # drain so the connection can be reused
+            delay = _retry_after_seconds(exc.headers, delays[attempt])
+            log(f"orproxy: upstream {exc.code}, retry {attempt + 1}/{attempts - 1} in {delay:.1f}s")
+            last_exc = exc
+        except urlerror.URLError as exc:
+            if attempt == attempts - 1:
+                raise
+            delay = delays[attempt]
+            log(f"orproxy: connection error ({exc.reason}), retry {attempt + 1}/{attempts - 1} in {delay:.1f}s")
+            last_exc = exc
+        sleep(delay)
+    raise last_exc if last_exc else RuntimeError("unreachable")  # pragma: no cover
 
 
 def inject(body: dict[str, Any], spec: ProviderSpec) -> dict[str, Any]:
@@ -99,9 +163,11 @@ class _Handler(BaseHTTPRequestHandler):
         if debug_path and data:
             with open(debug_path, "a") as dbg:
                 dbg.write(">>> REQUEST\n" + data.decode("utf-8", "replace")[:4000] + "\n")
-        req = urlrequest.Request(url, data=data, headers=headers, method=method)
+        def make_request() -> urlrequest.Request:
+            return urlrequest.Request(url, data=data, headers=headers, method=method)
+
         try:
-            with urlrequest.urlopen(req, timeout=600) as upstream:
+            with open_with_retries(make_request) as upstream:
                 self.send_response(upstream.status)
                 ctype = upstream.headers.get("Content-Type", "application/json")
                 self.send_header("Content-Type", ctype)

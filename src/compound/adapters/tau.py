@@ -76,10 +76,9 @@ class TauModel:
                 raise ValueError("openrouter_provider requires provider='openrouter'")
             # litellm forwards extra_body verbatim; OpenRouter honors provider.only
             # and, with allow_fallbacks off, errors rather than silently rerouting.
-            extra_body["provider"] = {
-                "only": [self.openrouter_provider],
-                "allow_fallbacks": False,
-            }
+            from compound.providers_registry import openrouter_provider_block
+
+            extra_body["provider"] = openrouter_provider_block(self.openrouter_provider)
         if self.service_tier:
             extra_body["service_tier"] = self.service_tier
         if extra_body:
@@ -133,6 +132,55 @@ def route_nl_judge_via_openrouter() -> None:
     nl_evaluator.DEFAULT_LLM_NL_ASSERTIONS = NL_ASSERTIONS_JUDGE
 
 
+def patch_tolerant_tool_args() -> None:
+    """Recover tool-call arguments when a host returns malformed-JSON arguments.
+
+    Some serving tiers (seen on Doubleword flex) emit a tool_call whose
+    ``function.arguments`` string carries a spurious empty-object prefix or
+    trailing junk, e.g. ``{}{"real": ...}``. tau2 does a bare
+    ``json.loads(arguments)`` (llm_utils.py), which raises ``Extra data`` and
+    aborts the whole episode as an infrastructure_error, so the run is dropped
+    rather than scored. This makes that parse tolerant: it scans every top-level
+    JSON value in the string and returns the richest object (the real
+    arguments), so the episode completes and is graded. Valid JSON is untouched;
+    a genuinely empty ``{}`` stays empty. Recoveries print to stderr for audit.
+    """
+    import json as _json
+    import types
+
+    import tau2.utils.llm_utils as llm_utils
+
+    def tolerant_loads(s, *args, **kwargs):
+        try:
+            return _json.loads(s, *args, **kwargs)
+        except _json.JSONDecodeError:
+            decoder = _json.JSONDecoder()
+            i, n, values = 0, len(s), []
+            while i < n:
+                while i < n and s[i] in " \t\r\n,":
+                    i += 1
+                if i >= n:
+                    break
+                try:
+                    value, i = decoder.raw_decode(s, i)
+                except _json.JSONDecodeError:
+                    break
+                values.append(value)
+            dicts = [v for v in values if isinstance(v, dict)]
+            recovered = max(dicts, key=len) if dicts else (values[0] if values else None)
+            if recovered is None:
+                raise
+            print(f"[tau] recovered malformed tool args -> {recovered!r} (raw={s[:160]!r})",
+                  file=__import__("sys").stderr)
+            return recovered
+
+    shim = types.ModuleType("json_tolerant")
+    for name in dir(_json):
+        setattr(shim, name, getattr(_json, name))
+    shim.loads = tolerant_loads
+    llm_utils.json = shim
+
+
 def run_tau_partition(
     *,
     manifest_path: str | Path,
@@ -166,6 +214,7 @@ def run_tau_partition(
     from tau2.run import run_domain
 
     route_nl_judge_via_openrouter()
+    patch_tolerant_tool_args()
 
     class CompoundAgent(LLMAgent):
         @property

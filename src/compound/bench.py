@@ -138,6 +138,38 @@ def select_case_ids(
     return ids
 
 
+def cmd_providers(model: str, as_json: bool) -> int:
+    """List the OpenRouter upstreams that serve a model, as --providers tokens."""
+    from compound.openrouter_discovery import fetch_endpoints, format_table
+
+    try:
+        endpoints = fetch_endpoints(model)
+    except Exception as exc:  # network/HTTP/JSON — surface, do not traceback
+        raise SystemExit(
+            f"error: could not fetch endpoints for {model!r}: {exc}"
+        ) from exc
+    if as_json:
+        from dataclasses import asdict
+
+        print(json.dumps([asdict(e) for e in endpoints], indent=2))
+        return 0
+    print(format_table(endpoints))
+    return 0
+
+
+def _require_keys(env_vars: set[str]) -> None:
+    """Fail before any spend if a required credential is missing from the env."""
+    import os
+
+    missing = sorted(v for v in env_vars if not os.getenv(v))
+    if missing:
+        raise SystemExit(
+            "error: missing required API key(s): "
+            + ", ".join(missing)
+            + " — set them in .env or the environment before a --go run"
+        )
+
+
 def cmd_tasks(name: str, partition: str | None, contains: str | None) -> int:
     bench = BENCHMARKS[name]
     ids = select_case_ids(_load_cases(bench), partition=partition, contains=contains)
@@ -168,6 +200,13 @@ def _run_tau(args: argparse.Namespace, case_ids: list[str]) -> int:
     if not args.go:
         print("\ndry run (no spend). Add --go to execute; episodes bill at provider rates.")
         return 0
+    # User simulator and the nl-assertions judge always route via OpenRouter; the
+    # agent adds its own key when it is not an OpenRouter host.
+    needed = {"OPENROUTER_API_KEY"}
+    agent_key = agent.resolve_api_key_env()
+    if agent_key:
+        needed.add(agent_key)
+    _require_keys(needed)
     # Only enforce the engine on real execution, so dry runs preview without it.
     from compound.adapters.tau_setup import ensure_tau2
 
@@ -246,6 +285,7 @@ def _run_mmlu(args: argparse.Namespace, case_ids: list[str]) -> int:
     if not args.go:
         print("\ndry run (no spend). Add --go to execute; one short completion per case.")
         return 0
+    _require_keys({api_key_env})
     run_mmlu(
         cases,
         model=args.model,
@@ -326,6 +366,10 @@ def _run_sweep(args: argparse.Namespace, case_ids: list[str]) -> int:
     if not args.go:
         print("\ndry run (no spend). Add --go to execute; each host bills at its own rate.")
         return 0
+    needed = {s.required_key_env() for s in specs}
+    if args.benchmark == "tau2":
+        needed.add("OPENROUTER_API_KEY")  # user simulator + nl-assertions judge
+    _require_keys(needed)
     output = Path(args.output or f"artifacts/bench/{args.benchmark}-sweep")
     if args.benchmark == "tau2":
         from compound.adapters.tau_setup import ensure_tau2
@@ -335,7 +379,7 @@ def _run_sweep(args: argparse.Namespace, case_ids: list[str]) -> int:
             specs,
             model=args.model,
             case_ids=case_ids,
-            manifest_path=BENCHMARKS["tau2"].manifest,
+            manifest_path=Path(args.manifest) if args.manifest else BENCHMARKS["tau2"].manifest,
             trials=args.trials,
             max_steps=args.max_steps,
             max_tokens=args.max_tokens,
@@ -361,11 +405,21 @@ def _run_sweep(args: argparse.Namespace, case_ids: list[str]) -> int:
     return 0
 
 
+def _manifest_cases(args: argparse.Namespace, bench: Benchmark) -> list[dict]:
+    """Cases from a --manifest override if given, else the benchmark's own."""
+    if args.manifest:
+        path = Path(args.manifest)
+        if not path.exists():
+            raise SystemExit(f"error: --manifest {path} not found")
+        return json.loads(path.read_text())["cases"]
+    return _load_cases(bench)
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     bench = BENCHMARKS[args.benchmark]
     explicit = args.tasks.split(",") if args.tasks else None
     case_ids = select_case_ids(
-        _load_cases(bench),
+        _manifest_cases(args, bench),
         partition=args.partition,
         contains=args.contains,
         explicit=explicit,
@@ -393,6 +447,17 @@ def main() -> int:
     prepare.add_argument("benchmark", choices=("tau2", "mmlu", "terminal_bench"))
     prepare.add_argument("--per-subject", type=int, default=5, help="mmlu: test questions per subject")
 
+    providers = sub.add_parser(
+        "providers",
+        help="list the OpenRouter upstreams that serve a model, as --providers tokens",
+    )
+    providers.add_argument(
+        "model", help="OpenRouter model slug, e.g. deepseek/deepseek-v4-flash-0731"
+    )
+    providers.add_argument(
+        "--json", action="store_true", dest="as_json", help="machine-readable output"
+    )
+
     tasks = sub.add_parser("tasks", help="print case ids for a benchmark")
     tasks.add_argument("benchmark", choices=sorted(BENCHMARKS))
     tasks.add_argument("--partition", help="filter to one partition")
@@ -403,6 +468,7 @@ def main() -> int:
     run.add_argument("--model", required=True, help="model id as the provider knows it")
     run.add_argument("--tasks", help="comma-separated case ids (see `tasks`)")
     run.add_argument("--partition", help="or: every case in one partition")
+    run.add_argument("--manifest", help="override the benchmark's task manifest (more tasks)")
     run.add_argument("--contains", help="or: every case id matching a substring")
     run.add_argument("--trials", type=int, default=1)
     run.add_argument("--go", action="store_true", help="actually spend; default is a dry run")
@@ -433,6 +499,8 @@ def main() -> int:
         return cmd_list()
     if args.command == "prepare":
         return cmd_prepare(args)
+    if args.command == "providers":
+        return cmd_providers(args.model, args.as_json)
     if args.command == "tasks":
         return cmd_tasks(args.benchmark, args.partition, args.contains)
     return cmd_run(args)

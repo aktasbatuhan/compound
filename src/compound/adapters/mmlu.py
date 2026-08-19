@@ -142,9 +142,9 @@ def run_mmlu(
     provider = OpenAICompatibleProvider(
         name="mmlu-runner", base_url=base_url, api_key_env=api_key_env
     )
-    extra_body = (
-        {"provider": {"only": [upstream], "allow_fallbacks": False}} if upstream else None
-    )
+    from compound.providers_registry import openrouter_provider_block
+
+    extra_body = {"provider": openrouter_provider_block(upstream)} if upstream else None
     results = []
     correct = 0
     for case in cases:

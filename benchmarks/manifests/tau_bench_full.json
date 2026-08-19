@@ -1,0 +1,662 @@
+{
+  "benchmark": "tau2",
+  "source": "airline(base)+retail(base) full suite",
+  "cases": [
+    {
+      "case_id": "airline:0",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:1",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:2",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:3",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:4",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:5",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:6",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:7",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:8",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:9",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:10",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:11",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:12",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:13",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:14",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:15",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:16",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:17",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:18",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:19",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:20",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:21",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:22",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:23",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:24",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:25",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:26",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:27",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:28",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:29",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:30",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:31",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:32",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:33",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:34",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:35",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:36",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:37",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:38",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:39",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:40",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:41",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:42",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:43",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:44",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:45",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:46",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:47",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:48",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "airline:49",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:0",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:1",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:2",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:3",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:4",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:5",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:6",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:7",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:8",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:9",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:10",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:11",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:12",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:13",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:14",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:15",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:16",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:17",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:18",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:19",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:20",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:21",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:22",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:23",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:24",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:25",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:26",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:27",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:28",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:29",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:30",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:31",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:32",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:33",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:34",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:35",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:36",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:37",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:38",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:39",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:40",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:41",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:42",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:43",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:44",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:45",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:46",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:47",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:48",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:49",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:50",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:51",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:52",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:53",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:54",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:55",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:56",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:57",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:58",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:59",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:60",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:61",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:62",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:63",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:64",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:65",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:66",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:67",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:68",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:69",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:70",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:71",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:72",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:73",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:74",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:75",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:76",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:77",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:78",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:79",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:80",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:81",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:82",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:83",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:84",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:85",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:86",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:87",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:88",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:89",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:90",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:91",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:92",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:93",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:94",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:95",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:96",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:97",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:98",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:99",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:100",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:101",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:102",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:103",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:104",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:105",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:106",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:107",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:108",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:109",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:110",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:111",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:112",
+      "partition": "benchmark"
+    },
+    {
+      "case_id": "retail:113",
+      "partition": "benchmark"
+    }
+  ]
+}

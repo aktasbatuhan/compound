@@ -28,7 +28,14 @@ OUT="${4:-artifacts/tb-cloud}"
 
 command -v docker >/dev/null || { echo "docker not found"; exit 1; }
 command -v uv >/dev/null || { echo "installing uv"; curl -LsSf https://astral.sh/uv/install.sh | sh; export PATH="$HOME/.local/bin:$PATH"; }
-docker info >/dev/null 2>&1 || { echo "docker daemon not responding"; exit 1; }
+# A fresh VM's daemon may still be starting, or its socket may not be reachable
+# by this (non-docker-group) login user. Wait, opening the socket if we can.
+for i in $(seq 1 30); do
+  docker info >/dev/null 2>&1 && break
+  sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+  echo "waiting for docker daemon ($i/30)"; sleep 3
+done
+docker info >/dev/null 2>&1 || { echo "docker daemon not responding after ~90s"; exit 1; }
 # Ubuntu's docker.io ships WITHOUT the Compose v2 plugin, but terminal-bench
 # drives every task via `docker compose build/up`. Drop the plugin in if missing.
 if ! docker compose version >/dev/null 2>&1; then
@@ -48,16 +55,24 @@ if [ ! -d .compound/sources/terminal-bench-core ]; then
 fi
 uv run python -m compound.bench prepare terminal_bench >/dev/null 2>&1 || true
 
-echo "== running sweep: model=$MODEL providers=$PROVIDERS =="
-# Hosts run in parallel; each behind its own pinning proxy. Disk on a VM is
-# ample, so the default per-host concurrency is fine.
-PYTHONPATH=src uv run python -m compound.bench run terminal_bench \
-  --model "$MODEL" --providers "$PROVIDERS" --tasks "$TASKS" \
-  --tb-concurrent 2 --output "$OUT" --go
-
-echo "== reclaiming Docker space between sweeps =="
-docker container prune -f >/dev/null 2>&1 || true
-docker image prune -af >/dev/null 2>&1 || true
+echo "== running sweep: model=$MODEL providers=$PROVIDERS trials=${TB_TRIALS:-1} =="
+# Each behind its own pinning proxy. TB_TRIALS repeats the whole sweep into a
+# per-trial subdir (terminal-bench is high-variance, so multiple trials give a
+# resolve-rate rather than a single noisy pass/fail).
+for t in $(seq 1 "${TB_TRIALS:-1}"); do
+  echo "== trial $t/${TB_TRIALS:-1} =="
+  PYTHONPATH=src uv run python -m compound.bench run terminal_bench \
+    --model "$MODEL" --providers "$PROVIDERS" --tasks "$TASKS" \
+    --tb-concurrent "${TB_CONCURRENT:-2}" --output "$OUT/trial-$t" --go
+  # Prune after EVERY trial, not just at the end: a multi-trial sweep otherwise
+  # accumulates task images/containers until the disk fills and the run stalls.
+  echo "== reclaiming Docker space after trial $t =="
+  docker container prune -f >/dev/null 2>&1 || true
+  docker image prune -af >/dev/null 2>&1 || true
+done
 
 echo "== results under $OUT (copy back: gcloud compute scp --recurse ...:$OUT ./) =="
-find "$OUT" -name results.json | head
+# `find | head` can return non-zero under `pipefail` (SIGPIPE when head exits),
+# which would abort the caller before the next sweep / the results copy-back.
+find "$OUT" -name results.json 2>/dev/null | head -20 || true
+exit 0

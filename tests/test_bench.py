@@ -2,9 +2,8 @@ import json
 
 import pytest
 
-from compound.bench import BENCHMARKS, select_case_ids
+from compound.bench import BENCHMARKS, _require_keys, select_case_ids
 from compound.tau_sweep import SweepConfig
-
 
 CASES = [
     {"case_id": "retail:10", "partition": "optimizer_validation"},
@@ -28,6 +27,19 @@ def test_registry_manifests_are_partitioned() -> None:
         cases = json.loads(bench.manifest.read_text())["cases"]
         assert cases, bench.name
         assert all("case_id" in c and "partition" in c for c in cases), bench.name
+
+
+def test_require_keys_names_every_missing_credential(monkeypatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "present")
+    monkeypatch.delenv("DOUBLEWORD_API_KEY", raising=False)
+    monkeypatch.delenv("MYHOST_KEY", raising=False)
+    # a satisfied key preflights silently
+    _require_keys({"OPENROUTER_API_KEY"})
+    with pytest.raises(SystemExit) as exc:
+        _require_keys({"OPENROUTER_API_KEY", "DOUBLEWORD_API_KEY", "MYHOST_KEY"})
+    msg = str(exc.value)
+    assert "DOUBLEWORD_API_KEY" in msg and "MYHOST_KEY" in msg
+    assert "OPENROUTER_API_KEY" not in msg  # the present one is not reported
 
 
 def test_sweep_config_custom_provider_key_env() -> None:

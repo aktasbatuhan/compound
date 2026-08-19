@@ -37,6 +37,35 @@ if TYPE_CHECKING:
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 DOUBLEWORD_BASE = "https://api.doubleword.ai/v1"
 
+
+def openrouter_only(upstream: str) -> str:
+    """The value OpenRouter's ``provider.only`` expects: the base provider slug.
+
+    Our upstream tokens carry the endpoint tag from ``/endpoints`` (e.g.
+    ``deepinfra/fp4``, ``baseten/fp8``), but ``provider.only`` matches on the
+    *provider* slug (``deepinfra``), not the quant-tagged endpoint id — passing
+    the full tag 404s ("no allowed providers"). The quant suffix is kept only for
+    labelling; here we take the provider slug before the first slash.
+    """
+    return upstream.split("/", 1)[0]
+
+
+def openrouter_provider_block(upstream: str) -> dict[str, Any]:
+    """The OpenRouter routing block every pinned request carries.
+
+    ``require_parameters`` makes OpenRouter refuse to route to the pinned host
+    when it cannot honor a parameter the request actually uses, so a capability
+    gap fails fast as "no allowed providers" instead of burning a whole run:
+    novita accepted 42 terminal-bench episodes it could never serve because the
+    agent's ``response_format: json_schema`` isn't implemented on its endpoint.
+    """
+    return {
+        "only": [openrouter_only(upstream)],
+        "allow_fallbacks": False,
+        "require_parameters": True,
+    }
+
+
 # The two credentials the project ships with; a direct/<name> token may name any
 # other env var through compound.yaml.
 _KNOWN = {
@@ -90,7 +119,7 @@ class ProviderSpec:
         """
         body: dict[str, Any] = {}
         if self.kind == "openrouter" and self.upstream:
-            body["provider"] = {"only": [self.upstream], "allow_fallbacks": False}
+            body["provider"] = openrouter_provider_block(self.upstream)
         if self.service_tier:
             body["service_tier"] = self.service_tier
         return body

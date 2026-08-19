@@ -21,7 +21,7 @@ def test_tau_model_routes_openrouter_and_doubleword() -> None:
 def test_tau_model_pins_openrouter_upstream() -> None:
     pinned = TauModel("openrouter", "moonshotai/kimi-k3", openrouter_provider="baseten/fp8")
     assert pinned.llm_args()["extra_body"] == {
-        "provider": {"only": ["baseten/fp8"], "allow_fallbacks": False}
+        "provider": {"only": ["baseten"], "allow_fallbacks": False, "require_parameters": True}
     }
     # The pin joins the output identity, so two upstreams never share a file.
     assert pinned.slug() == "moonshotai--kimi-k3--at-baseten-fp8"

@@ -36,3 +36,7 @@ langfuse-demo/
 # out of the public repo and regenerate deterministically with
 # `python -m compound.bench prepare mmlu` (hash-based partitions are stable).
 benchmarks/manifests/mmlu.json
+
+# Ad-hoc local run launchers and previews
+_*.sh
+glm-charts-preview.png
