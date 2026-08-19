@@ -26,9 +26,10 @@ and hands you a verdict with a confidence interval, never a vibe.
 Every leaderboard tells you which model is best on average. None of them can tell you
 whether the switch is safe on **your** workload, and the gap is not academic:
 
-- **The serving host moves quality as much as the model does.** In our pinned-host sweep,
-  identical open-model weights swung from 8/13 to 11/13 tasks solved purely by changing
-  the inference provider. The fastest hosts were the worst ones.
+- **The serving host moves outcomes as much as the model does.** In our pinned-host
+  terminal-bench sweep, identical open-model weights ranged from **0% to 55% end-to-end
+  task success** purely from the serving layer: rate-limit kills, a missing API feature,
+  a 5x latency spread. None of it is visible on a pricing page.
 - **Evals rot.** Hand-written eval sets go stale the week after you write them, so most
   teams ship model switches on a demo and a prayer.
 - **Experiments burn money invisibly.** One retry loop against a paid API and your
@@ -68,49 +69,54 @@ The gate emits one of five verdicts: **meets gate**, **fails**, **insufficient d
 **judge abstained**, **no reliable improvement**. If the data cannot support a decision,
 Compound says so instead of rounding noise up to a recommendation.
 
-## See the market you are buying from
+## Same weights, six hosts: what actually differs
 
-Compound ships a general-purpose report generator (`compound.viz`): one self-contained
-HTML file with an efficient-frontier chart, a speed-vs-quality chart, per-model filters,
-and the full route table. Provider logos mark the serving host; **ring color marks the
-model** (see the legend baked into each chart).
-
-> The charts below are from **one example run** — three open models
-> (`deepseek-v4-flash`, `glm-5.2`, `kimi-k3`) across their pinned OpenRouter and
-> Doubleword hosts, scored on the same 13 tau2-bench airline+retail tasks, 1 trial.
-> They illustrate the output shape, not a leaderboard. Point Compound at your own
-> models, hosts, and tasks and you get the same report on your numbers — commands below.
+> One model (`deepseek-v4-flash`), six pinned serving hosts, **terminal-bench**: 14 agentic
+> terminal tasks x 3 identical trials per host, pass/fail decided by each task's own test
+> suite inside a container — no LLM judge, no user simulator, temperature pinned by the
+> agent. Then every failed episode's raw API traffic was audited to separate model
+> failures from provider failures.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/frontier-dark.png">
-  <img alt="Example run: cost vs quality across 30 pinned inference routes for three open models, with the Pareto frontier and an in-chart model legend" src="assets/frontier-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/tb-results-dark.svg">
+  <img alt="Terminal-bench results: same model on six hosts, end-to-end success 0 to 55 percent, driven by provider reliability rather than model quality" src="assets/tb-results-light.svg">
 </picture>
 
-The dashed line is the Pareto frontier. In this run the cheapest model on its best hosts
-beats every route of a model 25 to 40 times its price, and identical weights swing several
-tasks of quality depending on who serves them.
+- **Model quality is a tie; the serving layer is not.** Excluding provider-killed
+  episodes, every functioning host lands at 45–57% — indistinguishable at this sample
+  size. End-to-end, the spread is 0–55%, and the gap is entirely provider reliability.
+- **fireworks lost 15 of 42 episodes to shared-pool rate limits** — its "degradation"
+  across trials was weather, not the model. Its error-free trial scored right in the pack.
+- **novita scored 0/42 with a perfectly healthy model**: its endpoint rejects the
+  `json_schema` response format the agent needs on every turn. Invisible on single-turn
+  benchmarks, fatal for agents — API capability coverage is a provider axis nobody prices.
+- **Identical calls, 5x latency spread** (4.1s vs 21.2s median), and different
+  determinism: one host flipped 2/14 task outcomes between identical trials, another 7/14.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/speed-dark.png">
-  <img alt="Example run: speed vs quality across the same routes, colored by model" src="assets/speed-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/tb-radar-dark.svg">
+  <img alt="Six-axis provider profiles: quality, reliability, speed, determinism, cost, TPS per host" src="assets/tb-radar-light.svg">
 </picture>
 
-The fastest hosts are not the best ones: the top-TPS routes sit at the bottom of their
-models' quality range.
+<sub>cost and TPS axes come from the tau2 164-task run of the same model on the same
+hosts; the other four axes are terminal-bench. novita's cost/TPS are excellent — its
+collapse is a capability gap, not capacity.</sub>
 
-**Run the same viz on your own data.** Any evaluation source that emits the
-[row contract](src/compound/viz.py) gets this report; the tau-bench sweep is just one
-adapter. Regenerate the example, or render straight from your own rows:
+Reproduce it (any model, your pick of hosts):
 
 ```bash
-# reproduce the example charts from the sweep episodes
-PYTHONPATH=src python -m compound.tau_report --output report.html --rows-out rows.json
-
-# render from any rows.json (your benchmark, your telemetry), with your own labels
-PYTHONPATH=src python -m compound.viz --rows rows.json --output report.html \
-    --title "My models across providers" \
-    --subtitle "internal eval · 200 cases · 3 trials"
+compound-bench providers deepseek/deepseek-v4-flash-0731     # discover pinnable hosts
+compound-bench run terminal_bench \
+    --model deepseek/deepseek-v4-flash-0731 \
+    --providers openrouter/deepinfra,doubleword/realtime,doubleword/flex \
+    --tasks fix-permissions,create-bucket --trials 3 --go    # dry run without --go
 ```
+
+Since this run, the pinning proxy auto-retries 408/429/5xx with backoff and pins with
+`require_parameters`, so both provider-failure classes above are absorbed or fail fast
+at episode one. Any evaluation source that emits the
+[row contract](src/compound/viz.py) also gets the frontier/speed HTML report via
+`python -m compound.viz --rows rows.json`.
 
 ## Why it is easy
 
