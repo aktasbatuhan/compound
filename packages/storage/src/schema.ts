@@ -238,6 +238,13 @@ export const completions = sqliteTable("completions", {
    * decode time is `latencyMs - queueMs`. NULL for synchronous providers.
    */
   queueMs: integer("queue_ms"),
+  /**
+   * The per-call cache-bust salt of a `--fresh` measurement run (issue #25);
+   * NULL for a normal completion. A salted completion's prompt was perturbed by
+   * the nonce, so it is marked here: honest for latency/TPS, but never to be
+   * silently mixed with unsalted quality data.
+   */
+  measurementNonce: text("measurement_nonce"),
   costUsd: real("cost_usd").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()

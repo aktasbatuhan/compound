@@ -1,0 +1,1 @@
+ALTER TABLE `completions` ADD `measurement_nonce` text;
