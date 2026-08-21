@@ -113,11 +113,14 @@ describe("migrations", () => {
     const handle = createDatabase({ path: ":memory:" });
     try {
       cpSync(DRIZZLE_DIR, tmp, { recursive: true });
-      rmSync(join(tmp, "0012_spicy_gertrude_yorkes.sql"));
+      // Drop 0012 AND everything after it: a later migration left in the folder
+      // would advance the migrator's applied timestamp past 0012, making the
+      // upgrade below silently skip it.
       const journal = JSON.parse(readFileSync(join(DRIZZLE_DIR, "meta", "_journal.json"), "utf8"));
-      journal.entries = journal.entries.filter(
-        (e: { tag: string }) => !String(e.tag).startsWith("0012"),
-      );
+      for (const e of journal.entries as { idx: number; tag: string }[]) {
+        if (e.idx >= 12) rmSync(join(tmp, `${e.tag}.sql`));
+      }
+      journal.entries = journal.entries.filter((e: { idx: number }) => e.idx < 12);
       writeFileSync(join(tmp, "meta", "_journal.json"), JSON.stringify(journal));
 
       // Migrate only THROUGH 0011: the new columns must not exist yet.

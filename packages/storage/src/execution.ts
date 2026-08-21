@@ -146,6 +146,8 @@ export interface CacheCompletionInput {
   latencyMs?: number | null;
   /** Async-queue portion of latency for a flex route; null for sync providers. */
   queueMs?: number | null;
+  /** Per-call cache-bust salt of a `--fresh` measurement run (#25); null otherwise. */
+  measurementNonce?: string | null;
   costUsd: number;
 }
 
@@ -166,6 +168,7 @@ export function cacheCompletion(handle: CompoundDatabase, input: CacheCompletion
       finishReason: input.finishReason ?? null,
       latencyMs: input.latencyMs ?? null,
       queueMs: input.queueMs ?? null,
+      measurementNonce: input.measurementNonce ?? null,
       costUsd: input.costUsd,
     })
     .run();

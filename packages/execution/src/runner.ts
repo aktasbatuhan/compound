@@ -110,7 +110,12 @@ export interface RunExperimentOptions {
    * provider-selection view. Because the nonce lands in `request.messages`, it
    * also makes the completion fingerprint unique, so a fresh run never reuses OR
    * populates the correctness cache a gate reads, and never changes a verdict.
-   * Opt-in; it only matters on a paid run (a dry run makes no calls).
+   * The nonce is persisted on every completion row it produced
+   * (`measurement_nonce`), so salted measurements stay identifiable and are
+   * never silently mixed with unsalted quality data — the salt slightly changes
+   * the prompt, which is fine for latency/TPS but flagged for quality
+   * comparison. Opt-in; it only matters on a paid run (a dry run makes no
+   * calls).
    */
   fresh?: boolean;
   /**
@@ -469,6 +474,7 @@ export async function runExperiment(
               finishReason: turnResponse.finishReason,
               latencyMs: turnResponse.latencyMs,
               queueMs: turnResponse.queueMs ?? null,
+              measurementNonce: freshNonce ?? null,
               costUsd: turnCost,
             });
           },
@@ -499,6 +505,7 @@ export async function runExperiment(
             finishReason: `trajectory_incomplete:${traj.stop.reason}`,
             latencyMs: traj.latencyMs,
             queueMs: null,
+            measurementNonce: freshNonce ?? null,
             costUsd: trajCost,
           });
           results.push({
@@ -531,6 +538,7 @@ export async function runExperiment(
           finishReason: response.finishReason,
           latencyMs: response.latencyMs,
           queueMs: response.queueMs ?? null,
+          measurementNonce: freshNonce ?? null,
           costUsd: trajCost,
         });
       } else {
@@ -572,6 +580,7 @@ export async function runExperiment(
           finishReason: response.finishReason,
           latencyMs: response.latencyMs,
           queueMs: response.queueMs ?? null,
+          measurementNonce: freshNonce ?? null,
           costUsd,
         });
       }

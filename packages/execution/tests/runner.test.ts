@@ -7,6 +7,7 @@ import {
   type CompoundDatabase,
   createDatabase,
   createImportBatch,
+  getCachedCompletion,
   insertCases,
   insertTraces,
   migrate,
@@ -351,6 +352,32 @@ describe("runExperiment money-safety", () => {
     expect(report.cache_hits).toBe(0);
     // The baseline request carries no nonce.
     expect(systemContent(normal.calls[0])).not.toContain(CACHE_BUST_MARKER);
+  });
+
+  test("a fresh completion persists its salt; a normal one stays unsalted (#25)", async () => {
+    seedCases("support", 6);
+    const provider = new MockProvider('{"ok":true}');
+    const { results } = await runExperiment(db, { ...freshRun, provider, fresh: true });
+    const graded = results.filter((r) => r.status === "graded");
+    expect(graded.length).toBeGreaterThan(0);
+    // Every fresh completion row carries the exact salt its request was sent
+    // with, so salted measurements are identifiable in storage/telemetry and
+    // never silently mixed with unsalted quality data.
+    for (const r of graded) {
+      const row = getCachedCompletion(db, r.completionFingerprint as string);
+      expect(row?.measurementNonce).toBeTruthy();
+      const salted = provider.calls.filter((c) =>
+        systemContent(c).includes(row?.measurementNonce as string),
+      );
+      expect(salted).toHaveLength(1);
+    }
+    // A normal run's completion rows carry no salt.
+    const normal = new MockProvider('{"ok":true}');
+    const { results: baseline } = await runExperiment(db, { ...freshRun, provider: normal });
+    for (const r of baseline.filter((x) => x.status === "graded")) {
+      const row = getCachedCompletion(db, r.completionFingerprint as string);
+      expect(row?.measurementNonce).toBeNull();
+    }
   });
 
   test("a new trial re-runs fresh (own paid calls), not from the trial-0 cache", async () => {
