@@ -1588,4 +1588,159 @@ describe("view compare", () => {
       expect(zai).toContain("$0.00260*"); // but cost stays list-price, marked
     });
   });
+
+  // --- priority-weighted ranking + Pareto frontier (#29) -------------------
+
+  /** The ranking section of the output (everything from its header on). */
+  const rankingSection = (out: string): string => out.slice(out.indexOf("priority ranking —"));
+
+  test("--priority adds a ranked table with scores, frontier marks, and a Pareto chart", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoModels(db);
+    const result = await runCommand(
+      ["view", "compare", "finance.dispute_charge", "--priority", "quality=0.7,cost=0.3"],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    const section = rankingSection(output());
+    expect(section).toContain("priority ranking — quality=0.70 cost=0.30   (--priority)");
+    // quality: ref 1.0 vs cand 0.0; cost (inverted): cand $0.001 → 1, ref $0.01 → 0.
+    // score(ref) = 0.7, score(cand) = 0.3. Each is best on one axis → both on the frontier.
+    expect(section).toMatch(/1\s+0\.700\s+\*\s+ref\s+openrouter/);
+    expect(section).toMatch(/2\s+0\.300\s+\*\s+cand\s+doubleword/);
+    expect(section).not.toContain("dominated:");
+    // The cost-vs-quality chart renders with real dollar extents.
+    expect(section).toContain("pareto — pass% (up) vs eff $/case");
+    expect(section).toContain("$0.00100");
+    expect(section).toContain("$0.01000");
+  });
+
+  test("--priority with an unknown axis errors clearly before any table", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoModels(db);
+    const result = await runCommand(["view", "compare", "--priority", "speed=1,cost=0.5"], env);
+    expect(result.exitCode).toBe(2);
+    expect(output()).toContain(
+      "unknown priority axis 'speed'; one of: quality, cost, latency, throughput",
+    );
+    expect(output()).not.toContain("priority ranking");
+  });
+
+  test("a row with no measured latency is excluded from a latency-weighted ranking, with a note", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoModels(db); // cand's completion has no latencyMs
+    const result = await runCommand(
+      ["view", "compare", "finance.dispute_charge", "--priority", "quality=0.5,latency=0.5"],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    const section = rankingSection(output());
+    expect(section).toContain(
+      "note: cand @doubleword excluded from ranking — no measured latency.",
+    );
+    // ref still appears as the only ranked row.
+    expect(section).toMatch(/1\s+0\.000\s+\*\s+ref\s+openrouter/);
+  });
+
+  test("ranking prefers the EFFECTIVE cost when a cached rate is configured (#34)", async () => {
+    const { env, output, db } = testEnvironment();
+    seedCachedVsUnreported(db);
+    await withTempFile(CACHED_RATE_CONFIG, async (configPath) => {
+      const result = await runCommand(
+        [
+          "view",
+          "compare",
+          "finance.dispute_charge",
+          "--config",
+          configPath,
+          "--priority",
+          "cost=1",
+        ],
+        env,
+      );
+      expect(result.exitCode).toBe(0);
+      const section = rankingSection(output());
+      // Both routes stored the same list cost ($0.0026); only the effective
+      // cost ($0.00098 for zai's 90% cache hits) separates them.
+      expect(section).toMatch(/1\s+1\.000\s+\*\s+kimi-k3\s+zai/);
+      expect(section).toMatch(/2\s+0\.000\s+kimi-k3\s+doubleword/);
+      expect(section).toContain(
+        "dominated: kimi-k3 @doubleword — at least as bad as kimi-k3 @zai on every weighted axis",
+      );
+    });
+  });
+
+  test("a degenerate axis is dropped from scoring and noted, weights renormalized", async () => {
+    const { env, output, db } = testEnvironment();
+    seedCachedVsUnreported(db); // both routes pass 100% — quality carries no signal
+    await withTempFile(CACHED_RATE_CONFIG, async (configPath) => {
+      const result = await runCommand(
+        [
+          "view",
+          "compare",
+          "finance.dispute_charge",
+          "--config",
+          configPath,
+          "--priority",
+          "quality=0.5,cost=0.5",
+        ],
+        env,
+      );
+      expect(result.exitCode).toBe(0);
+      const section = rankingSection(output());
+      expect(section).toContain(
+        "note: axis 'quality' dropped from scoring — every scorable row is equal on it.",
+      );
+      // With quality dropped, cost's weight renormalizes to 1: same order as cost-only.
+      expect(section).toMatch(/1\s+1\.000\s+\*\s+kimi-k3\s+zai/);
+    });
+  });
+
+  const PRIORITY_DEFAULT_CONFIG = [
+    CACHED_RATE_CONFIG,
+    "task_keys:",
+    "  finance.dispute_charge:",
+    "    replay:",
+    "      default_tool_policy: recorded",
+    "    priority:",
+    "      quality: 1",
+    "      cost: 1",
+  ].join("\n");
+
+  test("a per-task priority default in compound.yaml ranks without --priority; exact ties share a rank", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoModels(db);
+    await withTempFile(PRIORITY_DEFAULT_CONFIG, async (configPath) => {
+      const result = await runCommand(
+        ["view", "compare", "finance.dispute_charge", "--config", configPath],
+        env,
+      );
+      expect(result.exitCode).toBe(0);
+      const section = rankingSection(output());
+      expect(section).toContain(
+        "priority ranking — quality=0.50 cost=0.50   " +
+          "(compound.yaml task_keys.finance.dispute_charge.priority)",
+      );
+      // ref wins quality, cand wins cost → 0.5 each: a shared rank 1.
+      expect(section).toMatch(/1\s+0\.500\s+\*\s+ref\s+openrouter/);
+      expect(section).toMatch(/1\s+0\.500\s+\*\s+cand\s+doubleword/);
+    });
+  });
+
+  test("the aggregated (all-task) view ranks under --priority too", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoModels(db);
+    const result = await runCommand(["view", "compare", "--priority", "quality=1"], env);
+    expect(result.exitCode).toBe(0);
+    const section = rankingSection(output());
+    expect(section).toMatch(/1\s+1\.000\s+\*\s+ref\s+openrouter/);
+  });
+
+  test("without --priority or a config default the output is unchanged (no ranking section)", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoModels(db);
+    const result = await runCommand(["view", "compare", "finance.dispute_charge"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).not.toContain("priority ranking");
+  });
 });

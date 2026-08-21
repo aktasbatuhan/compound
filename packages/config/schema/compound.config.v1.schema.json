@@ -408,6 +408,28 @@
               "default_tool_policy"
             ],
             "additionalProperties": false
+          },
+          "priority": {
+            "type": "object",
+            "properties": {
+              "quality": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cost": {
+                "type": "number",
+                "minimum": 0
+              },
+              "latency": {
+                "type": "number",
+                "minimum": 0
+              },
+              "throughput": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [

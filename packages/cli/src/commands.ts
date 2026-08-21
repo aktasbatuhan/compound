@@ -117,7 +117,11 @@ Usage:
   compound optimize <task_key> --candidate M [--reflection M] [--max-calls N] [--force]
   compound telemetry [task_key] [--json] [--db PATH]
   compound view [gate|case|trace|experiment] [id] [--full] [--db PATH]   (read-only browser; overview if no args)
-  compound view compare [task_key] [--db PATH]                           (cost vs score per model; aggregated + per task)
+  compound view compare [task_key] [--priority quality=0.5,cost=0.3,latency=0.2] [--db PATH]
+                                                                         (cost vs score per model; --priority adds a weighted
+                                                                          ranking + Pareto frontier; axes: quality, cost,
+                                                                          latency, throughput; per-task default via
+                                                                          compound.yaml task_keys.<task>.priority)
   compound status [--db PATH]
   compound serve [--port N] [--host HOST] [--db PATH] [--config PATH]
   compound help
