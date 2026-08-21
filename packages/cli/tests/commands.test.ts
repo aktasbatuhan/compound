@@ -360,6 +360,10 @@ describe("curate", () => {
     // A precision read on the sealed set, plus a curate-more nudge (14 < 20).
     expect(output()).toContain("decision power:");
     expect(output()).toContain("below the recommended 20+");
+    // Honest about what a small set means, with a concrete target: at the
+    // default 5pp margin the suggested n is ~785 (95% gate, 80% power, SD 0.5).
+    expect(output()).toContain("INSUFFICIENT DATA");
+    expect(output()).toContain("5.0pp margin needs ~785 sealed cases");
   });
 });
 
@@ -560,6 +564,44 @@ describe("gate", () => {
     expect(output()).toContain("INSUFFICIENT DATA");
     // Crucially, nothing is persisted — a preview must not pollute the audit trail.
     expect(listGateResults(db)).toHaveLength(0);
+  });
+
+  test("a dry run reports the sealed set's decision power before any spend (issue #24)", async () => {
+    const { env, output, db } = testEnvironment();
+    await importAndCurate(env);
+    // Seed extra sealed cases so the power branch (n ≥ 2) is exercised.
+    insertCases(
+      db,
+      Array.from({ length: 13 }, (_, i) => ({
+        caseId: `gate-pow-${i}`,
+        taskKey: "support",
+        sourceTraceId: `gpt-${i}`,
+        contentHash: `gate-pow-hash-${i}`,
+        provenance: "human_golden" as const,
+        partition: "decision_test" as const,
+        input: {},
+        expected: {},
+      })),
+    );
+    const result = await runCommand(
+      [
+        "gate",
+        "support",
+        "--candidate",
+        "zai-org/GLM-5.2-FP8",
+        "--reference",
+        "anthropic/claude-opus-4.8",
+        "--reason",
+        "previewing the gate's precision before paying",
+      ],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    // The preview sizes what a paid decision could detect on this sealed set,
+    // at the declared margin — so underpowered sets are caught before spend.
+    expect(output()).toContain("decision power:");
+    expect(output()).toContain("min. detectable regression");
+    expect(output()).toContain("5.0pp margin needs ~785 sealed cases");
   });
 
   test("warns when the sealed set has already been decided (issue #22)", async () => {

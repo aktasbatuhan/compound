@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { loadConfig } from "@compound/config";
 import { curateTask, type PartitionRatios } from "@compound/curation";
 import {
+  casesForDetectableEffect,
   DEFAULT_TARGET_POWER,
   powerEstimate,
   RECOMMENDED_MIN_DECISION_CASES,
@@ -216,14 +217,21 @@ function parseSplit(value: string): PartitionRatios {
 
 /**
  * A pre-run precision read on a task's sealed decision set (#24): the minimum
- * regression a 95% gate could DETECT with 80% power at the current case count,
+ * regression a gate could DETECT with 80% power at the current case count,
  * with a nudge to curate more when the set is under the recommended floor.
- * Reported at curate time so a user learns a tiny set is underpowered BEFORE
- * paying to run a gate. The figure assumes a per-case difference SD ≈ 0.5; a
- * higher real SD widens it (worst case, SD = 1.0, roughly doubles it) — see #7.
+ * Reported at curate time (and on a gate dry run) so a user learns a tiny set
+ * is underpowered BEFORE paying to run both sides. The figure assumes a
+ * per-case difference SD ≈ 0.5; a higher real SD widens it (worst case,
+ * SD = 1.0, roughly doubles it) — see #7. `margin` sizes the suggested-n line:
+ * a true regression near the margin is what the gate must resolve, and a CI
+ * that straddles −margin comes back as insufficient_data (rule.ts).
  */
-export function decisionPowerLines(sealedCases: number): string[] {
-  const confidence = 0.95;
+export function decisionPowerLines(
+  sealedCases: number,
+  opts: { confidence?: number; margin?: number } = {},
+): string[] {
+  const confidence = opts.confidence ?? 0.95;
+  const margin = opts.margin ?? 0.05;
   const power = DEFAULT_TARGET_POWER;
   if (sealedCases < 2) {
     return [
@@ -232,10 +240,16 @@ export function decisionPowerLines(sealedCases: number): string[] {
     ];
   }
   const est = powerEstimate(sealedCases, confidence, power);
+  const suggested = casesForDetectableEffect(margin, confidence, power);
   const lines = [
     `  decision power: ~${Math.round(est.minDetectableEffect * 100)}pp min. detectable ` +
-      `regression (95% gate, ${Math.round(power * 100)}% power, ${sealedCases} sealed cases, ` +
-      `assumes per-case SD≈${est.sd}).`,
+      `regression (${Math.round(confidence * 100)}% gate, ${Math.round(power * 100)}% power, ` +
+      `${sealedCases} sealed cases, assumes per-case SD≈${est.sd}).`,
+    "  → smaller true deltas will likely come back INSUFFICIENT DATA" +
+      (Number.isFinite(suggested)
+        ? `; resolving one at the ${(margin * 100).toFixed(1)}pp margin needs ` +
+          `~${suggested} sealed cases.`
+        : "."),
   ];
   if (sealedCases < RECOMMENDED_MIN_DECISION_CASES) {
     lines.push(
