@@ -26,7 +26,7 @@ import {
   priorDecisions,
 } from "@compound/storage";
 import type { CommandEnvironment, CommandResult, ParsedArgs } from "./commands";
-import { DEFAULT_CONFIG_PATH, DEFAULT_DATABASE_PATH } from "./commands";
+import { DEFAULT_CONFIG_PATH, DEFAULT_DATABASE_PATH, decisionPowerLines } from "./commands";
 import { replayPolicyFromConfig } from "./experiment";
 
 function stringFlag(flags: ParsedArgs["flags"], name: string): string | undefined {
@@ -420,6 +420,15 @@ export async function runGateCommand(
       env.write(
         `  margin:      ${(-margin * 100).toFixed(1)}pp (candidate may be this much worse)`,
       );
+    }
+    // Pre-spend power read (#24): on a preview, size what a paid decision on
+    // this sealed set could actually detect at the declared confidence and
+    // margin — BEFORE money is spent running both sides.
+    if (!wantsPaid) {
+      env.write("");
+      for (const line of decisionPowerLines(coverage.sealedTotal, { confidence, margin })) {
+        env.write(line);
+      }
     }
 
     const disagree = pairs.filter((p) => p.candidatePassed !== p.referencePassed).slice(0, 5);

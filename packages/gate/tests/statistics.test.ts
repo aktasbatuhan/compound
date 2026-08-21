@@ -118,4 +118,13 @@ describe("power / minimum detectable effect (#24)", () => {
     expect(casesForDetectableEffect(0.1, 0.95)).toBe(197);
     expect(casesForDetectableEffect(0, 0.95)).toBe(Number.POSITIVE_INFINITY);
   });
+
+  test("suggested n for the default 5pp gate margin (the curate-time nudge)", () => {
+    // ((1.95996+0.84162)·0.5/0.05)² ≈ 784.9 → 785. A smaller target effect
+    // always needs more cases.
+    expect(casesForDetectableEffect(0.05, 0.95)).toBe(785);
+    expect(casesForDetectableEffect(0.05, 0.95)).toBeGreaterThan(
+      casesForDetectableEffect(0.1, 0.95),
+    );
+  });
 });
