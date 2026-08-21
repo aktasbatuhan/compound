@@ -30,6 +30,16 @@ import {
 } from "@compound/storage";
 import type { CommandEnvironment, CommandResult, ParsedArgs } from "./commands";
 import { DEFAULT_CONFIG_PATH, DEFAULT_DATABASE_PATH } from "./commands";
+import {
+  type AxisValues,
+  formatPriority,
+  normalizePriority,
+  type ParetoPoint,
+  type PriorityVector,
+  paretoChartLines,
+  parsePriority,
+  rankRows,
+} from "./rank";
 
 function stringFlag(flags: ParsedArgs["flags"], name: string): string | undefined {
   const value = flags[name];
@@ -463,7 +473,21 @@ function priceEntryFor(config: CompoundConfig | undefined, r: CompareRow): Token
  * tokens; an unreported provider is never silently flattered with a discount.
  */
 const effPerCase = (r: CompareRow, config: CompoundConfig | undefined): string => {
-  if (r.graded === 0) return "—";
+  const cost = effCostPerCase(r, config);
+  if (cost === null) return "—";
+  return cost.effective ? `$${cost.value.toFixed(5)}` : `${perCase(r.totalCost, r.graded)}*`;
+};
+
+/**
+ * The numeric form of `effPerCase`, shared with the priority ranking (#29):
+ * cached-rate effective $/case when computable, else the stored list-price
+ * $/case (`effective: false`). Null only when nothing was graded.
+ */
+function effCostPerCase(
+  r: CompareRow,
+  config: CompoundConfig | undefined,
+): { value: number; effective: boolean } | null {
+  if (r.graded === 0) return null;
   const entry = priceEntryFor(config, r);
   if (entry?.cached_input !== undefined && r.cachedTokens !== null) {
     const eff = costFromUsage(
@@ -474,20 +498,161 @@ const effPerCase = (r: CompareRow, config: CompoundConfig | undefined): string =
       },
       entry,
     );
-    return `$${(eff / r.graded).toFixed(5)}`;
+    return { value: eff / r.graded, effective: true };
   }
-  return `${perCase(r.totalCost, r.graded)}*`;
-};
+  return { value: r.totalCost / r.graded, effective: false };
+}
 /** Best-first: highest pass rate, then cheapest per case. */
 const byQualityThenCost = (a: CompareRow, b: CompareRow): number =>
   b.passed / b.graded - a.passed / a.graded || a.totalCost / a.graded - b.totalCost / b.graded;
+
+// --- priority ranking + Pareto frontier (#29) ------------------------------
+
+/**
+ * The raw per-axis values a route is scored on. Quality is the pass rate; cost
+ * is the EFFECTIVE $/case (cached-rate when computable, list price otherwise);
+ * latency/throughput are null when never measured, which excludes the row from
+ * a ranking that weights them (reported, not silent).
+ */
+function axisValuesFor(r: CompareRow, config: CompoundConfig | undefined): AxisValues {
+  return {
+    quality: r.graded > 0 ? r.passed / r.graded : null,
+    cost: effCostPerCase(r, config)?.value ?? null,
+    latency: r.latencyCount > 0 ? r.latencySum / r.latencyCount : null,
+    throughput: r.tpsCount > 0 ? r.tpsSum / r.tpsCount : null,
+  };
+}
+
+const routeName = (r: CompareRow): string => `${r.model} @${r.provider}`;
+
+/** Chart mark for a printed rank: 1–9, then a, b, c … */
+const rankMark = (rank: number): string =>
+  rank <= 9 ? String(rank) : String.fromCharCode(97 + ((rank - 10) % 26));
+
+/**
+ * The decision layer under a priority vector: the weighted ranked table, the
+ * Pareto frontier over the weighted axes, a cost-vs-quality chart, and explicit
+ * notes for every row or axis that could not take part in the scoring.
+ */
+function renderPriorityRanking(
+  env: CommandEnvironment,
+  rows: readonly CompareRow[],
+  config: CompoundConfig | undefined,
+  priority: PriorityVector,
+  source: string,
+  includePartition: boolean,
+): void {
+  env.write(`\npriority ranking — ${formatPriority(priority)}   (${source})`);
+  const result = rankRows(rows, (r) => axisValuesFor(r, config), priority);
+
+  if (result.ranked.length > 0) {
+    const headers = [
+      "rank",
+      "score",
+      "pareto",
+      "model",
+      "provider",
+      ...(includePartition ? ["partition"] : []),
+      "pass%",
+      "eff $/case",
+      "avg ms",
+      "tps",
+    ];
+    renderTable(
+      env,
+      headers,
+      result.ranked.map((row) => [
+        String(row.rank),
+        row.score.toFixed(3),
+        row.onFrontier ? "*" : "",
+        row.row.model,
+        row.row.provider,
+        ...(includePartition ? [row.row.partition] : []),
+        rate(row.row.passed, row.row.graded),
+        effPerCase(row.row, config),
+        avgMs(row.row),
+        avgTps(row.row),
+      ]),
+    );
+  } else {
+    env.write("  (no rows scorable under this priority)");
+  }
+
+  for (const axis of result.droppedAxes) {
+    env.write(`  note: axis '${axis}' dropped from scoring — every scorable row is equal on it.`);
+  }
+  if (result.allDegenerate) {
+    env.write(
+      "  note: every weighted axis is equal across rows — no ranking signal; all rows tie.",
+    );
+  }
+  for (const { row, missingAxes } of result.excluded) {
+    env.write(
+      `  note: ${routeName(row)} excluded from ranking — no measured ${missingAxes.join(", ")}.`,
+    );
+  }
+  for (const row of result.ranked) {
+    if (row.dominatedBy !== null) {
+      env.write(
+        `  dominated: ${routeName(row.row)} — at least as bad as ` +
+          `${routeName(row.dominatedBy)} on every weighted axis, worse on one.`,
+      );
+    }
+  }
+
+  const points: ParetoPoint[] = result.ranked.flatMap((row) => {
+    const v = axisValuesFor(row.row, config);
+    if (v.cost === null || v.quality === null) return [];
+    return [
+      { mark: rankMark(row.rank), cost: v.cost, quality: v.quality, onFrontier: row.onFrontier },
+    ];
+  });
+  const chart = paretoChartLines(points);
+  if (chart.length > 0) {
+    env.write("\n  pareto — pass% (up) vs eff $/case (right; cheaper is left)");
+    env.write("  marks = rank of frontier rows, · = dominated, + = overlapping points");
+    for (const line of chart) env.write(line);
+  } else if (result.ranked.length >= 2) {
+    env.write("  (pareto chart omitted — rows do not spread on both cost and quality)");
+  }
+  env.write(
+    "  score = weighted sum of min-max normalized axes (cost, latency inverted); " +
+      "pareto * = no row is at least as good on every weighted axis and better on one.",
+  );
+}
 
 function compareView(
   db: ReturnType<CommandEnvironment["openDatabase"]>,
   env: CommandEnvironment,
   taskKey: string | undefined,
   config: CompoundConfig | undefined,
+  priorityFlag: string | boolean | undefined,
 ): CommandResult {
+  // Resolve the priority vector up front so a malformed flag fails before any
+  // query output. Flag wins; a per-task default in compound.yaml
+  // (task_keys.<task>.priority) applies to the per-task view.
+  let priority: PriorityVector | undefined;
+  let prioritySource = "--priority";
+  if (priorityFlag !== undefined) {
+    if (typeof priorityFlag !== "string") {
+      env.write(
+        "error: --priority needs a value, e.g. --priority quality=0.5,cost=0.3,latency=0.2",
+      );
+      return { exitCode: 2 };
+    }
+    try {
+      priority = parsePriority(priorityFlag);
+    } catch (error) {
+      env.write(`error: ${error instanceof Error ? error.message : error}`);
+      return { exitCode: 2 };
+    }
+  } else if (taskKey !== undefined) {
+    const configured = config?.task_keys?.[taskKey]?.priority;
+    if (configured !== undefined) {
+      priority = normalizePriority(configured);
+      prioritySource = `compound.yaml task_keys.${taskKey}.priority`;
+    }
+  }
   const experiments = listExperiments(
     db,
     taskKey === undefined ? { limit: 5000 } : { taskKey, limit: 5000 },
@@ -571,6 +736,9 @@ function compareView(
   if (taskKey !== undefined) {
     env.write(`cost / score — ${taskKey}\n`);
     renderTable(env, perTaskHeaders, [...rows].sort(byQualityThenCost).map(perTaskRow));
+    if (priority !== undefined) {
+      renderPriorityRanking(env, rows, config, priority, prioritySource, true);
+    }
     env.write(
       "\nlatest run per model+partition; cost is per graded case. " +
         "avg ms = full request latency (flex queue included); tps = output tokens / full latency. " +
@@ -637,6 +805,9 @@ function compareView(
     ]);
   env.write("cost / score — aggregated (per model, across all tasks)\n");
   renderTable(env, aggHeaders, aggRows);
+  if (priority !== undefined) {
+    renderPriorityRanking(env, [...agg.values()], config, priority, prioritySource, false);
+  }
 
   for (const tk of [...new Set(rows.map((r) => r.taskKey))].sort()) {
     env.write(`\n${tk}:`);
@@ -708,7 +879,7 @@ export function runViewCommand(args: ParsedArgs, env: CommandEnvironment): Comma
         } catch {
           config = undefined;
         }
-        return compareView(db, env, id, config);
+        return compareView(db, env, id, config, args.flags.priority);
       }
       default:
         env.write(

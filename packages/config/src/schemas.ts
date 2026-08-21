@@ -161,9 +161,27 @@ export const TaskReplaySchema = z.strictObject({
   per_tool: z.record(z.string(), ReplayPolicySchema).optional(),
 });
 
+/**
+ * Per-task default priority vector for `view compare` (#29): relative weights
+ * over the four decision axes. Unspecified axes weigh 0; the CLI normalizes the
+ * weights to sum to 1, so any positive scale works. `--priority` overrides it.
+ */
+export const PrioritySchema = z
+  .strictObject({
+    quality: z.number().nonnegative().optional(),
+    cost: z.number().nonnegative().optional(),
+    latency: z.number().nonnegative().optional(),
+    throughput: z.number().nonnegative().optional(),
+  })
+  .refine((p) => Object.values(p).some((w) => typeof w === "number" && w > 0), {
+    message: "priority needs at least one positive weight",
+  });
+
 export const TaskKeySchema = z.strictObject({
   description: z.string().optional(),
   replay: TaskReplaySchema,
+  /** Default ranking weights for `compound view compare <task_key>` (#29). */
+  priority: PrioritySchema.optional(),
 });
 
 /** Application-supplied task key -> its declared policy. */
@@ -456,6 +474,7 @@ export type Benchmark = z.infer<typeof BenchmarkSchema>;
 export type Optimization = z.infer<typeof OptimizationSchema>;
 export type Gate = z.infer<typeof GateSchema>;
 export type ReplayPolicy = z.infer<typeof ReplayPolicySchema>;
+export type Priority = z.infer<typeof PrioritySchema>;
 export type TaskReplay = z.infer<typeof TaskReplaySchema>;
 export type TaskKey = z.infer<typeof TaskKeySchema>;
 export type TaskKeys = z.infer<typeof TaskKeysSchema>;
