@@ -32,8 +32,9 @@ export type AssertionType = (typeof ASSERTION_TYPES)[number];
  * - `regex`    — the value (stringified) matches the pattern.
  * - `schema`   — the value satisfies a JSON schema.
  * - `subset`   — the value is an object containing each expected key/value
- *                (extra keys are allowed), so a task can pin the arguments it
- *                cares about without over-specifying the rest.
+ *                (extra keys are allowed); nested objects match recursively
+ *                with the same subset semantics, so a task can pin the
+ *                arguments it cares about without over-specifying the rest.
  */
 export type ToolArgMatch =
   | { equals: unknown }

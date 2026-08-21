@@ -72,6 +72,13 @@ export const validCases: Record<string, Record<string, unknown>> = {
         match: { subset: { amount: 23, account: "acct_9" } },
         weight: 2,
       },
+      // Nested subset: pins `filters.min` without over-specifying `filters`.
+      {
+        type: "tool_call_arg",
+        name: "search",
+        match: { subset: { filters: { min: 10 } } },
+        required: false,
+      },
     ],
   }),
 };
