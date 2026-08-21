@@ -186,6 +186,52 @@ describe("tool_call_arg", () => {
     expect(run(assertion, disputeWrong).passed).toBe(false);
   });
 
+  test("a wrong argument's diagnostic names the mismatched argument (#21)", () => {
+    const result = run(
+      { type: "tool_call_arg", name: "dispute_charge", match: { subset: { amount: 23 } } },
+      disputeWrong,
+    );
+    expect(result.passed).toBe(false);
+    expect(result.detail).toContain("'amount' expected 23, got 99");
+  });
+
+  test("subset matches nested arguments recursively — extra nested keys allowed", () => {
+    const output = toolOutput([
+      {
+        id: "1",
+        name: "search",
+        arguments: { query: "flights", filters: { min: 10, max: 50, sort: "asc" } },
+      },
+    ]);
+    const assertion: Assertion = {
+      type: "tool_call_arg",
+      name: "search",
+      match: { subset: { filters: { min: 10, max: 50 } } },
+    };
+    expect(run(assertion, output).passed).toBe(true);
+  });
+
+  test("a wrong nested argument fails and the diagnostic names its dot-path (#21)", () => {
+    const output = toolOutput([
+      { id: "1", name: "search", arguments: { filters: { min: 12, max: 50 } } },
+    ]);
+    const result = run(
+      { type: "tool_call_arg", name: "search", match: { subset: { filters: { min: 10 } } } },
+      output,
+    );
+    expect(result.passed).toBe(false);
+    expect(result.detail).toContain("'filters.min' expected 10, got 12");
+  });
+
+  test("a pinned argument the call never sent fails as missing, by name (#21)", () => {
+    const result = run(
+      { type: "tool_call_arg", name: "dispute_charge", match: { subset: { memo: "wire" } } },
+      disputeRight,
+    );
+    expect(result.passed).toBe(false);
+    expect(result.detail).toContain("missing 'memo'");
+  });
+
   test("regex matches a stringified argument", () => {
     const output = toolOutput([{ id: "1", name: "email", arguments: { to: "user@example.com" } }]);
     expect(

@@ -36,6 +36,37 @@ function stringify(value: unknown): string {
   return text.length > 80 ? `${text.slice(0, 77)}…` : text;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Why `value` fails to contain `subset`, or null when it does. Nested plain
+ * objects match recursively with the same subset semantics — extra keys are
+ * allowed at every depth — so `{filters: {min: 10}}` pins `filters.min`
+ * without over-specifying the rest of `filters`. Returns the first mismatch
+ * by dot-path, so a wrong-args failure names the argument that was wrong.
+ */
+function subsetMismatch(
+  value: unknown,
+  subset: Record<string, unknown>,
+  path?: string,
+): string | null {
+  if (!isPlainObject(value)) return `${path ?? "arguments"} is not an object`;
+  for (const [key, expected] of Object.entries(subset)) {
+    const at = path === undefined ? key : `${path}.${key}`;
+    if (!(key in value)) return `missing '${at}'`;
+    const actual = value[key];
+    if (isPlainObject(expected) && isPlainObject(actual)) {
+      const nested = subsetMismatch(actual, expected, at);
+      if (nested !== null) return nested;
+    } else if (!structuralEqual(actual, expected)) {
+      return `'${at}' expected ${stringify(expected)}, got ${stringify(actual)}`;
+    }
+  }
+  return null;
+}
+
 /** A short, value-free description of a tool-arg matcher for `detail` lines. */
 function matcherLabel(match: ToolArgMatch): string {
   if ("equals" in match) return `equals ${stringify(match.equals)}`;
@@ -90,21 +121,16 @@ function compileMatcher(match: unknown): ((value: unknown) => boolean) | { error
     // guard `{subset: 23}` reached Object.entries(23) → [] → `.every()` returned
     // true for ANY argument, so a malformed matcher passed vacuously.
     const subset = m.subset;
-    if (subset === null || typeof subset !== "object" || Array.isArray(subset)) {
+    if (!isPlainObject(subset)) {
       return { error: "tool_call_arg 'subset' must be an object of key/value pairs" };
     }
-    const entries = Object.entries(subset as Record<string, unknown>);
-    // An EMPTY subset `{}` is a vacuous matcher: `[].every()` is true, so it would
-    // pass against ANY argument (#9). A matcher that constrains nothing is a config
-    // mistake, not a wildcard — fail it rather than silently pass every call.
-    if (entries.length === 0) {
+    // An EMPTY subset `{}` is a vacuous matcher: it would pass against ANY
+    // argument (#9). A matcher that constrains nothing is a config mistake, not
+    // a wildcard — fail it rather than silently pass every call.
+    if (Object.keys(subset).length === 0) {
       return { error: "tool_call_arg 'subset' must not be empty" };
     }
-    return (value) => {
-      if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-      const obj = value as Record<string, unknown>;
-      return entries.every(([key, expected]) => key in obj && structuralEqual(obj[key], expected));
-    };
+    return (value) => subsetMismatch(value, subset) === null;
   }
   if ("schema" in m) {
     if (m.schema === null || typeof m.schema !== "object" || Array.isArray(m.schema)) {
@@ -260,6 +286,7 @@ function evaluateOne(assertion: Assertion, subject: AssertionSubject): Outcome {
       const label = matcherLabel(assertion.match);
       // Passes if ANY call to the tool satisfies the matcher — mirrors
       // `tool_arg_equals`, which grades the tool's behaviour across all its calls.
+      let mismatch: string | null = null;
       for (const call of calls) {
         const value =
           assertion.arg === undefined ? call.arguments : walkPath(call.arguments, assertion.arg);
@@ -267,10 +294,19 @@ function evaluateOne(assertion: Assertion, subject: AssertionSubject): Outcome {
         if (compiled(value)) {
           return { passed: true, detail: `tool '${assertion.name}' ${target} ${label}` };
         }
+        // For subset, "never contains [keys]" alone does not say WHICH argument
+        // was wrong (#21) — keep the first call's mismatch for the detail line.
+        if (
+          mismatch === null &&
+          "subset" in assertion.match &&
+          isPlainObject(assertion.match.subset)
+        ) {
+          mismatch = subsetMismatch(value, assertion.match.subset);
+        }
       }
       return {
         passed: false,
-        detail: `tool '${assertion.name}' ${target} never ${label}`,
+        detail: `tool '${assertion.name}' ${target} never ${label}${mismatch === null ? "" : ` (${mismatch})`}`,
       };
     }
 
