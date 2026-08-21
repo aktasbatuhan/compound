@@ -46,6 +46,8 @@ interface ResponsePayload {
     input_tokens?: number;
     output_tokens?: number;
     output_tokens_details?: { reasoning_tokens?: number };
+    /** Responses-API cached-prompt report (issue #34). */
+    input_tokens_details?: { cached_tokens?: number };
     total_tokens?: number;
   };
   model?: string;
@@ -157,6 +159,11 @@ function responsesUsage(payload: ResponsePayload): CompletionUsage | null {
   return {
     input_tokens: raw.input_tokens ?? 0,
     output_tokens: raw.output_tokens ?? 0,
+    // null = the provider reported no cached-token field, distinct from 0 (#34).
+    cached_input_tokens:
+      typeof raw.input_tokens_details?.cached_tokens === "number"
+        ? raw.input_tokens_details.cached_tokens
+        : null,
     ...(raw.output_tokens_details?.reasoning_tokens !== undefined
       ? { reasoning_tokens: raw.output_tokens_details.reasoning_tokens }
       : {}),

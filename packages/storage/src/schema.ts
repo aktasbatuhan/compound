@@ -231,6 +231,14 @@ export const completions = sqliteTable("completions", {
   paramsJson: text("params_json", { mode: "json" }),
   outputJson: text("output_json", { mode: "json" }).notNull(),
   usageJson: text("usage_json", { mode: "json" }),
+  /**
+   * Prompt tokens the provider served from its own cache (issue #34), projected
+   * out of `usageJson` so telemetry can aggregate hit rates without parsing
+   * JSON. NULL means the provider did not report a cached-token field (and for
+   * all pre-migration rows) — deliberately distinct from a reported 0, so
+   * views show "unreported" instead of a false 0%.
+   */
+  cachedInputTokens: integer("cached_input_tokens"),
   finishReason: text("finish_reason"),
   latencyMs: integer("latency_ms"),
   /**

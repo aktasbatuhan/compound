@@ -4,6 +4,7 @@ import {
   cacheCompletion,
   createDatabase,
   createExperiment,
+  getCachedCompletion,
   migrate,
   recordCaseResults,
   telemetryRollup,
@@ -31,6 +32,8 @@ interface SeedCall {
   upstreamProvider?: string;
   /** Doubleword service tier (flex/default/scale); omit for the default route (#9). */
   serviceTier?: string;
+  /** Provider-reported cached prompt tokens; omit to model an UNREPORTING provider (#34). */
+  cachedTokens?: number;
 }
 
 /** One experiment whose graded cases each point at a cached completion. */
@@ -49,7 +52,11 @@ function seedExperiment(taskKey: string, model: string, provider: string, calls:
       model,
       params: call.serviceTier !== undefined ? { service_tier: call.serviceTier } : null,
       output: { role: "assistant", content: "x" },
-      usage: { input_tokens: 100, output_tokens: call.outputTokens },
+      usage: {
+        input_tokens: 100,
+        output_tokens: call.outputTokens,
+        ...(call.cachedTokens !== undefined ? { cached_input_tokens: call.cachedTokens } : {}),
+      },
       latencyMs: call.latencyMs,
       ...(call.queueMs !== undefined ? { queueMs: call.queueMs } : {}),
       ...(call.upstreamProvider !== undefined ? { upstreamProvider: call.upstreamProvider } : {}),
@@ -224,5 +231,85 @@ describe("telemetryRollup", () => {
     expect(telemetryRollup(db, "support")).toHaveLength(1);
     expect(telemetryRollup(db, "support")[0]?.taskKey).toBe("support");
     expect(telemetryRollup(db)).toHaveLength(2);
+  });
+
+  test("cache hit rate is cached / input over the reporting completions (#34)", () => {
+    // 100 input tokens per call: 90 + 50 cached over 200 input → 70%.
+    seedExperiment("support", "kimi-k3", "zai", [
+      { fingerprint: "z1", latencyMs: 100, costUsd: 0.01, outputTokens: 10, cachedTokens: 90 },
+      { fingerprint: "z2", latencyMs: 100, costUsd: 0.01, outputTokens: 10, cachedTokens: 50 },
+    ]);
+
+    const [group] = telemetryRollup(db);
+    expect(group?.totalCachedInputTokens).toBe(140);
+    expect(group?.cacheHitRate).toBeCloseTo(0.7, 10);
+  });
+
+  test("an unreporting provider yields NULL hit rate — never a false 0% (#34)", () => {
+    // No cachedTokens seeded → the stored column is NULL, not 0.
+    seedExperiment("support", "kimi-k3", "doubleword", [
+      { fingerprint: "d1", latencyMs: 100, costUsd: 0.01, outputTokens: 10 },
+    ]);
+    // A provider that REPORTS 0 is a real 0% — distinct from unreported.
+    seedExperiment("support", "kimi-k3", "parasail", [
+      { fingerprint: "p1", latencyMs: 100, costUsd: 0.01, outputTokens: 10, cachedTokens: 0 },
+    ]);
+
+    const groups = telemetryRollup(db);
+    const unreported = groups.find((g) => g.provider === "doubleword");
+    expect(unreported?.totalCachedInputTokens).toBeNull();
+    expect(unreported?.cacheHitRate).toBeNull();
+    const zero = groups.find((g) => g.provider === "parasail");
+    expect(zero?.totalCachedInputTokens).toBe(0);
+    expect(zero?.cacheHitRate).toBe(0);
+  });
+
+  test("mixed reporting: unreported completions are excluded from both sides (#34)", () => {
+    // One reporting call (80/100 cached), one unreported → 80%, not 40%.
+    seedExperiment("support", "kimi-k3", "fireworks", [
+      { fingerprint: "m1", latencyMs: 100, costUsd: 0.01, outputTokens: 10, cachedTokens: 80 },
+      { fingerprint: "m2", latencyMs: 100, costUsd: 0.01, outputTokens: 10 },
+    ]);
+
+    const [group] = telemetryRollup(db);
+    expect(group?.totalCachedInputTokens).toBe(80);
+    expect(group?.cacheHitRate).toBeCloseTo(0.8, 10);
+  });
+});
+
+describe("cached-token column round-trip (#34)", () => {
+  test("a reported figure is projected into the column; unreported stays NULL", () => {
+    cacheCompletion(db, {
+      fingerprint: "rt-reported",
+      provider: "zai",
+      model: "kimi-k3",
+      params: null,
+      output: { role: "assistant", content: "x" },
+      usage: { input_tokens: 100, output_tokens: 10, cached_input_tokens: 93 },
+      costUsd: 0.01,
+    });
+    cacheCompletion(db, {
+      fingerprint: "rt-zero",
+      provider: "parasail",
+      model: "kimi-k3",
+      params: null,
+      output: { role: "assistant", content: "x" },
+      usage: { input_tokens: 100, output_tokens: 10, cached_input_tokens: 0 },
+      costUsd: 0.01,
+    });
+    cacheCompletion(db, {
+      fingerprint: "rt-unreported",
+      provider: "doubleword",
+      model: "kimi-k3",
+      params: null,
+      output: { role: "assistant", content: "x" },
+      usage: { input_tokens: 100, output_tokens: 10 },
+      costUsd: 0.01,
+    });
+
+    expect(getCachedCompletion(db, "rt-reported")?.cachedInputTokens).toBe(93);
+    // A reported 0 round-trips as 0; a missing field round-trips as NULL.
+    expect(getCachedCompletion(db, "rt-zero")?.cachedInputTokens).toBe(0);
+    expect(getCachedCompletion(db, "rt-unreported")?.cachedInputTokens).toBeNull();
   });
 });

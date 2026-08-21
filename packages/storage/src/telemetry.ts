@@ -43,6 +43,18 @@ export interface TelemetryGroup {
    * time-to-first-token; it is not a server-only decode benchmark.
    */
   outputTps: number;
+  /**
+   * Total provider-reported cached prompt tokens over the group (#34). `null`
+   * when NO completion in the group reported a cached-token field — the
+   * provider is "unreported", which must never render as 0.
+   */
+  totalCachedInputTokens: number | null;
+  /**
+   * Provider cache hit rate: cached / input tokens, summed over the completions
+   * that REPORTED a cached figure (a reported 0 counts; an unreported one is
+   * excluded from both sides). `null` when nothing was reported.
+   */
+  cacheHitRate: number | null;
 }
 
 interface Observation {
@@ -52,6 +64,8 @@ interface Observation {
   costUsd: number;
   inputTokens: number;
   outputTokens: number;
+  /** Provider-reported cached prompt tokens; null when unreported (#34). */
+  cachedInputTokens: number | null;
 }
 
 /** Nearest-rank quantile over an unsorted sample; 0 for an empty sample. */
@@ -98,6 +112,18 @@ export function usageTokens(usageJson: unknown): { input: number; output: number
   };
 }
 
+/**
+ * The cached-prompt token count from a completion's stored usage (#34), or
+ * `null` when the provider reported no cached-token field — NOT a defaulted 0,
+ * because "unreported" and "reported no hit" must stay distinguishable all the
+ * way to the views. This is what `cacheCompletion` projects into the
+ * `cached_input_tokens` column.
+ */
+export function cachedTokensOf(usageJson: unknown): number | null {
+  const usage = (usageJson ?? {}) as { cached_input_tokens?: unknown };
+  return typeof usage.cached_input_tokens === "number" ? usage.cached_input_tokens : null;
+}
+
 function sum(xs: number[]): number {
   return xs.reduce((a, b) => a + b, 0);
 }
@@ -125,6 +151,7 @@ export function telemetryRollup(handle: CompoundDatabase, taskKey?: string): Tel
       queueMs: completions.queueMs,
       costUsd: completions.costUsd,
       usageJson: completions.usageJson,
+      cachedInputTokens: completions.cachedInputTokens,
     })
     .from(experimentResults)
     .innerJoin(experiments, eq(experiments.id, experimentResults.experimentId))
@@ -156,6 +183,7 @@ export function telemetryRollup(handle: CompoundDatabase, taskKey?: string): Tel
       costUsd: row.costUsd,
       inputTokens: tokens.input,
       outputTokens: tokens.output,
+      cachedInputTokens: row.cachedInputTokens,
     });
   }
 
@@ -181,6 +209,14 @@ export function telemetryRollup(handle: CompoundDatabase, taskKey?: string): Tel
     const totalCost = sum(observations.map((o) => o.costUsd));
     const totalInput = sum(observations.map((o) => o.inputTokens));
     const totalOutput = sum(observations.map((o) => o.outputTokens));
+    // Hit rate over the completions that REPORTED a cached figure only (#34):
+    // mixing unreported observations into the denominator would understate a
+    // provider whose reporting is partial. No reports at all → null, so an
+    // unreported provider surfaces as "—", never a false 0%.
+    const reporting = observations.filter((o) => o.cachedInputTokens !== null);
+    const totalCached =
+      reporting.length > 0 ? sum(reporting.map((o) => o.cachedInputTokens as number)) : null;
+    const reportedInput = sum(reporting.map((o) => o.inputTokens));
     result.push({
       taskKey: group.taskKey,
       model: group.model,
@@ -199,6 +235,8 @@ export function telemetryRollup(handle: CompoundDatabase, taskKey?: string): Tel
       totalInputTokens: totalInput,
       totalOutputTokens: totalOutput,
       outputTps: quantile(tpsSamples, 0.5),
+      totalCachedInputTokens: totalCached,
+      cacheHitRate: totalCached !== null && reportedInput > 0 ? totalCached / reportedInput : null,
     });
   }
   result.sort(

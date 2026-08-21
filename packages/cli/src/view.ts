@@ -7,6 +7,8 @@
  * Ids may be given as an 8+ char prefix; a unique match resolves. `--full`
  * disables the output truncation that keeps the default views scannable.
  */
+import { type CompoundConfig, loadConfig } from "@compound/config";
+import { costFromUsage, type TokenPrice } from "@compound/execution";
 import {
   type CaseRow,
   countCasesByPartition,
@@ -27,7 +29,7 @@ import {
   telemetryRollup,
 } from "@compound/storage";
 import type { CommandEnvironment, CommandResult, ParsedArgs } from "./commands";
-import { DEFAULT_DATABASE_PATH } from "./commands";
+import { DEFAULT_CONFIG_PATH, DEFAULT_DATABASE_PATH } from "./commands";
 
 function stringFlag(flags: ParsedArgs["flags"], name: string): string | undefined {
   const value = flags[name];
@@ -389,6 +391,10 @@ interface CompareRow {
   taskKey: string;
   model: string;
   provider: string;
+  /** The bare provider name (no upstream/tier folded in), for price lookup (#34). */
+  baseProvider: string;
+  /** Doubleword service tier when set — selects the flex price table (#34). */
+  serviceTier: string | null;
   partition: string;
   graded: number;
   passed: number;
@@ -398,6 +404,12 @@ interface CompareRow {
   latencyCount: number;
   tpsSum: number;
   tpsCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** Reported cached prompt tokens; null when the provider never reported (#34). */
+  cachedTokens: number | null;
+  /** Input tokens on the completions that reported cached — the hit-rate denominator. */
+  reportedInputTokens: number;
 }
 
 /** Render an aligned table (telemetry's column-padding style). */
@@ -417,6 +429,55 @@ const avgMs = (r: CompareRow): string =>
   r.latencyCount > 0 ? String(Math.round(r.latencySum / r.latencyCount)) : "—";
 const avgTps = (r: CompareRow): string =>
   r.tpsCount > 0 ? (r.tpsSum / r.tpsCount).toFixed(1) : "—";
+/** Provider cache hit rate; "—" when the provider never reported cached tokens (#34). */
+const hitRate = (r: CompareRow): string =>
+  r.cachedTokens === null || r.reportedInputTokens === 0
+    ? "—"
+    : `${((r.cachedTokens / r.reportedInputTokens) * 100).toFixed(1)}%`;
+
+/**
+ * The price entry for a compare row, mirroring `resolveModel`'s fallback order:
+ * the provider's own table first, then the matching global table. A compare row
+ * no longer knows its transport, so a recorded service tier prefers the flex
+ * table; a model priced in only one table resolves unambiguously either way.
+ */
+function priceEntryFor(config: CompoundConfig | undefined, r: CompareRow): TokenPrice | undefined {
+  if (config === undefined) return undefined;
+  const tables = [
+    config.providers?.[r.baseProvider]?.pricing_usd_per_million_tokens,
+    ...(r.serviceTier !== null
+      ? [config.flex_pricing_usd_per_million_tokens, config.pricing_usd_per_million_tokens]
+      : [config.pricing_usd_per_million_tokens, config.flex_pricing_usd_per_million_tokens]),
+  ];
+  for (const table of tables) {
+    const entry = table?.[r.model];
+    if (entry !== undefined) return entry;
+  }
+  return undefined;
+}
+
+/**
+ * Effective $/case (#34): cached input priced at the config's `cached_input`
+ * rate. Falls back to the stored (list-price) cost — marked with `*` — when no
+ * cached rate is configured for the model OR the provider never reported cached
+ * tokens; an unreported provider is never silently flattered with a discount.
+ */
+const effPerCase = (r: CompareRow, config: CompoundConfig | undefined): string => {
+  if (r.graded === 0) return "—";
+  const entry = priceEntryFor(config, r);
+  if (entry?.cached_input !== undefined && r.cachedTokens !== null) {
+    const eff = costFromUsage(
+      {
+        input_tokens: r.inputTokens,
+        output_tokens: r.outputTokens,
+        cached_input_tokens: r.cachedTokens,
+      },
+      entry,
+    );
+    return `$${(eff / r.graded).toFixed(5)}`;
+  }
+  return `${perCase(r.totalCost, r.graded)}*`;
+};
 /** Best-first: highest pass rate, then cheapest per case. */
 const byQualityThenCost = (a: CompareRow, b: CompareRow): number =>
   b.passed / b.graded - a.passed / a.graded || a.totalCost / a.graded - b.totalCost / b.graded;
@@ -425,6 +486,7 @@ function compareView(
   db: ReturnType<CommandEnvironment["openDatabase"]>,
   env: CommandEnvironment,
   taskKey: string | undefined,
+  config: CompoundConfig | undefined,
 ): CommandResult {
   const experiments = listExperiments(
     db,
@@ -447,6 +509,8 @@ function compareView(
       taskKey: e.taskKey,
       model: e.candidateModel,
       provider,
+      baseProvider: sc.provider ?? "?",
+      serviceTier: sc.serviceTier,
       partition: e.partition,
       graded: sc.graded,
       passed: sc.passed,
@@ -456,6 +520,10 @@ function compareView(
       latencyCount: sc.latencyCount,
       tpsSum: (sc.meanTps ?? 0) * sc.tpsCount,
       tpsCount: sc.tpsCount,
+      inputTokens: sc.totalInputTokens,
+      outputTokens: sc.totalOutputTokens,
+      cachedTokens: sc.cachedInputTokens,
+      reportedInputTokens: sc.reportedInputTokens,
     });
   }
   if (rows.length === 0) {
@@ -477,6 +545,8 @@ function compareView(
     "avg ms",
     "tps",
     "$/case",
+    "eff $/case",
+    "hit%",
     "total $",
   ] as const;
   const perTaskRow = (r: CompareRow): string[] => [
@@ -489,15 +559,22 @@ function compareView(
     avgMs(r),
     avgTps(r),
     perCase(r.totalCost, r.graded),
+    effPerCase(r, config),
+    hitRate(r),
     `$${r.totalCost.toFixed(5)}`,
   ];
+  const cacheLegend =
+    "eff $/case prices reported cached input at pricing's cached_input rate; " +
+    "* = list price (no cached_input rate configured, or cached tokens unreported). " +
+    "hit% = provider cache hit rate; — = provider did not report cached tokens.";
 
   if (taskKey !== undefined) {
     env.write(`cost / score — ${taskKey}\n`);
     renderTable(env, perTaskHeaders, [...rows].sort(byQualityThenCost).map(perTaskRow));
     env.write(
       "\nlatest run per model+partition; cost is per graded case. " +
-        "avg ms = full request latency (flex queue included); tps = output tokens / full latency.",
+        "avg ms = full request latency (flex queue included); tps = output tokens / full latency. " +
+        cacheLegend,
     );
     return { exitCode: 0 };
   }
@@ -518,6 +595,13 @@ function compareView(
       acc.latencyCount += r.latencyCount;
       acc.tpsSum += r.tpsSum;
       acc.tpsCount += r.tpsCount;
+      acc.inputTokens += r.inputTokens;
+      acc.outputTokens += r.outputTokens;
+      // null stays null unless SOME row reported cached tokens (#34).
+      if (r.cachedTokens !== null) {
+        acc.cachedTokens = (acc.cachedTokens ?? 0) + r.cachedTokens;
+      }
+      acc.reportedInputTokens += r.reportedInputTokens;
       acc.tasks.add(r.taskKey);
     }
   }
@@ -531,6 +615,8 @@ function compareView(
     "avg ms",
     "tps",
     "$/case",
+    "eff $/case",
+    "hit%",
     "total $",
   ] as const;
   const aggRows = [...agg.values()]
@@ -545,6 +631,8 @@ function compareView(
       avgMs(r),
       avgTps(r),
       perCase(r.totalCost, r.graded),
+      effPerCase(r, config),
+      hitRate(r),
       `$${r.totalCost.toFixed(5)}`,
     ]);
   env.write("cost / score — aggregated (per model, across all tasks)\n");
@@ -564,7 +652,8 @@ function compareView(
   env.write(
     "\nbest-first (highest pass%, then cheapest); cost is per graded case; " +
       "avg ms = full latency (flex queue included), tps = output tokens / full latency. " +
-      "one task:  compound view compare <task_key>",
+      cacheLegend +
+      " one task:  compound view compare <task_key>",
   );
   return { exitCode: 0 };
 }
@@ -609,8 +698,18 @@ export function runViewCommand(args: ParsedArgs, env: CommandEnvironment): Comma
       case "experiment":
       case "exp":
         return id === undefined ? experimentList(db, env) : experimentDetail(db, env, id);
-      case "compare":
-        return compareView(db, env, id);
+      case "compare": {
+        // Config supplies the pricing tables for effective cost (#34). Best
+        // effort: without one, eff $/case simply falls back to the stored
+        // list-price figures (marked `*`) — a view never fails on a missing yaml.
+        let config: CompoundConfig | undefined;
+        try {
+          config = loadConfig(stringFlag(args.flags, "config") ?? DEFAULT_CONFIG_PATH);
+        } catch {
+          config = undefined;
+        }
+        return compareView(db, env, id, config);
+      }
       default:
         env.write(
           `error: unknown view '${subject}'; one of: gate, case, trace, experiment, compare (or no argument for the overview)`,

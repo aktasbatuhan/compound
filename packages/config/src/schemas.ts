@@ -35,6 +35,12 @@ export const BudgetSchema = z.looseObject({
 export const TokenPriceSchema = z.looseObject({
   input: z.number().nonnegative(),
   output: z.number().nonnegative(),
+  /**
+   * USD per million CACHED input tokens (issue #34) — the discounted rate a
+   * provider bills for prompt-cache hits. Optional: when absent, cached input
+   * is billed at the list `input` rate and views mark the cost as list-price.
+   */
+  cached_input: z.number().nonnegative().optional(),
 });
 
 export const PricingTableSchema = z.record(z.string(), TokenPriceSchema);

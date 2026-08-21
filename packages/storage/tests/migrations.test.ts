@@ -104,11 +104,12 @@ describe("migrations", () => {
     handle.close();
   });
 
-  test("0012 adds the columns and BACKFILLS content_hash on a populated pre-0012 db (#5)", () => {
-    // Build a migrations folder truncated at 0011 (no 0012), so we can reach the
-    // real legacy state — a populated experiment_results with NO content_hash —
-    // and then apply 0012 as an UPGRADE, exactly as a real database would. The
-    // all-at-once `freshDatabase()` path never exercises the backfill UPDATE.
+  test("0012+ add the columns and BACKFILL content_hash on a populated pre-0012 db (#5)", () => {
+    // Build a migrations folder truncated at 0011 (no 0012 or later), so we can
+    // reach the real legacy state — a populated experiment_results with NO
+    // content_hash — and then apply 0012+ as an UPGRADE, exactly as a real
+    // database would. The all-at-once `freshDatabase()` path never exercises the
+    // backfill UPDATE.
     const tmp = mkdtempSync(join(tmpdir(), "compound-mig-"));
     const handle = createDatabase({ path: ":memory:" });
     try {
@@ -127,6 +128,7 @@ describe("migrations", () => {
       migrate(handle, tmp);
       expect(columnNames(handle, "experiment_results")).not.toContain("content_hash");
       expect(columnNames(handle, "gate_specs")).not.toContain("max_skip_fraction");
+      expect(columnNames(handle, "completions")).not.toContain("cached_input_tokens");
 
       // Populate the exact legacy shape 0012 must upgrade: a case carrying a
       // content hash, and an experiment_result that predates the content_hash
@@ -145,10 +147,12 @@ describe("migrations", () => {
         .query("INSERT INTO experiment_results (experiment_id, case_id, status) VALUES (?,?,?)")
         .run("exp-1", "c1", "graded");
 
-      // Apply the FULL folder → 0012 runs on the populated database.
+      // Apply the FULL folder → 0012 and everything after run on the populated db.
       migrate(handle, DRIZZLE_DIR);
       expect(columnNames(handle, "experiment_results")).toContain("content_hash");
       expect(columnNames(handle, "gate_specs")).toContain("max_skip_fraction");
+      // 0014 (#34): nullable cached-token column; pre-existing rows stay NULL.
+      expect(columnNames(handle, "completions")).toContain("cached_input_tokens");
 
       // The backfill copied the case's content hash onto the pre-existing row, so
       // the peeking guard can reconstruct the decided cohort without a live join.

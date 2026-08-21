@@ -207,7 +207,14 @@ describe("FlexProvider.complete", () => {
     // It polled until terminal, then returned the normalized completion.
     expect(calls.filter((c) => c.method === "GET").length).toBeGreaterThanOrEqual(2);
     expect(result.output.content).toBe('{"ok":true}');
-    expect(result.usage).toEqual({ input_tokens: 12, output_tokens: 5, reasoning_tokens: 2 });
+    // cached_input_tokens is explicitly null: this payload reported no
+    // cached-token field, and "unreported" must survive as null, not 0 (#34).
+    expect(result.usage).toEqual({
+      input_tokens: 12,
+      output_tokens: 5,
+      reasoning_tokens: 2,
+      cached_input_tokens: null,
+    });
     expect(result.resolvedModel).toBe("zai-org/GLM-5.2-FP8");
   });
 
