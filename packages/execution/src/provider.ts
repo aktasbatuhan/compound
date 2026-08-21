@@ -22,6 +22,15 @@ export interface CompletionUsage {
   output_tokens: number;
   reasoning_tokens?: number;
   total_tokens?: number;
+  /**
+   * Prompt tokens the PROVIDER served from its own cache (issue #34) — the
+   * number that decides the real bill on multi-turn workloads, since cached
+   * input is billed at a fraction of list rate. `null` (or absent) means the
+   * provider did not report a cached-token field at all, which is deliberately
+   * distinct from a reported 0 (a working report of "no cache hit"): downstream
+   * views must show "unreported", never a false 0%.
+   */
+  cached_input_tokens?: number | null;
 }
 
 export interface CompletionResponse {
@@ -153,7 +162,35 @@ interface ChatCompletionPayload {
     completion_tokens?: number;
     total_tokens?: number;
     completion_tokens_details?: { reasoning_tokens?: number };
+    /** OpenAI/OpenRouter-shaped cached-prompt report (issue #34). */
+    prompt_tokens_details?: { cached_tokens?: number };
+    /**
+     * Anthropic-style cached-prompt fields. There is no Anthropic-shaped adapter
+     * yet (`from-config` refuses `type: anthropic`), but some OpenAI-compatible
+     * gateways proxy Anthropic models and echo these fields verbatim, so they
+     * are read as a fallback — the parse hook a native adapter will share.
+     */
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
   };
+}
+
+/**
+ * The provider-reported cached prompt tokens from a raw usage payload, or
+ * `null` when NO cached-token field was reported (issue #34) — never a
+ * defaulted 0, so "provider did not report" survives into storage. Reads the
+ * OpenAI/OpenRouter shape first, then the Anthropic-style fields (see the
+ * payload type above; note Anthropic's `input_tokens` EXCLUDES cached reads,
+ * a difference a native Anthropic adapter must reconcile when it exists).
+ */
+export function cachedTokensFromUsage(
+  usage: NonNullable<ChatCompletionPayload["usage"]>,
+): number | null {
+  if (typeof usage.prompt_tokens_details?.cached_tokens === "number") {
+    return usage.prompt_tokens_details.cached_tokens;
+  }
+  if (typeof usage.cache_read_input_tokens === "number") return usage.cache_read_input_tokens;
+  return null;
 }
 
 /** Normalize an OpenAI-shaped response into a contract `Message` + usage. */
@@ -189,6 +226,8 @@ export function normalizeChatCompletion(
     ? {
         input_tokens: payload.usage.prompt_tokens ?? 0,
         output_tokens: payload.usage.completion_tokens ?? 0,
+        // Always explicit: null preserves "provider did not report" (issue #34).
+        cached_input_tokens: cachedTokensFromUsage(payload.usage),
         ...(payload.usage.completion_tokens_details?.reasoning_tokens !== undefined
           ? { reasoning_tokens: payload.usage.completion_tokens_details.reasoning_tokens }
           : {}),

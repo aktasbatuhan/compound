@@ -24,6 +24,7 @@ const HEADERS = [
   "p95 ms",
   "$/case",
   "tps",
+  "hit%",
 ] as const;
 
 export function runTelemetryCommand(args: ParsedArgs, env: CommandEnvironment): CommandResult {
@@ -55,6 +56,8 @@ export function runTelemetryCommand(args: ParsedArgs, env: CommandEnvironment): 
       String(Math.round(g.latencyP95Ms)),
       g.meanCostUsd.toFixed(4),
       g.outputTps.toFixed(1),
+      // "—" = the provider reported no cached-token field — never a false 0% (#34).
+      g.cacheHitRate === null ? "—" : `${(g.cacheHitRate * 100).toFixed(1)}%`,
     ]);
     const widths = HEADERS.map((h, i) =>
       Math.max(h.length, ...rows.map((r) => (r[i] as string).length)),
@@ -66,7 +69,9 @@ export function runTelemetryCommand(args: ParsedArgs, env: CommandEnvironment): 
     env.write(
       "\nqueue p50 = async wait before compute (flex route); decode p50 = latency − queue. " +
         "\ntps = output tokens / full request latency (includes queueing and TTFT); " +
-        "each cached completion counts once.",
+        "each cached completion counts once. " +
+        "\nhit% = provider-side prompt-cache hit rate (cached / input tokens); " +
+        "— = the provider did not report cached tokens.",
     );
     return { exitCode: 0 };
   } finally {

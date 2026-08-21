@@ -1464,4 +1464,128 @@ describe("view compare", () => {
     expect(out).toContain("openrouter/Fireworks");
     expect(out).toContain("openrouter/Together");
   });
+
+  // Cache hit rate + effective cost (#34): a provider that reports cached tokens
+  // gets a hit% and a cached-rate effective cost; one that doesn't shows "—" and
+  // a list-price cost marked `*` — never a false 0% or a silent discount.
+  function seedCachedVsUnreported(db: ReturnType<typeof createDatabase>) {
+    insertCases(db, [
+      {
+        caseId: "case:cache1",
+        taskKey: "finance.dispute_charge",
+        sourceTraceId: "trace:cache",
+        contentHash: "hash-cache",
+        provenance: "observed_output" as const,
+        partition: "optimizer_validation" as const,
+        input: { input: [{ role: "user", content: "dispute" }] },
+        expected: null,
+      },
+    ]);
+    // zai reports 900 of 1000 input tokens cached; doubleword reports nothing.
+    cacheCompletion(db, {
+      fingerprint: "fp-cached",
+      provider: "zai",
+      model: "kimi-k3",
+      params: {},
+      output: { role: "assistant", content: "act" },
+      costUsd: 0.0026,
+      usage: { input_tokens: 1000, output_tokens: 100, cached_input_tokens: 900 },
+    });
+    cacheCompletion(db, {
+      fingerprint: "fp-unrep",
+      provider: "doubleword",
+      model: "kimi-k3",
+      params: {},
+      output: { role: "assistant", content: "act" },
+      costUsd: 0.0026,
+      usage: { input_tokens: 1000, output_tokens: 100 },
+    });
+    for (const [provider, fp] of [
+      ["zai", "fp-cached"],
+      ["doubleword", "fp-unrep"],
+    ] as const) {
+      const exp = createExperiment(db, {
+        taskKey: "finance.dispute_charge",
+        candidateModel: "kimi-k3",
+        provider,
+        partition: "optimizer_validation",
+        paid: true,
+      });
+      recordCaseResults(db, exp.id, [
+        {
+          caseId: "case:cache1",
+          status: "graded",
+          passed: true,
+          score: 1,
+          completionFingerprint: fp,
+        },
+      ]);
+    }
+  }
+
+  const CACHED_RATE_CONFIG = [
+    "version: 1",
+    "artifacts_dir: artifacts",
+    "manifests_dir: manifests",
+    "benchmarks: {}",
+    "pricing_usd_per_million_tokens:",
+    "  kimi-k3:",
+    "    input: 2.0",
+    "    output: 6.0",
+    "    cached_input: 0.2",
+  ].join("\n");
+
+  test("hit% and cached-rate effective cost, with unreported rendered as — not 0% (#34)", async () => {
+    const { env, output, db } = testEnvironment();
+    seedCachedVsUnreported(db);
+    await withTempFile(CACHED_RATE_CONFIG, async (configPath) => {
+      const result = await runCommand(
+        ["view", "compare", "finance.dispute_charge", "--config", configPath],
+        env,
+      );
+      expect(result.exitCode).toBe(0);
+      const out = output();
+      expect(out).toContain("hit%");
+      expect(out).toContain("eff $/case");
+      const zai = out.split("\n").find((l) => l.includes("zai")) as string;
+      const doubleword = out.split("\n").find((l) => l.includes("doubleword")) as string;
+      // The hit% column is second-to-last (before "total $").
+      const hitCell = (line: string) =>
+        line
+          .trim()
+          .split(/\s{2,}/)
+          .at(-2);
+      // zai: 900/1000 cached → 90.0%; effective cost re-prices the cached 900
+      // at $0.2/M: (100·$2 + 900·$0.2 + 100·$6)/1M = $0.00098.
+      expect(hitCell(zai)).toBe("90.0%");
+      expect(zai).toContain("$0.00098");
+      // doubleword reported nothing: "—", NOT a 0% that silently penalizes it,
+      // and the effective cost falls back to the stored list-price figure,
+      // marked with `*`.
+      expect(hitCell(doubleword)).toBe("—");
+      expect(doubleword).toContain("$0.00260*");
+    });
+  });
+
+  test("without a cached_input rate the effective cost is the list price, marked `*` (#34)", async () => {
+    const { env, output, db } = testEnvironment();
+    seedCachedVsUnreported(db);
+    // Same config minus the cached_input rate: even the REPORTING provider must
+    // fall back to list price rather than invent a discount.
+    const listOnly = CACHED_RATE_CONFIG.split("\n")
+      .filter((l) => !l.includes("cached_input"))
+      .join("\n");
+    await withTempFile(listOnly, async (configPath) => {
+      const result = await runCommand(
+        ["view", "compare", "finance.dispute_charge", "--config", configPath],
+        env,
+      );
+      expect(result.exitCode).toBe(0);
+      const zai = output()
+        .split("\n")
+        .find((l) => l.includes("zai")) as string;
+      expect(zai).toContain("90.0%"); // the hit rate still shows
+      expect(zai).toContain("$0.00260*"); // but cost stays list-price, marked
+    });
+  });
 });

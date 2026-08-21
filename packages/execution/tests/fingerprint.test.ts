@@ -99,6 +99,39 @@ describe("costFromUsage", () => {
   test("is zero when usage is null", () => {
     expect(costFromUsage(null, { input: 5, output: 5 })).toBe(0);
   });
+
+  test("prices reported cached input at the cached rate when configured (#34)", () => {
+    // 800k of 1M input cached at $0.2/M, 200k at list $2/M, 500k output at $6/M.
+    const cost = costFromUsage(
+      { input_tokens: 1_000_000, output_tokens: 500_000, cached_input_tokens: 800_000 },
+      { input: 2, output: 6, cached_input: 0.2 },
+    );
+    expect(cost).toBeCloseTo(0.2 * 0.8 + 2 * 0.2 + 3, 9);
+  });
+
+  test("without a cached_input rate, cached tokens bill at list price (#34)", () => {
+    const cost = costFromUsage(
+      { input_tokens: 1_000_000, output_tokens: 500_000, cached_input_tokens: 800_000 },
+      { input: 2, output: 6 },
+    );
+    expect(cost).toBeCloseTo(2 + 3, 9);
+  });
+
+  test("unreported cached tokens (null) never discount, even with a cached rate (#34)", () => {
+    const cost = costFromUsage(
+      { input_tokens: 1_000_000, output_tokens: 500_000, cached_input_tokens: null },
+      { input: 2, output: 6, cached_input: 0.2 },
+    );
+    expect(cost).toBeCloseTo(2 + 3, 9);
+  });
+
+  test("a cached figure above input is clamped, so cost never goes negative", () => {
+    const cost = costFromUsage(
+      { input_tokens: 100, output_tokens: 0, cached_input_tokens: 500 },
+      { input: 2, output: 6, cached_input: 0.2 },
+    );
+    expect(cost).toBeCloseTo((100 / 1_000_000) * 0.2, 12);
+  });
 });
 
 describe("estimateCost", () => {

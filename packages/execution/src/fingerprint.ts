@@ -75,15 +75,33 @@ export interface TokenPrice {
   input: number;
   /** USD per million output tokens. */
   output: number;
+  /**
+   * USD per million CACHED input tokens (issue #34). Optional: when absent,
+   * cached input is billed at the list `input` rate — the cost is then a
+   * list-price figure, not an effective one, and views mark it as such.
+   */
+  cached_input?: number;
 }
 
 /**
  * Cost from usage and a price table. Reasoning tokens are billed at the output
  * rate (they are generated tokens), matching the benchmark engine.
+ *
+ * EFFECTIVE cost (issue #34): when the provider REPORTED cached prompt tokens
+ * and the price table carries a `cached_input` rate, those tokens are billed at
+ * the cached rate and only the remainder at list. Unreported cached tokens
+ * (`null`/absent) or a missing cached rate both fall back to list price for the
+ * whole prompt — never a silent discount.
  */
 export function costFromUsage(usage: CompletionUsage | null, price: TokenPrice): number {
   if (usage === null) return 0;
-  const inputCost = (usage.input_tokens / 1_000_000) * price.input;
+  const cached =
+    price.cached_input !== undefined && usage.cached_input_tokens != null
+      ? Math.min(usage.cached_input_tokens, usage.input_tokens)
+      : 0;
+  const inputCost =
+    ((usage.input_tokens - cached) / 1_000_000) * price.input +
+    (cached / 1_000_000) * (price.cached_input ?? 0);
   const outputCost = (usage.output_tokens / 1_000_000) * price.output;
   return inputCost + outputCost;
 }

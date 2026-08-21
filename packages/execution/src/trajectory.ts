@@ -287,6 +287,11 @@ function addUsage(a: CompletionUsage, b: CompletionUsage): CompletionUsage {
   if (a.reasoning_tokens !== undefined || b.reasoning_tokens !== undefined) {
     sum.reasoning_tokens = (a.reasoning_tokens ?? 0) + (b.reasoning_tokens ?? 0);
   }
+  // Sum only REPORTED cached figures; if no turn reported one, the aggregate
+  // stays unreported (absent) rather than becoming a false 0 (#34).
+  if (a.cached_input_tokens != null || b.cached_input_tokens != null) {
+    sum.cached_input_tokens = (a.cached_input_tokens ?? 0) + (b.cached_input_tokens ?? 0);
+  }
   if (a.total_tokens !== undefined || b.total_tokens !== undefined) {
     sum.total_tokens = (a.total_tokens ?? 0) + (b.total_tokens ?? 0);
   }

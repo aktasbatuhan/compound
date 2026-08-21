@@ -1,0 +1,1 @@
+ALTER TABLE `completions` ADD `cached_input_tokens` integer;

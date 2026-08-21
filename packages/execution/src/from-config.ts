@@ -242,7 +242,13 @@ export function resolveModel(
   return {
     provider,
     providerName,
-    price: { input: priceEntry.input, output: priceEntry.output },
+    price: {
+      input: priceEntry.input,
+      output: priceEntry.output,
+      // The cached-input rate rides along when declared (#34), so a run's
+      // ledgered cost is the effective bill, not the list price.
+      ...(priceEntry.cached_input !== undefined ? { cached_input: priceEntry.cached_input } : {}),
+    },
     wireModel,
     transport,
     ...(transportOverride !== undefined ? { transportOverride } : {}),

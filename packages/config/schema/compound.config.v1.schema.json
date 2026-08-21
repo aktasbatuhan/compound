@@ -85,6 +85,10 @@
                 "output": {
                   "type": "number",
                   "minimum": 0
+                },
+                "cached_input": {
+                  "type": "number",
+                  "minimum": 0
                 }
               },
               "required": [
@@ -207,6 +211,10 @@
           "output": {
             "type": "number",
             "minimum": 0
+          },
+          "cached_input": {
+            "type": "number",
+            "minimum": 0
           }
         },
         "required": [
@@ -229,6 +237,10 @@
             "minimum": 0
           },
           "output": {
+            "type": "number",
+            "minimum": 0
+          },
+          "cached_input": {
             "type": "number",
             "minimum": 0
           }

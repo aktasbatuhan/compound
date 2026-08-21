@@ -20,7 +20,7 @@ import {
   experiments,
   spendRecords,
 } from "./schema";
-import { serviceTierOf, usageTokens } from "./telemetry";
+import { cachedTokensOf, serviceTierOf, usageTokens } from "./telemetry";
 
 // --- budget ledger ---------------------------------------------------------
 
@@ -165,6 +165,9 @@ export function cacheCompletion(handle: CompoundDatabase, input: CacheCompletion
       paramsJson: input.params,
       outputJson: input.output,
       usageJson: input.usage ?? null,
+      // Projected from the usage payload (#34): a number only when the provider
+      // actually reported one; NULL keeps "unreported" distinct from 0.
+      cachedInputTokens: cachedTokensOf(input.usage),
       finishReason: input.finishReason ?? null,
       latencyMs: input.latencyMs ?? null,
       queueMs: input.queueMs ?? null,
@@ -387,6 +390,17 @@ export interface ExperimentScoreCost {
   meanTps: number | null;
   /** Completions that contributed a TPS sample. */
   tpsCount: number;
+  /** Total input/output tokens over the cases with a completion (effective-cost math, #34). */
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  /**
+   * Provider-reported cached prompt tokens, summed over the completions that
+   * reported one; `null` when NONE did — the provider is "unreported", which
+   * views must render as "—", never 0% (#34).
+   */
+  cachedInputTokens: number | null;
+  /** Input tokens on the completions that reported a cached figure — the hit-rate denominator. */
+  reportedInputTokens: number;
   /** The provider these completions ran on (one per experiment). */
   provider: string | null;
   /** The upstream host a broker (OpenRouter) dispatched to, when echoed; else null (#9). */
@@ -412,6 +426,7 @@ export function experimentScoreCost(
       costUsd: completions.costUsd,
       latencyMs: completions.latencyMs,
       usageJson: completions.usageJson,
+      cachedInputTokens: completions.cachedInputTokens,
       provider: completions.provider,
       upstreamProvider: completions.upstreamProvider,
       paramsJson: completions.paramsJson,
@@ -431,6 +446,10 @@ export function experimentScoreCost(
   let latencyCount = 0;
   let tpsSum = 0;
   let tpsCount = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let cachedInputTokens: number | null = null;
+  let reportedInputTokens = 0;
   let provider: string | null = null;
   let upstreamProvider: string | null = null;
   let serviceTier: string | null = null;
@@ -447,13 +466,21 @@ export function experimentScoreCost(
       totalCostUsd += r.costUsd;
       costN += 1;
     }
+    const tokens = usageTokens(r.usageJson);
+    totalInputTokens += tokens.input;
+    totalOutputTokens += tokens.output;
+    // Cached tokens sum only over completions that REPORTED one (#34); if none
+    // did, the whole experiment stays `null` — unreported, not 0.
+    if (r.cachedInputTokens !== null && r.cachedInputTokens !== undefined) {
+      cachedInputTokens = (cachedInputTokens ?? 0) + r.cachedInputTokens;
+      reportedInputTokens += tokens.input;
+    }
     if (r.latencyMs !== null && r.latencyMs > 0) {
       latencySum += r.latencyMs;
       latencyCount += 1;
       // TPS matches telemetry: output tokens over full request latency.
-      const output = usageTokens(r.usageJson).output;
-      if (output > 0) {
-        tpsSum += output / (r.latencyMs / 1000);
+      if (tokens.output > 0) {
+        tpsSum += tokens.output / (r.latencyMs / 1000);
         tpsCount += 1;
       }
     }
@@ -473,6 +500,10 @@ export function experimentScoreCost(
     latencyCount,
     meanTps: tpsCount > 0 ? tpsSum / tpsCount : null,
     tpsCount,
+    totalInputTokens,
+    totalOutputTokens,
+    cachedInputTokens,
+    reportedInputTokens,
     provider,
     upstreamProvider,
     serviceTier,
