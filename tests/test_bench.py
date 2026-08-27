@@ -24,6 +24,11 @@ def test_select_case_ids_filters_and_validates() -> None:
 
 def test_registry_manifests_are_partitioned() -> None:
     for bench in BENCHMARKS.values():
+        if not bench.manifest.exists():
+            # mmlu's manifest embeds the answer key, so the repo ships without it;
+            # it is rebuilt deterministically with `compound-bench prepare mmlu`.
+            assert bench.name == "mmlu", f"{bench.name} manifest missing from the repo"
+            continue
         cases = json.loads(bench.manifest.read_text())["cases"]
         assert cases, bench.name
         assert all("case_id" in c and "partition" in c for c in cases), bench.name

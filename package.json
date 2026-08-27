@@ -5,6 +5,7 @@
     "packages/*"
   ],
   "scripts": {
+    "compound": "bun run packages/cli/src/main.ts",
     "test": "bun test packages",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "biome check .",

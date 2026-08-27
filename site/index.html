@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compound: backtest every model switch on your own traffic</title>
+<meta name="description" content="Compound turns production traces into a standing answer to one question: can I move this workload to a cheaper model or a faster provider without losing quality? Local-first, money-safe, statistically honest. Apache-2.0.">
+<meta property="og:title" content="Compound: backtest every model switch on your own traffic">
+<meta property="og:description" content="Replay cheaper models and faster hosts against your graded production history. Verdicts with confidence intervals, never a vibe.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='13' height='13' fill='none' stroke='%2316181d' stroke-width='2'/%3E%3Crect x='9' y='9' width='13' height='13' fill='%232743e6'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --paper: #f3f2ec;
+    --panel: #eceae1;
+    --ink: #16181d;
+    --ink-soft: #4c515b;
+    --ink-faint: #8b8f98;
+    --line: #d6d3c8;
+    --line-strong: #bdb9ac;
+    --accent: #2743e6;
+    --accent-soft: #eaecfd;
+    --go: #1f7a4d;
+    --stop: #b23b2e;
+    --amber: #b9781a;
+    --shadow: rgba(20, 22, 28, 0.08);
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #101216;
+      --panel: #171a20;
+      --ink: #e9e7dd;
+      --ink-soft: #a9adb6;
+      --ink-faint: #6b7079;
+      --line: #262a32;
+      --line-strong: #333843;
+      --accent: #6a80ff;
+      --accent-soft: #1a2140;
+      --go: #4cc489;
+      --stop: #e8735f;
+      --amber: #e0a54a;
+      --shadow: rgba(0, 0, 0, 0.4);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #f3f2ec; --panel: #eceae1; --ink: #16181d; --ink-soft: #4c515b;
+    --ink-faint: #8b8f98; --line: #d6d3c8; --line-strong: #bdb9ac; --accent: #2743e6;
+    --accent-soft: #eaecfd; --go: #1f7a4d; --stop: #b23b2e; --amber: #b9781a; --shadow: rgba(20,22,28,0.08);
+  }
+  :root[data-theme="dark"] {
+    --paper: #101216; --panel: #171a20; --ink: #e9e7dd; --ink-soft: #a9adb6;
+    --ink-faint: #6b7079; --line: #262a32; --line-strong: #333843; --accent: #6a80ff;
+    --accent-soft: #1a2140; --go: #4cc489; --stop: #e8735f; --amber: #e0a54a; --shadow: rgba(0,0,0,0.4);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  ::selection { background: var(--accent); color: #fff; }
+
+  a { color: inherit; }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 32px 0 88px;
+    position: relative;
+  }
+  @media (max-width: 720px) { .wrap { padding: 0 20px; } }
+
+  .rail {
+    position: absolute;
+    left: 32px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--line);
+  }
+  @media (max-width: 720px) { .rail { display: none; } }
+  .rail-tick {
+    position: absolute;
+    left: -4px;
+    width: 9px;
+    height: 1px;
+    background: var(--line-strong);
+  }
+
+  .mono { font-family: var(--mono); }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 22px; height: 1px; background: var(--accent);
+    display: inline-block;
+  }
+
+  h1, h2, h3 { font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
+
+  header.nav {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--paper) 86%, transparent);
+    backdrop-filter: saturate(1.2) blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner {
+    max-width: 1180px; margin: 0 auto;
+    padding: 14px 32px 14px 88px;
+    display: flex; align-items: center; gap: 24px;
+  }
+  @media (max-width: 720px) { .nav-inner { padding: 12px 20px; } }
+  .logo {
+    font-family: var(--mono); font-weight: 700; font-size: 16px; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .logo .glyph {
+    width: 20px; height: 20px; position: relative; flex: none;
+  }
+  .logo .glyph::before, .logo .glyph::after {
+    content: ""; position: absolute; border: 1.6px solid var(--ink);
+  }
+  .logo .glyph::before { width: 13px; height: 13px; left: 0; top: 0; }
+  .logo .glyph::after { width: 13px; height: 13px; right: 0; bottom: 0; background: var(--accent); border-color: var(--accent); }
+  .nav-links { margin-left: auto; display: flex; gap: 26px; align-items: center; font-family: var(--mono); font-size: 13px; }
+  .nav-links a { text-decoration: none; color: var(--ink-soft); }
+  .nav-links a:hover { color: var(--accent); }
+  .nav-cta {
+    border: 1px solid var(--ink); border-radius: 2px; padding: 7px 14px;
+    color: var(--ink) !important; background: transparent; transition: all .15s;
+  }
+  .nav-cta:hover { background: var(--ink); color: var(--paper) !important; }
+  @media (max-width: 860px) { .nav-links a:not(.nav-cta) { display: none; } }
+  .theme-btn {
+    font-family: var(--mono); font-size: 13px; background: none; border: 1px solid var(--line-strong);
+    color: var(--ink-soft); border-radius: 2px; padding: 6px 9px; cursor: pointer;
+  }
+  .theme-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  section { position: relative; }
+  .hero { padding: 84px 0 72px; }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: center; }
+  @media (max-width: 940px) { .hero-grid { grid-template-columns: 1fr; gap: 40px; } }
+  .hero h1 {
+    font-size: clamp(38px, 5.6vw, 66px); line-height: 1.02; margin: 22px 0 24px;
+  }
+  .hero h1 .u { color: var(--accent); }
+  .lede { font-size: 20px; color: var(--ink-soft); max-width: 32ch; line-height: 1.5; }
+  .hero-actions { margin-top: 34px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    font-family: var(--mono); font-size: 14px; text-decoration: none;
+    padding: 13px 20px; border-radius: 3px; display: inline-flex; align-items: center; gap: 9px;
+    transition: transform .12s, box-shadow .12s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 6px 20px -8px var(--accent); }
+  .btn-primary:hover { transform: translateY(-2px); }
+  .btn-ghost { border: 1px solid var(--line-strong); color: var(--ink); }
+  .btn-ghost:hover { border-color: var(--ink); }
+  .hero-meta { margin-top: 30px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint); display: flex; gap: 20px; flex-wrap: wrap; }
+  .hero-meta span { display: inline-flex; align-items: center; gap: 7px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--go); display: inline-block; }
+
+  .term {
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    box-shadow: 0 24px 60px -30px var(--shadow), 0 2px 0 var(--line) inset;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  .term-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 14px; border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--ink) 4%, var(--panel));
+  }
+  .term-bar .b { width: 11px; height: 11px; border-radius: 50%; background: var(--line-strong); }
+  .term-title { margin-left: 8px; font-size: 11.5px; color: var(--ink-faint); letter-spacing: 0.04em; }
+  .term-body { padding: 18px 18px 22px; min-height: 320px; line-height: 1.75; }
+  .term-body .ln { white-space: pre-wrap; word-break: break-word; }
+  .c-prompt { color: var(--accent); }
+  .c-cmd { color: var(--ink); }
+  .c-flag { color: var(--amber); }
+  .c-dim { color: var(--ink-faint); }
+  .c-go { color: var(--go); font-weight: 700; }
+  .c-stop { color: var(--stop); }
+  .cursor { display: inline-block; width: 8px; height: 15px; background: var(--accent); vertical-align: -3px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
+
+  .sec { padding: 76px 0; border-top: 1px solid var(--line); }
+  .sec-head { max-width: 62ch; margin-bottom: 46px; }
+  .sec-head h2 { font-size: clamp(28px, 3.6vw, 40px); line-height: 1.08; margin: 16px 0 14px; }
+  .sec-head p { color: var(--ink-soft); font-size: 18px; margin: 0; }
+
+  .loop { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; font-family: var(--mono); }
+  @media (max-width: 720px) { .loop { grid-template-columns: 1fr 1fr; } }
+  .loop div { padding: 20px 18px; border-right: 1px solid var(--line); font-size: 13px; }
+  .loop div:last-child { border-right: none; }
+  .loop .k { color: var(--ink-faint); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .loop .v { font-size: 22px; font-weight: 700; margin-top: 8px; letter-spacing: -0.02em; }
+  .loop .v.accent { color: var(--accent); }
+
+  /* report teaser */
+  .report-card {
+    border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden;
+    background: var(--panel); box-shadow: 0 24px 60px -34px var(--shadow);
+  }
+  .report-card img { display: block; width: 100%; height: auto; }
+  .report-cols { display: grid; grid-template-columns: 1.25fr 1fr; gap: 40px; align-items: center; }
+  @media (max-width: 940px) { .report-cols { grid-template-columns: 1fr; } }
+  .report-points { margin: 0; padding: 0; }
+  .report-points li { margin-bottom: 16px; list-style: none; padding-left: 26px; position: relative; color: var(--ink-soft); font-size: 15.5px; }
+  .report-points li::before { content: "→"; position: absolute; left: 0; color: var(--accent); font-family: var(--mono); }
+  .report-points strong { color: var(--ink); font-weight: 700; }
+
+  .pipe { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  @media (max-width: 940px) { .pipe { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 500px) { .pipe { grid-template-columns: 1fr; } }
+  .stage {
+    border: 1px solid var(--line); border-radius: 6px; padding: 22px 18px 24px;
+    background: var(--panel); position: relative; transition: border-color .15s, transform .15s;
+  }
+  .stage:hover { border-color: var(--accent); transform: translateY(-3px); }
+  .stage .num { font-family: var(--mono); font-size: 12px; color: var(--accent); letter-spacing: 0.1em; }
+  .stage h3 { font-size: 19px; margin: 12px 0 8px; }
+  .stage p { font-size: 13.5px; color: var(--ink-soft); margin: 0; line-height: 1.5; }
+  .stage .cmd { font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line-strong); word-break: break-all; }
+
+  .feat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  @media (max-width: 860px) { .feat { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px) { .feat { grid-template-columns: 1fr; } }
+  .fcell { background: var(--paper); padding: 28px 24px 30px; transition: background .15s; }
+  .fcell:hover { background: var(--panel); }
+  .fcell .ic { font-family: var(--mono); font-size: 13px; color: var(--accent); border: 1px solid var(--accent); width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 4px; margin-bottom: 16px; }
+  .fcell h3 { font-size: 18px; margin-bottom: 9px; }
+  .fcell p { font-size: 14.5px; color: var(--ink-soft); margin: 0; line-height: 1.55; }
+  .fcell code { font-family: var(--mono); font-size: 12.5px; background: var(--accent-soft); color: var(--accent); padding: 1px 5px; border-radius: 3px; }
+
+  .verdict-grid { display: grid; grid-template-columns: 260px 1fr; gap: 32px; align-items: start; }
+  @media (max-width: 780px) { .verdict-grid { grid-template-columns: 1fr; } }
+  .vtabs { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  @media (max-width: 780px) { .vtabs { flex-direction: row; overflow-x: auto; } }
+  .vtab {
+    font-family: var(--mono); font-size: 13px; text-align: left; background: var(--panel);
+    border: none; border-left: 3px solid transparent; padding: 15px 16px; cursor: pointer; color: var(--ink-soft);
+    display: flex; align-items: center; gap: 10px; white-space: nowrap; transition: all .12s;
+  }
+  .vtab:hover { color: var(--ink); }
+  .vtab[aria-selected="true"] { background: var(--paper); color: var(--ink); border-left-color: var(--accent); }
+  .vtab .sig { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .vpanel {
+    border: 1px solid var(--line-strong); border-radius: 6px; padding: 30px 32px; background: var(--panel); min-height: 240px;
+  }
+  .vpanel .badge { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; padding: 5px 11px; border-radius: 3px; display: inline-block; margin-bottom: 18px; }
+  .vpanel h3 { font-size: 24px; margin-bottom: 12px; }
+  .vpanel p { color: var(--ink-soft); margin: 0 0 16px; }
+  .vpanel .stat { font-family: var(--mono); font-size: 13px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 13px 16px; white-space: pre-wrap; line-height: 1.7; }
+
+  .uc { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  @media (max-width: 720px) { .uc { grid-template-columns: 1fr; } }
+  .ucard { border: 1px solid var(--line); border-radius: 6px; padding: 26px 26px 28px; background: var(--panel); }
+  .ucard .tag { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+  .ucard h3 { font-size: 20px; margin: 12px 0 10px; }
+  .ucard p { font-size: 15px; color: var(--ink-soft); margin: 0; line-height: 1.55; }
+  .ucard .who { margin-top: 16px; font-family: var(--mono); font-size: 12px; color: var(--ink-faint); padding-top: 14px; border-top: 1px solid var(--line); }
+
+  .cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; }
+  @media (max-width: 860px) { .cfg-grid { grid-template-columns: 1fr; } }
+  .code-card { background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+  .code-card .cc-bar { padding: 10px 16px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); display: flex; justify-content: space-between; }
+  .code-card pre { margin: 0; padding: 18px 18px 22px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+  .yk { color: var(--accent); }
+  .yv { color: var(--ink); }
+  .yc { color: var(--ink-faint); }
+  .ys { color: var(--amber); }
+  .cfg-points li { margin-bottom: 18px; list-style: none; padding-left: 26px; position: relative; color: var(--ink-soft); font-size: 15.5px; }
+  .cfg-points { margin: 0; padding: 0; }
+  .cfg-points li::before { content: "→"; position: absolute; left: 0; color: var(--accent); font-family: var(--mono); }
+  .cfg-points strong { color: var(--ink); font-weight: 700; }
+
+  .cta-band { border-top: 1px solid var(--line); background: var(--ink); color: var(--paper); }
+  @media (prefers-color-scheme: dark) { .cta-band { background: #05060a; } }
+  :root[data-theme="dark"] .cta-band { background: #05060a; }
+  :root[data-theme="light"] .cta-band { background: #16181d; }
+  .cta-inner { padding: 74px 0; text-align: center; }
+  .cta-inner h2 { color: #fff; font-size: clamp(30px, 4vw, 46px); margin-bottom: 18px; }
+  .cta-inner p { color: rgba(255,255,255,0.7); max-width: 52ch; margin: 0 auto 30px; }
+  .cta-inner .term-mini { display: inline-flex; align-items: center; gap: 12px; font-family: var(--mono); font-size: 14px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.16); border-radius: 5px; padding: 14px 20px; color: #fff; max-width: 92vw; overflow-x: auto; }
+  .cta-inner .term-mini .cp { color: #7d90ff; }
+  .copy-btn { background: rgba(255,255,255,0.12); border: none; color: #fff; font-family: var(--mono); font-size: 12px; padding: 6px 10px; border-radius: 3px; cursor: pointer; }
+  .copy-btn:hover { background: rgba(255,255,255,0.22); }
+
+  footer { padding: 44px 0 60px; border-top: 1px solid var(--line); }
+  .foot-inner { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint); }
+  .foot-inner a { color: var(--ink-soft); text-decoration: none; }
+  .foot-inner a:hover { color: var(--accent); }
+  .foot-links { display: flex; gap: 22px; flex-wrap: wrap; }
+
+  html.js .reveal { opacity: 0; transform: translateY(16px); transition: opacity .6s ease, transform .6s ease; }
+  html.js .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { html.js .reveal { opacity: 1; transform: none; transition: none; } }
+</style>
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="logo"><span class="glyph"></span>compound</div>
+    <nav class="nav-links">
+      <a href="#report">The report</a>
+      <a href="#pipeline">Pipeline</a>
+      <a href="#verdicts">The gate</a>
+      <a href="#usecases">Use cases</a>
+      <a href="https://github.com/aktasbatuhan/compound" class="nav-cta">GitHub</a>
+      <button class="theme-btn" id="themeBtn" aria-label="Toggle theme">◑</button>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="rail" id="rail"></div>
+
+  <!-- HERO -->
+  <section class="hero" id="top">
+    <div class="hero-grid">
+      <div>
+        <span class="eyebrow">Open source · local-first · money-safe</span>
+        <h1>Backtest every model switch on <span class="u">your own traffic</span>.</h1>
+        <p class="lede">Compound replays cheaper models and faster hosts against your graded production history, optimizes them until they clear your bar, and hands you a verdict with a confidence interval, never a vibe.</p>
+        <div class="hero-actions">
+          <a href="report/" class="btn btn-primary">Read the launch report</a>
+          <a href="https://github.com/aktasbatuhan/compound" class="btn btn-ghost">Star on GitHub</a>
+        </div>
+        <div class="hero-meta">
+          <span><span class="dot"></span>zero provider calls without <code style="font-family:var(--mono)">--paid</code></span>
+          <span><span class="dot" style="background:var(--accent)"></span>every completion cached, re-runs are $0</span>
+        </div>
+      </div>
+
+      <div class="term" aria-hidden="false">
+        <div class="term-bar">
+          <span class="b"></span><span class="b"></span><span class="b"></span>
+          <span class="term-title">compound: the verdict</span>
+        </div>
+        <div class="term-body" id="termBody"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOOP / PROBLEM -->
+  <section class="sec reveal" id="loop">
+    <div class="sec-head">
+      <span class="eyebrow">The problem</span>
+      <h2>Every leaderboard ranks models on average. None can tell you if the switch is safe on your workload.</h2>
+      <p>The serving host moves outcomes as much as the model does, hand-written evals rot, and paid experiments burn budget invisibly. Routers pick the best of your options. Nobody proves your options on your traffic.</p>
+    </div>
+    <div class="loop">
+      <div><div class="k">Reference model</div><div class="v">$15.00<span style="font-size:13px;color:var(--ink-faint)"> /M out</span></div></div>
+      <div><div class="k">Gated candidate</div><div class="v accent">$0.14<span style="font-size:13px;color:var(--ink-faint)"> /M out</span></div></div>
+      <div><div class="k">Datasets you write</div><div class="v">0</div></div>
+      <div><div class="k">Bare means shipped</div><div class="v">0</div></div>
+    </div>
+  </section>
+
+  <!-- REPORT TEASER -->
+  <section class="sec reveal" id="report">
+    <div class="sec-head">
+      <span class="eyebrow">The evidence</span>
+      <h2>Same weights, six hosts: 0% to 55% task success.</h2>
+      <p>We ran one open model (deepseek-v4-flash) on six pinned serving hosts through terminal-bench: 252 agentic episodes, pass or fail decided by each task's own test suite, every failed episode's raw API traffic audited.</p>
+    </div>
+    <div class="report-cols">
+      <a class="report-card" href="report/" aria-label="Open the full terminal-bench report">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/tb-results-dark.svg">
+          <img alt="Terminal-bench results: same model on six hosts, end-to-end success 0 to 55 percent, driven by provider reliability rather than model quality" src="assets/tb-results-light.svg">
+        </picture>
+      </a>
+      <div>
+        <ul class="report-points">
+          <li><strong>Model quality is a statistical tie; the serving layer is not.</strong> Every functioning host lands at 45 to 57% once provider-killed episodes are excluded. End to end, the spread is 0 to 55%.</li>
+          <li><strong>One host scored 0 of 42 with a perfectly healthy model.</strong> Its endpoint rejects the response format the agent needs on every turn. Invisible on single-turn benchmarks, fatal for agents.</li>
+          <li><strong>Identical calls, 5x latency spread.</strong> And different determinism: one host flipped 2 of 14 task outcomes between identical trials, another 7 of 14.</li>
+        </ul>
+        <div style="margin-top:26px">
+          <a href="report/" class="btn btn-primary">Full report with confidence intervals</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PIPELINE -->
+  <section class="sec reveal" id="pipeline">
+    <div class="sec-head">
+      <span class="eyebrow">The pipeline</span>
+      <h2>One <code style="font-family:var(--mono);font-size:0.7em;background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:3px">compound.yaml</code>. One content-addressed cache.</h2>
+      <p>Everything runs locally with no account: SQLite storage, your keys in .env, your traces never leave your machine. Each stage writes evidence the next one reads.</p>
+    </div>
+    <div class="pipe">
+      <div class="stage">
+        <div class="num">01 / INGEST</div>
+        <h3>Bring your traces</h3>
+        <p>Langfuse export or portable JSON. Redaction runs before anything is persisted. No eval authoring.</p>
+        <div class="cmd">compound import export.jsonl</div>
+      </div>
+      <div class="stage">
+        <div class="num">02 / CURATE</div>
+        <h3>Traces to cases</h3>
+        <p>Provenance-typed eval cases under a replayability contract, split into immutable train, validation, calibration, and sealed decision partitions.</p>
+        <div class="cmd">compound curate support</div>
+      </div>
+      <div class="stage">
+        <div class="num">03 / BACKTEST</div>
+        <h3>Replay candidates</h3>
+        <p>Any model x provider x quant replays against your graded corpus from the cache. Free assertions filter before judge tokens; re-deciding costs $0.</p>
+        <div class="cmd">compound experiment support kimi-k3</div>
+      </div>
+      <div class="stage">
+        <div class="num">04 / OPTIMIZE</div>
+        <h3>Close the gap</h3>
+        <p>The real GEPA library evolves a cheaper candidate's prompt on train and val cases, never the sealed set. "No improvement" is a first-class outcome.</p>
+        <div class="cmd">compound optimize support --candidate M</div>
+      </div>
+      <div class="stage">
+        <div class="num">05 / GATE</div>
+        <h3>Ship on a verdict</h3>
+        <p>The gate decides over cached runs on the sealed set with a rule declared before anyone looks, and emits one of five honest verdicts.</p>
+        <div class="cmd">compound gate support --reason "…"</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="sec reveal" id="features">
+    <div class="sec-head">
+      <span class="eyebrow">What's in the box</span>
+      <h2>Built like an audit, not a dashboard toy.</h2>
+      <p>Every number is reproducible, every comparison shows its fingerprint, and no run spends a cent you didn't authorize.</p>
+    </div>
+    <div class="feat">
+      <div class="fcell">
+        <div class="ic">$</div>
+        <h3>Money-safe by default</h3>
+        <p>Without <code>--paid</code>, zero provider calls, just an estimate. Paid runs need an enabled budget, a hard USD limit, and a <code>--cap</code>. Every completion is cached, so a re-run costs $0.</p>
+      </div>
+      <div class="fcell">
+        <div class="ic">⌗</div>
+        <h3>Fingerprint caching</h3>
+        <p>A content-addressed key over case, prompt, tool schema, sampling params, provider revision, and judge version: the difference between a $2 and a $200 run.</p>
+      </div>
+      <div class="fcell">
+        <div class="ic">§</div>
+        <h3>Sealed decision partition</h3>
+        <p>Optimizers, prompt selection, and judge tuning never see the decision set. Opening it requires a stated <code>--reason</code>. That firewall keeps the verdict honest.</p>
+      </div>
+      <div class="fcell">
+        <div class="ic">κ</div>
+        <h3>Calibration-gated judges</h3>
+        <p>A judge feeds a gate only after it out-agrees human labels (Cohen's kappa with a bootstrap CI) above threshold. Until then it <em>abstains</em>: an untrusted opinion never becomes a switch signal.</p>
+      </div>
+      <div class="fcell">
+        <div class="ic">±</div>
+        <h3>Intervals, never bare means</h3>
+        <p>Paired-bootstrap confidence bounds on every comparison. The gate emits a non-inferiority decision, not a point estimate you have to eyeball.</p>
+      </div>
+      <div class="fcell">
+        <div class="ic">⇄</div>
+        <h3>Provider pinning, verified</h3>
+        <p>One flag isolates a single serving host with fallbacks disabled, and the <em>served</em> host is recorded on every call, so a pinned run can be checked, not trusted. Works for third-party agent harnesses through a local proxy.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- VERDICTS -->
+  <section class="sec reveal" id="verdicts">
+    <div class="sec-head">
+      <span class="eyebrow">The gate · the payoff</span>
+      <h2>One command. Five honest verdicts.</h2>
+      <p><code style="font-family:var(--mono);font-size:0.72em;background:var(--panel);border:1px solid var(--line);padding:2px 6px;border-radius:3px">compound gate</code> runs a candidate and a reference on the sealed set and applies a rule you declared <em>before</em> looking. If the data cannot support a decision, it says so instead of rounding noise up to a recommendation.</p>
+    </div>
+    <div class="verdict-grid">
+      <div class="vtabs" role="tablist" aria-label="Gate verdicts">
+        <button class="vtab" role="tab" data-v="0" aria-selected="true"><span class="sig" style="background:var(--go)"></span>Meets gate</button>
+        <button class="vtab" role="tab" data-v="1" aria-selected="false"><span class="sig" style="background:var(--stop)"></span>Fails</button>
+        <button class="vtab" role="tab" data-v="2" aria-selected="false"><span class="sig" style="background:var(--amber)"></span>Insufficient data</button>
+        <button class="vtab" role="tab" data-v="3" aria-selected="false"><span class="sig" style="background:var(--ink-faint)"></span>Judge abstained</button>
+        <button class="vtab" role="tab" data-v="4" aria-selected="false"><span class="sig" style="background:var(--ink-faint)"></span>No reliable gain</button>
+      </div>
+      <div class="vpanel" id="vpanel" role="tabpanel"></div>
+    </div>
+  </section>
+
+  <!-- USE CASES -->
+  <section class="sec reveal" id="usecases">
+    <div class="sec-head">
+      <span class="eyebrow">Where it pays off</span>
+      <h2>Four decisions Compound makes with evidence.</h2>
+      <p>All backed by the same sealed partitions and the same content-addressed cache.</p>
+    </div>
+    <div class="uc">
+      <div class="ucard">
+        <div class="tag">Switch &amp; save</div>
+        <h3>Drop model cost without dropping quality</h3>
+        <p>Prove a cheaper open model meets your non-inferiority gate on your own traffic, then switch with the receipts.</p>
+        <div class="who">"Can we move this task off the frontier model?"</div>
+      </div>
+      <div class="ucard">
+        <div class="tag">Improve the candidate</div>
+        <h3>Close the gap with GEPA</h3>
+        <p>When a candidate is behind but within a closable band, evolve its prompt on train and val cases and re-gate on the sealed set. Adoption is a new declaration, never a quiet edit.</p>
+        <div class="who">"It's close. Can we make it good enough?"</div>
+      </div>
+      <div class="ucard">
+        <div class="tag">Evals made easy</div>
+        <h3>Evals from traffic, not from scratch</h3>
+        <p>You review what curation surfaces instead of authoring test cases. The task x model matrix shows gate status at a glance.</p>
+        <div class="who">"We never built an eval set and never will."</div>
+      </div>
+      <div class="ucard">
+        <div class="tag">Pick the provider</div>
+        <h3>Rank serving hosts on cost, speed &amp; quality</h3>
+        <p>Fix the model, sweep it across pinned hosts on any shipped benchmark (tau2, BFCL, DS-1000, MMLU, terminal-bench), and read one per-host cost, latency, and quality table.</p>
+        <div class="who">"Same model, six hosts. Which one do we buy?"</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONFIG -->
+  <section class="sec reveal" id="config">
+    <div class="sec-head">
+      <span class="eyebrow">Declarative config</span>
+      <h2>The whole loop is one file.</h2>
+      <p><code style="font-family:var(--mono);font-size:0.72em;background:var(--panel);border:1px solid var(--line);padding:2px 6px;border-radius:3px">compound.yaml</code> is the source of truth: task keys, judges, rubrics, gates, budgets.</p>
+    </div>
+    <div class="cfg-grid">
+      <div class="code-card">
+        <div class="cc-bar"><span>compound.yaml</span><span>v1</span></div>
+<pre><span class="yc"># the gate rule, declared before you look</span>
+<span class="yk">gate</span>:
+  <span class="yk">metric</span>: <span class="yv">task_success</span>
+  <span class="yk">max_regression</span>: <span class="ys">0.02</span>
+  <span class="yk">require_decision_test</span>: <span class="ys">true</span>
+
+<span class="yc"># a judge only counts once calibrated</span>
+<span class="yk">judges</span>:
+  <span class="yk">support</span>:
+    <span class="yk">model</span>: <span class="yv">anthropic/claude-opus-4.8</span>
+    <span class="yk">calibration_threshold</span>: <span class="ys">0.6</span>
+    <span class="yk">decision_point</span>: <span class="ys">0.5</span>
+
+<span class="yc"># free checks run before judge tokens</span>
+<span class="yk">assertions</span>:
+  <span class="yk">support</span>:
+    - { <span class="yk">type</span>: <span class="yv">tool_called</span>, <span class="yk">name</span>: <span class="yv">dispute_charge</span> }
+    - { <span class="yk">type</span>: <span class="yv">max_length</span>, <span class="yk">max</span>: <span class="ys">1500</span> }
+
+<span class="yk">budget</span>:
+  <span class="yk">paid_runs_enabled</span>: <span class="ys">true</span>
+  <span class="yk">hard_limit_usd</span>: <span class="ys">25.00</span></pre>
+      </div>
+      <div>
+        <ul class="cfg-points">
+          <li><strong>Declare the rule first.</strong> The gate's threshold is fixed and content-hashed before anyone looks at results. The sealed set cannot be reverse-fit to the answer you wanted.</li>
+          <li><strong>Assertions before judges.</strong> Deterministic checks are free; judge tokens are not. Cheap filters run first, every time.</li>
+          <li><strong>Budget is a hard wall.</strong> Paid runs are off until you enable them and set a positive USD limit, then bounded by a per-run <code style="font-family:var(--mono);background:var(--accent-soft);color:var(--accent);padding:1px 5px;border-radius:3px">--cap</code>.</li>
+          <li><strong>One discipline, two stacks.</strong> The TypeScript engine and the Python benchmark library share the same sealed-partition and budget-cap rules, so what you test behaves like what you ship.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- CTA -->
+<section class="cta-band" id="start">
+  <div class="wrap">
+    <div class="cta-inner">
+      <span class="eyebrow" style="color:#7d90ff;justify-content:center">Get started in one sitting</span>
+      <h2 style="margin-top:18px">From a trace export to a gated verdict.</h2>
+      <p>Local-first, no account. Import a Langfuse export or plain JSON, curate one task key, and watch a cheaper model meet, or miss, your gate on your own traffic.</p>
+      <div class="term-mini">
+        <span><span class="cp">$</span> git clone https://github.com/aktasbatuhan/compound</span>
+        <button class="copy-btn" id="copyBtn">copy</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <footer>
+    <div class="foot-inner">
+      <div class="logo" style="font-size:14px"><span class="glyph"></span>compound</div>
+      <div class="foot-links">
+        <a href="report/">The report</a>
+        <a href="https://github.com/aktasbatuhan/compound">GitHub</a>
+        <a href="https://github.com/aktasbatuhan/compound/issues">Roadmap</a>
+        <a href="https://github.com/aktasbatuhan/compound/blob/main/LICENSE">Apache-2.0</a>
+      </div>
+      <div>local-first · SQLite · Bun + Python</div>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function () {
+  var btn = document.getElementById('themeBtn');
+  function syncPictures(theme) {
+    document.querySelectorAll('picture').forEach(function (p) {
+      var src = p.querySelector('source');
+      if (src) { src.setAttribute('media', theme === 'dark' ? 'all' : 'not all'); }
+    });
+  }
+  btn.addEventListener('click', function () {
+    var cur = document.documentElement.getAttribute('data-theme');
+    var next = cur === 'dark' ? 'light'
+      : cur === 'light' ? 'dark'
+      : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', next);
+    syncPictures(next);
+  });
+
+  var cbtn = document.getElementById('copyBtn');
+  if (cbtn && navigator.clipboard) {
+    cbtn.addEventListener('click', function () {
+      navigator.clipboard.writeText('git clone https://github.com/aktasbatuhan/compound').then(function () {
+        cbtn.textContent = 'copied ✓';
+        setTimeout(function () { cbtn.textContent = 'copy'; }, 1600);
+      });
+    });
+  }
+
+  var body = document.getElementById('termBody');
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var lines = [
+    { t: '<span class="c-prompt">$</span> <span class="c-cmd">compound curate</span> support', d: 40 },
+    { t: '<span class="c-dim">  84 traces → 62 cases · sealed: 10 · train: 40 · val: 12</span>', d: 8, instant: true },
+    { t: '', d: 0, instant: true },
+    { t: '<span class="c-prompt">$</span> <span class="c-cmd">compound gate</span> support <span class="c-flag">--candidate</span> kimi-k3 <span class="c-flag">--reference</span> opus-5 <span class="c-flag">\\</span>', d: 34 },
+    { t: '      <span class="c-flag">--reason</span> <span class="c-dim">"quarterly cost review"</span>', d: 34 },
+    { t: '<span class="c-dim">  reference  opus-5   task_success  0.94</span>', d: 8, instant: true },
+    { t: '<span class="c-dim">  candidate  kimi-k3  task_success  0.93</span>', d: 8, instant: true },
+    { t: '<span class="c-dim">  Δ = -0.01   95% CI [-0.04, +0.02]   rule: max_regression 0.02</span>', d: 8, instant: true },
+    { t: '', d: 0, instant: true },
+    { t: '  VERDICT  <span class="c-go">✓ MEETS GATE</span>  <span class="c-dim">(non-inferior at the declared bar)</span>', d: 20, instant: true },
+    { t: '<span class="c-dim">  est. savings: $15.00 → $0.14 /M out · re-decision from cache: $0</span>', d: 8, instant: true }
+  ];
+
+  function renderInstant() {
+    body.innerHTML = lines.map(function (l) {
+      return '<div class="ln">' + l.t + '</div>';
+    }).join('');
+  }
+
+  if (reduce) { renderInstant(); }
+  else {
+    var li = 0;
+    function typeLine() {
+      if (li >= lines.length) { return; }
+      var line = lines[li];
+      var el = document.createElement('div');
+      el.className = 'ln';
+      body.appendChild(el);
+      if (line.instant || line.t === '') {
+        el.innerHTML = line.t;
+        li++;
+        setTimeout(typeLine, line.t === '' ? 90 : 220);
+        return;
+      }
+      var html = line.t;
+      var plain = html.replace(/<[^>]+>/g, '');
+      var step = Math.max(1, Math.round(plain.length / 18));
+      var shown = 0;
+      function tick() {
+        shown += step;
+        el.innerHTML = revealHtml(html, shown) + '<span class="cursor"></span>';
+        if (shown < plain.length) {
+          setTimeout(tick, line.d);
+        } else {
+          el.innerHTML = html;
+          li++;
+          setTimeout(typeLine, 160);
+        }
+      }
+      tick();
+    }
+    function revealHtml(html, n) {
+      var out = '', count = 0, i = 0;
+      while (i < html.length && count < n) {
+        if (html[i] === '<') {
+          var close = html.indexOf('>', i);
+          if (close === -1) { break; }
+          out += html.slice(i, close + 1);
+          i = close + 1;
+        } else {
+          out += html[i];
+          count++;
+          i++;
+        }
+      }
+      return out;
+    }
+    setTimeout(typeLine, 500);
+  }
+
+  var verdicts = [
+    {
+      badge: 'MEETS GATE', color: 'var(--go)',
+      title: 'The switch is justified.',
+      body: 'The candidate is non-inferior to the reference on the sealed decision set, at the bar you declared before opening it. Ship it with the receipts.',
+      stat: 'Δ task_success  -0.01\n95% CI          [-0.04, +0.02]\nrule            max_regression ≤ 0.02\nsealed cases    10 · provider calls: 0'
+    },
+    {
+      badge: 'FAILS', color: 'var(--stop)',
+      title: 'The regression is real.',
+      body: 'The candidate drops below the non-inferiority bar with confidence. Compound tells you by how much and where, so you can send it to the optimizer or keep the reference.',
+      stat: 'Δ task_success  -0.11\n95% CI          [-0.17, -0.05]\nrule            max_regression ≤ 0.02\nverdict         below bar with 95% conf.'
+    },
+    {
+      badge: 'INSUFFICIENT DATA', color: 'var(--amber)',
+      title: 'Not enough sealed cases to call it.',
+      body: 'The confidence interval is too wide to decide either way. An honest "we don\'t know yet": curate more decision cases rather than shipping on noise.',
+      stat: 'Δ task_success  -0.02\n95% CI          [-0.19, +0.15]\nsealed cases    6  (interval too wide)\nverdict         cannot reject regression'
+    },
+    {
+      badge: 'JUDGE ABSTAINED', color: 'var(--ink-faint)',
+      title: 'The judge has not earned trust.',
+      body: 'This task needs an LLM judge, but the judge\'s agreement with human labels is below the task\'s kappa threshold. It refuses to emit a switch signal rather than launder an untrusted opinion into a verdict.',
+      stat: 'judge κ vs human   0.41\nthreshold          0.60\nstatus             ABSTAIN\naction             run  judge calibrate'
+    },
+    {
+      badge: 'NO RELIABLE IMPROVEMENT', color: 'var(--ink-faint)',
+      title: 'A first-class outcome, not a failure.',
+      body: 'The optimizer ran and found no change that reliably beats the baseline. Compound says so plainly: you spent a bounded budget to learn the honest answer.',
+      stat: 'baseline           0.93\nbest candidate     0.93\nΔ                  +0.00  (not reliable)\nbudget spent       $3.80 / $4.00 cap'
+    }
+  ];
+  var panel = document.getElementById('vpanel');
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.vtab'));
+  function paint(i) {
+    var v = verdicts[i];
+    panel.innerHTML =
+      '<span class="badge" style="background:' + v.color + ';color:#fff">' + v.badge + '</span>' +
+      '<h3>' + v.title + '</h3>' +
+      '<p>' + v.body + '</p>' +
+      '<div class="stat">' + v.stat + '</div>';
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (x) { x.setAttribute('aria-selected', 'false'); });
+      t.setAttribute('aria-selected', 'true');
+      paint(i);
+    });
+  });
+  paint(0);
+
+  var obs = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); obs.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(function (el) { obs.observe(el); });
+
+  var rail = document.getElementById('rail');
+  if (rail) {
+    var secs = document.querySelectorAll('.sec, .hero');
+    secs.forEach(function (s) {
+      var tick = document.createElement('div');
+      tick.className = 'rail-tick';
+      tick.style.top = s.offsetTop + 'px';
+      rail.appendChild(tick);
+    });
+  }
+})();
+</script>
+</body>
+</html>

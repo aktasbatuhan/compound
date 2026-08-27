@@ -146,14 +146,14 @@ The parts most eval tools skip are the parts that make a verdict trustworthy:
 
 ```bash
 bun install
-bun run packages/cli/src/main.ts import export.jsonl --importer langfuse  # or --importer json
-bun run packages/cli/src/main.ts curate <task-key>
-bun run packages/cli/src/main.ts experiment <task-key> <model>            # dry run, $0
-bun run packages/cli/src/main.ts experiment <task-key> <model> --paid --cap 2.00
-bun run packages/cli/src/main.ts gate <task-key> --candidate M --reference M --reason "..."
-bun run packages/cli/src/main.ts view compare <task-key>                  # cost/latency/TPS/quality per route
-bun run packages/cli/src/main.ts serve                                    # local API on 127.0.0.1:4319
-cd packages/dashboard && bun run dev                                      # dashboard on localhost:3000
+bun run compound import export.jsonl --importer langfuse   # or --importer json
+bun run compound curate <task-key>
+bun run compound experiment <task-key> <model>             # dry run, $0
+bun run compound experiment <task-key> <model> --paid --cap 2.00
+bun run compound gate <task-key> --candidate M --reference M --reason "..."
+bun run compound view compare <task-key>                   # cost/latency/TPS/quality per route
+bun run compound serve                                     # local API on 127.0.0.1:4319
+cd packages/dashboard && bun run dev                       # dashboard on localhost:3000
 ```
 
 Everything runs locally with no account: SQLite storage, your keys in `.env`

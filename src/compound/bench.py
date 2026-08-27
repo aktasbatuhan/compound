@@ -92,11 +92,19 @@ BENCHMARKS: dict[str, Benchmark] = {
 }
 
 
+def _prepare_hint(name: str) -> str:
+    # mmlu / terminal_bench manifests are built locally; the rest ship with the repo
+    # but can be rebuilt from source datasets.
+    if name in ("mmlu", "terminal_bench"):
+        return f"compound-bench prepare {name}"
+    return "compound prepare-manifests"
+
+
 def _load_cases(bench: Benchmark) -> list[dict]:
     if not bench.manifest.exists():
         raise SystemExit(
             f"error: manifest {bench.manifest} not found — "
-            f"run `compound prepare-manifests` first"
+            f"run `{_prepare_hint(bench.name)}` first"
         )
     return json.loads(bench.manifest.read_text())["cases"]
 
@@ -106,7 +114,7 @@ def cmd_list() -> int:
         try:
             cases = _load_cases(bench)
         except SystemExit:
-            print(f"{bench.name:8s} (manifest missing — run `compound prepare-manifests`)")
+            print(f"{bench.name:8s} (manifest missing — run `{_prepare_hint(bench.name)}`)")
             continue
         parts = Counter(c["partition"] for c in cases)
         breakdown = ", ".join(f"{k}={v}" for k, v in sorted(parts.items()))
