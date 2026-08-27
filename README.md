@@ -11,6 +11,8 @@ and hands you a verdict with a confidence interval, never a vibe.
 
 `local-first` · `money-safe by default` · `statistically honest` · `Apache-2.0`
 
+**[compound-1js.pages.dev](https://compound-1js.pages.dev)** · [read the launch report](https://compound-1js.pages.dev/report/)
+
 <br>
 
 ![Compound CLI: run one model across many serving hosts on any benchmark](assets/cli-demo.gif)
