@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Same weights, six hosts: 0% to 55% task success | a Compound report</title>
-<meta name="description" content="One open model, six pinned serving hosts, 252 terminal-bench episodes. Model quality is a statistical tie; the serving layer is not. Full results with confidence intervals and raw-traffic audits.">
-<meta property="og:title" content="Same weights, six hosts: 0% to 55% task success">
-<meta property="og:description" content="One open model, six pinned serving hosts, 252 terminal-bench episodes. The spread is entirely the serving layer.">
+<title>Same weights, five hosts: the model tied, the serving layer didn't | a Compound report</title>
+<meta name="description" content="One open model, five pinned serving hosts, 210 terminal-bench episodes. Model quality is a statistical tie; the serving layer is not. Full results with confidence intervals and raw-traffic audits.">
+<meta property="og:title" content="Same weights, five hosts: the model tied, the serving layer didn't">
+<meta property="og:description" content="One open model, five pinned serving hosts, 210 terminal-bench episodes. The spread is entirely the serving layer.">
 <meta property="og:type" content="article">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='13' height='13' fill='none' stroke='%23191817' stroke-width='2'/%3E%3Crect x='9' y='9' width='13' height='13' fill='%231740e6'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -202,36 +202,37 @@
 
 <article class="doc">
   <div class="kicker">A Compound report, August 2026</div>
-  <h1>Same weights, six hosts: 0% to 55% task success.</h1>
+  <h1>Same weights, five hosts: the model tied, the serving layer didn't.</h1>
 
   <div class="spec">
     <div><div class="k">Model</div><div class="v long">deepseek-v4-flash<span class="vs">snapshot 0731</span></div></div>
     <div><div class="k">Benchmark</div><div class="v">terminal-bench<span class="vs">agentic, container-graded</span></div></div>
-    <div><div class="k">Hosts</div><div class="v">6<span class="vs">pinned + verified</span></div></div>
-    <div><div class="k">Episodes</div><div class="v">252<span class="vs">14 tasks &times; 3 trials</span></div></div>
+    <div><div class="k">Hosts</div><div class="v">5<span class="vs">pinned + verified</span></div></div>
+    <div><div class="k">Episodes</div><div class="v">210<span class="vs">14 tasks &times; 3 trials</span></div></div>
   </div>
 
   <div class="tldr">
     <div class="k">TL;DR</div>
-    <p>We ran identical open-model weights on six serving hosts through the same 14 agentic
+    <p>We ran identical open-model weights on five serving hosts through the same 14 agentic
     terminal-bench tasks, three trials each, pass or fail decided by each task's own test suite
-    inside a container. <strong>Model quality was a statistical tie on every functioning host.
-    End-to-end task success still ranged from 0% to 55%</strong>, and the whole gap came from the
-    serving layer: one host rejects an API feature the agent needs on every turn, one lost a third
-    of its episodes to shared-pool rate limits, and identical calls showed a 5x latency spread.
-    None of this is visible on a pricing page.</p>
+    inside a container. <strong>Model quality was a statistical tie: four hosts landed in a 45 to 57%
+    dead heat.</strong> Everything else was 5x apart. The fifth host dropped to 33% purely from
+    shared-pool rate limits, identical calls showed a 5x median latency spread (4.1s vs 21.2s), and
+    per-token cost and throughput varied just as widely. None of this is visible on a pricing page.</p>
   </div>
 
   <h2>Setup</h2>
-  <p>One model, <code>deepseek/deepseek-v4-flash-0731</code>, served by six hosts: Doubleword
-  (realtime and flex tiers) and four OpenRouter upstreams pinned with fallbacks disabled
-  (DeepInfra fp4, Parasail fp8, Fireworks, Novita fp8). The served host is verified on every call,
+  <p>One model, <code>deepseek/deepseek-v4-flash-0731</code>, served by five hosts: Doubleword
+  (realtime and flex tiers) and three OpenRouter upstreams pinned with fallbacks disabled
+  (DeepInfra fp4, Parasail fp8, Fireworks). The served host is verified on every call,
   so a pinned run is checked, not trusted.</p>
   <p>The workload is <a href="https://github.com/laude-institute/terminal-bench">terminal-bench</a>:
   agentic terminal tasks where the model drives a shell inside a container and the task's own test
   suite decides pass or fail. No LLM judge, no user simulator, temperature pinned by the agent.
-  14 tasks, 3 identical trials per host, 252 scored episodes. After the runs, every failed
-  episode's raw API traffic was audited to separate model failures from provider failures.</p>
+  14 tasks, 3 identical trials per host, 210 scored episodes. After the runs, every failed
+  episode's raw API traffic was audited to separate model failures from provider failures.
+  Pass/fail rates use all three trials; the per-call latency, cost, and throughput figures come
+  from the API traces we captured on two of the three trials (about 2,130 calls).</p>
 
   <h2>Results</h2>
 
@@ -272,37 +273,26 @@
           <td>fireworks</td><td class="num">14/42</td><td class="num">33.3%</td><td class="num">21&ndash;48%</td>
           <td><span class="pill warn">rate-limited</span></td><td><span class="note">15 of 42 episodes killed by shared-pool 429s; its error-free trial scored in the pack</span></td>
         </tr>
-        <tr class="dead">
-          <td>novita (fp8)</td><td class="num">0/42</td><td class="num">0.0%</td><td class="num">0&ndash;8%</td>
-          <td><span class="pill fail">capability gap</span></td><td><span class="note">rejects the <code>json_schema</code> response format the agent needs, on every turn, with a healthy model behind it</span></td>
-        </tr>
       </tbody>
     </table>
   </div>
 
-  <h2>The four findings</h2>
+  <h2>The three findings</h2>
 
   <h3>1. Model quality is a tie. The serving layer is not.</h3>
-  <p>Excluding provider-killed episodes, every functioning host lands at 45 to 57%,
+  <p>Excluding provider-killed episodes, every host lands at 45 to 57%,
   indistinguishable at this sample size (pairwise Fisher exact p = 0.51 to 1.0 across the healthy
-  band). End to end, the spread is 0 to 55%, and the gap is entirely provider reliability. The
-  ranking a leaderboard would print for these six rows would be a ranking of infrastructure
-  weather, not of the model.</p>
+  band). End to end, the visible spread is 33 to 55%, and the gap is provider reliability, not the
+  model. The ranking a leaderboard would print for these five rows would be a ranking of
+  infrastructure weather, not of the model.</p>
 
-  <h3>2. A host can score zero with a perfectly healthy model.</h3>
-  <p>Novita's 0 of 42 is not a bad sample: its endpoint rejects the <code>json_schema</code>
-  response format the agent requires, on every single turn. That is a deterministic capability
-  failure (p &lt; 0.0001 against every other host, and the mechanism is visible in the raw
-  traffic). It is invisible on single-turn benchmarks and fatal for agents. API capability
-  coverage is a provider axis nobody prices.</p>
-
-  <h3>3. Rate limits masquerade as model degradation.</h3>
+  <h3>2. Rate limits masquerade as model degradation.</h3>
   <p>Fireworks lost 15 of 42 episodes to shared-pool rate limits. Averaged naively, that reads as
   a 33% model. Audited, it is weather: the one trial that drew no 429s scored right in the healthy
   pack. Against the top host the gap is p = 0.078, and we make no quality claim from it; the claim
   is the counted, audited kill mechanism.</p>
 
-  <h3>4. Identical calls, different physics.</h3>
+  <h3>3. Identical calls, different physics.</h3>
   <p>Median latency for the same calls spread 5x across hosts (4.1s vs 21.2s), and determinism
   differed: one host flipped 2 of 14 task outcomes between identical trials, another 7 of 14.
   If your agent's behavior depends on who serves the weights, "the same model" is not the same
@@ -314,23 +304,22 @@
     <div class="legend" id="radarLegend"></div>
   </div>
   <p class="figcap">Fig 2. All six axes from this terminal-bench run, normalized so the outer edge
-  is best on each. Hover a host to focus it, or click the legend to toggle. Novita is excluded: with
-  zero successful calls it has no latency, cost, or throughput to plot (see Fig 1). No remaining host
-  wins every axis.</p>
+  is best on each. Hover a host to focus it, or click the legend to toggle. No host wins every axis:
+  one takes speed and reliability, another cost, another throughput.</p>
 
   <h2>What this says about picking a provider</h2>
-  <p>The three questions that decided these six rows never appear on a pricing page: does the host
-  support every API feature your agent uses, does it shed your traffic under load, and how fast
-  and how deterministically does it serve identical calls. All three are measurable on your own
-  workload before you commit, which is the point of Compound: fix the model, sweep the hosts,
-  and read one table of cost, latency, and quality per route, from the same cache that makes
-  re-deciding free.</p>
+  <p>The questions that decided these five rows never appear on a pricing page: does the host shed
+  your traffic under load, how fast and how deterministically does it serve identical calls, and
+  what does it actually cost per token once you account for the quantization it serves. All of it is
+  measurable on your own workload before you commit, which is the point of Compound: fix the model,
+  sweep the hosts, and read one table of cost, latency, and quality per route, from the same cache
+  that makes re-deciding free.</p>
 
   <h2>Statistical notes</h2>
   <ul>
     <li>Intervals are Wilson 95% binomial CIs on 42 episodes per host (14 tasks × 3 trials).</li>
-    <li>Novita vs every other host: Fisher exact p &lt; 0.0001. The failure is also mechanistic
-    and deterministic, confirmed in the raw request logs, so it does not depend on the sample.</li>
+    <li>Pass/fail rates use all three trials (210 episodes). Latency, cost, and throughput are
+    per-call metrics from the API traces captured on two of the three trials (about 2,130 calls).</li>
     <li>Fireworks vs the top host: p = 0.078. We report the audited rate-limit kill count
     (15 of 42) rather than a quality inference.</li>
     <li>All pairwise comparisons inside the healthy band (45 to 57%): p = 0.51 to 1.0. We claim
@@ -394,10 +383,7 @@ compound-bench run terminal_bench --model deepseek/deepseek-v4-flash-0731 --prov
       note: 'async queue tier: same weights, slower first token' },
     { key: 'fire', name: 'fireworks', hex: '#e8590c',
       pass: 14, n: 42, e2e: 33.3, excl: 52.4, ci: [21, 48], trials: '6 / 5 / 3',
-      note: '15 of 42 episodes killed by shared-pool rate limits' },
-    { key: 'novi', name: 'novita (fp8)', hex: '#c92a2a',
-      pass: 0, n: 42, e2e: 0, excl: null, ci: [0, 8], trials: '0 / 0 / 0',
-      note: 'endpoint rejects json_schema on every turn, healthy model behind it' }
+      note: '15 of 42 episodes killed by shared-pool rate limits' }
   ];
 
   var chart = document.getElementById('barChart');
@@ -444,7 +430,7 @@ compound-bench run terminal_bench --model deepseek/deepseek-v4-flash-0731 --prov
     { k: 'quality' }, { k: 'reliability' }, { k: 'speed' },
     { k: 'determinism' }, { k: 'cost' }, { k: 'TPS' }
   ];
-  // all six axes from the same terminal-bench run (252 episodes); novita excluded (0 successful calls)
+  // all six axes from the same terminal-bench run (five hosts, 210 episodes)
   var PROFILES = {
     dwrt: [1.00, 1.00, 1.00, 0.64, 0.11, 0.34],
     dwfx: [0.82, 1.00, 0.67, 0.71, 0.15, 0.23],

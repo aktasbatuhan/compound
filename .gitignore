@@ -40,3 +40,8 @@ benchmarks/manifests/mmlu.json
 # Ad-hoc local run launchers and previews
 _*.sh
 glm-charts-preview.png
+
+# Remotion explainer build artifacts
+video/node_modules/
+video/out/
+video/.remotion/

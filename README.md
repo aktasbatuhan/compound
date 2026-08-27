@@ -11,13 +11,19 @@ and hands you a verdict with a confidence interval, never a vibe.
 
 `local-first` · `money-safe by default` · `statistically honest` · `Apache-2.0`
 
-**[compound-1js.pages.dev](https://compound-1js.pages.dev)** · [read the launch report](https://compound-1js.pages.dev/report/)
+**[compound-1js.pages.dev](https://compound-1js.pages.dev)** · [launch report](https://compound-1js.pages.dev/report/) · [interactive provider radar](https://compound-1js.pages.dev/#profiles)
 
 <br>
 
-![Compound CLI: run one model across many serving hosts on any benchmark](assets/cli-demo.gif)
+![Compound CLI: five benchmarks behind one command; enumerate every host serving one model with its quant, price, and live status](assets/cli-demo.gif)
 
-<sub>Same model, many hosts, one flag. Pick a benchmark and a task subset; every dry run is free.</sub>
+<sub>Five benchmarks behind one command. Point it at a model and see every host serving it, with quantization, price, and live status.</sub>
+
+<br><br>
+
+[![Watch the explainer: one model across five hosts, the quality frontier, and the per-axis best provider](assets/explainer-poster.png)](assets/compound-explainer.mp4)
+
+<sub>▶ **[Watch the 50s explainer](assets/compound-explainer.mp4)** — the serving-layer gap, the quality frontier, and why every workload has a different best host.</sub>
 
 </div>
 
@@ -29,9 +35,9 @@ Every leaderboard tells you which model is best on average. None of them can tel
 whether the switch is safe on **your** workload, and the gap is not academic:
 
 - **The serving host moves outcomes as much as the model does.** In our pinned-host
-  terminal-bench sweep, identical open-model weights ranged from **0% to 55% end-to-end
-  task success** purely from the serving layer: rate-limit kills, a missing API feature,
-  a 5x latency spread. None of it is visible on a pricing page.
+  terminal-bench sweep, identical open-model weights ranged from **33% to 55% end-to-end
+  task success** purely from the serving layer: shared-pool rate-limit kills and a 5x
+  latency spread, with model quality a statistical tie. None of it is visible on a pricing page.
 - **Evals rot.** Hand-written eval sets go stale the week after you write them, so most
   teams ship model switches on a demo and a prayer.
 - **Experiments burn money invisibly.** One retry loop against a paid API and your
@@ -69,38 +75,40 @@ The gate emits one of five verdicts: **meets gate**, **fails**, **insufficient d
 **judge abstained**, **no reliable improvement**. If the data cannot support a decision,
 Compound says so instead of rounding noise up to a recommendation.
 
-## Same weights, six hosts: what actually differs
+## Same weights, five hosts: what actually differs
 
-> One model (`deepseek-v4-flash`), six pinned serving hosts, **terminal-bench**: 14 agentic
+> One model (`deepseek-v4-flash`), five pinned serving hosts, **terminal-bench**: 14 agentic
 > terminal tasks x 3 identical trials per host, pass/fail decided by each task's own test
-> suite inside a container — no LLM judge, no user simulator, temperature pinned by the
+> suite inside a container. No LLM judge, no user simulator, temperature pinned by the
 > agent. Then every failed episode's raw API traffic was audited to separate model
 > failures from provider failures.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/tb-results-dark.svg">
-  <img alt="Terminal-bench results: same model on six hosts, end-to-end success 0 to 55 percent, driven by provider reliability rather than model quality" src="assets/tb-results-light.svg">
+  <img alt="Terminal-bench results: same model on five hosts, end-to-end success 33 to 55 percent, driven by the serving layer rather than model quality" src="assets/tb-results-light.svg">
 </picture>
 
 - **Model quality is a tie; the serving layer is not.** Excluding provider-killed
-  episodes, every functioning host lands at 45–57% — indistinguishable at this sample
-  size. End-to-end, the spread is 0–55%, and the gap is entirely provider reliability.
-- **fireworks lost 15 of 42 episodes to shared-pool rate limits** — its "degradation"
+  episodes, every host lands at 45-57%, indistinguishable at this sample size. End-to-end
+  the visible spread is 33-55%, and the gap is provider reliability, not the model.
+- **fireworks lost 15 of 42 episodes to shared-pool rate limits.** Its apparent degradation
   across trials was weather, not the model. Its error-free trial scored right in the pack.
-- **novita scored 0/42 with a perfectly healthy model**: its endpoint rejects the
-  `json_schema` response format the agent needs on every turn. Invisible on single-turn
-  benchmarks, fatal for agents — API capability coverage is a provider axis nobody prices.
 - **Identical calls, 5x latency spread** (4.1s vs 21.2s median), and different
   determinism: one host flipped 2/14 task outcomes between identical trials, another 7/14.
 
+<sub>Pass rates use all three trials (210 episodes). Latency, cost, and throughput are per-call
+metrics from about 2,130 API traces captured on two of the three trials.</sub>
+
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/tb-radar-dark.svg">
-  <img alt="Six-axis provider profiles: quality, reliability, speed, determinism, cost, TPS per host" src="assets/tb-radar-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/tb-provider-radar-dark.svg">
+  <img alt="Six-axis provider profiles for five hosts serving one model: quality, reliability, speed, determinism, cost, and TPS" src="assets/tb-provider-radar-light.svg">
 </picture>
 
-<sub>cost and TPS axes come from the tau2 164-task run of the same model on the same
-hosts; the other four axes are terminal-bench. novita's cost/TPS are excellent — its
-collapse is a capability gap, not capacity.</sub>
+<sub>All six axes from one terminal-bench run (five hosts, 210 episodes), normalized so the outer
+edge is best on each. No host wins every axis: <b>doubleword realtime</b> takes speed, <b>deepinfra</b>
+takes cost, <b>fireworks</b> takes throughput. Each workload weights these axes differently, so each
+has a different best host. The <a href="https://compound-1js.pages.dev/#profiles">interactive version</a>
+lets you pick an axis and watch the winner change: <b>find yours.</b></sub>
 
 Reproduce it (any model, your pick of hosts):
 

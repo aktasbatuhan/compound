@@ -198,6 +198,17 @@
   .lg[aria-pressed="false"] .sw { background: var(--ink-3) !important; }
   .radar-side p { color: var(--ink-2); font-size: 15px; margin: 0 0 14px; }
   .radar-side b { color: var(--ink); font-weight: 600; }
+  .radar-axes { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 20px 10px; }
+  .axc {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+    border: 1px solid var(--line-2); background: var(--panel); border-radius: 3px;
+    padding: 5px 11px; cursor: pointer; transition: background .12s, border-color .12s, color .12s;
+  }
+  .axc:hover { border-color: var(--ink-3); }
+  .axc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .radar-callout { min-height: 18px; padding: 0 20px 16px; font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+  .radar-callout b { color: var(--ink); font-weight: 600; }
+  .radar-callout .win { color: var(--accent); font-weight: 600; }
 
   /* pipeline */
   .steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; border: 1px solid var(--line-2); border-radius: 4px; overflow: hidden; background: var(--panel); }
@@ -315,11 +326,11 @@
         <div class="code-box">
           <div class="code-head">
             <span class="lbl">shell</span>
-            <button class="copy-btn" data-copy="compound-bench run terminal_bench --model deepseek/deepseek-v4-flash-0731 --providers openrouter/deepinfra,openrouter/parasail,openrouter/fireworks,openrouter/novita,doubleword/realtime,doubleword/flex --trials 3 --go"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>copy</button>
+            <button class="copy-btn" data-copy="compound-bench run terminal_bench --model deepseek/deepseek-v4-flash-0731 --providers openrouter/deepinfra,openrouter/parasail,openrouter/fireworks,doubleword/realtime,doubleword/flex --trials 3 --go"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>copy</button>
           </div>
 <pre><span class="kw">compound-bench run</span> terminal_bench <span class="fl">--model</span> deepseek/deepseek-v4-flash-0731 \
     <span class="fl">--providers</span> openrouter/deepinfra,openrouter/parasail,openrouter/fireworks,\
-openrouter/novita,doubleword/realtime,doubleword/flex \
+doubleword/realtime,doubleword/flex \
     <span class="fl">--trials</span> 3 <span class="fl">--go</span>   <span class="cm"># drop --go for a free dry run</span></pre>
         </div>
         <div class="panel">
@@ -332,7 +343,7 @@ openrouter/novita,doubleword/realtime,doubleword/flex \
           </div>
         </div>
       </div>
-      <p class="cap">Sample output: one open model on six pinned hosts, 252 episodes. Hover a row
+      <p class="cap">Sample output: one open model on five pinned hosts, 210 episodes. Hover a row
       for pass counts and confidence intervals, or <a href="report/">read the full report</a>.</p>
       <div class="callout">
         <h3>Cache is a provider decision too.</h3>
@@ -368,6 +379,8 @@ openrouter/novita,doubleword/realtime,doubleword/flex \
             <div class="panel-head">provider profiles, outer edge is best on each axis</div>
             <div class="radar-box" id="radarBox"></div>
             <div class="legend" id="radarLegend"></div>
+            <div class="radar-axes" id="radarAxes"></div>
+            <div class="radar-callout" id="radarCallout"></div>
           </div>
         </div>
         <div class="radar-side">
@@ -377,8 +390,9 @@ openrouter/novita,doubleword/realtime,doubleword/flex \
           <p>The profile you should care about is your workload's, not ours. The chart is a
           standard artifact of every sweep, so the comparison that matters runs on your tasks, your
           prompts, your budget caps.</p>
-          <p class="cap">Sample data: all six axes from one terminal-bench run (252 episodes).
-          Hover a host to focus it, or click the legend to toggle.</p>
+          <p class="cap">Sample data: all six axes from one terminal-bench run (five hosts, 210 episodes).
+          Pick an axis to see which host wins it, hover a host to focus it, or toggle the legend.
+          The winner changes with the axis, which is the whole point: find yours.</p>
         </div>
       </div>
     </div>
@@ -591,16 +605,13 @@ bun run compound gate support --candidate kimi-k3 --reference opus-5 --reason &q
       note: 'clean episodes' },
     { key: 'dinf', name: 'deepinfra (fp4)', hex: '#0d9373',
       pass: 20, n: 42, e2e: 47.6, excl: 50.0, ci: [33, 62], trials: '7 / 7 / 6',
-      note: 'clean episodes, cheapest of the six' },
+      note: 'clean episodes, cheapest of the five' },
     { key: 'dwfx', name: 'doubleword flex', hex: '#0e93c0',
       pass: 19, n: 42, e2e: 45.2, excl: 45.2, ci: [31, 60], trials: '6 / 7 / 6',
       note: 'async queue tier: same weights, slower first token' },
     { key: 'fire', name: 'fireworks', hex: '#e8590c',
       pass: 14, n: 42, e2e: 33.3, excl: 52.4, ci: [21, 48], trials: '6 / 5 / 3',
-      note: '15 of 42 episodes killed by shared-pool rate limits' },
-    { key: 'novi', name: 'novita (fp8)', hex: '#c92a2a',
-      pass: 0, n: 42, e2e: 0, excl: null, ci: [0, 8], trials: '0 / 0 / 0',
-      note: 'endpoint rejects json_schema on every turn, healthy model behind it' }
+      note: '15 of 42 episodes killed by shared-pool rate limits' }
   ];
 
   var chart = document.getElementById('barChart');
@@ -648,7 +659,7 @@ bun run compound gate support --candidate kimi-k3 --reference opus-5 --reason &q
     { k: 'quality' }, { k: 'reliability' }, { k: 'speed' },
     { k: 'determinism' }, { k: 'cost' }, { k: 'TPS' }
   ];
-  // all six axes from the same terminal-bench run (252 episodes); novita excluded (0 successful calls)
+  // all six axes from the same terminal-bench run (five hosts, 210 episodes)
   var PROFILES = {
     dwrt: [1.00, 1.00, 1.00, 0.64, 0.11, 0.34],
     dwfx: [0.82, 1.00, 0.67, 0.71, 0.15, 0.23],
@@ -675,13 +686,16 @@ bun run compound gate support --candidate kimi-k3 --reference opus-5 --reason &q
     p.setAttribute('stroke', g === 1 ? '#d5d0c2' : '#e6e2d8');
     svg.appendChild(p);
   });
+  var axisSpoke = [], axisLabel = [];
   AXES.forEach(function (ax, i) {
     var l = document.createElementNS(NS, 'line');
     var e = pt(i, 1);
     l.setAttribute('x1', CX); l.setAttribute('y1', CY);
     l.setAttribute('x2', e[0]); l.setAttribute('y2', e[1]);
     l.setAttribute('stroke', '#e6e2d8');
+    l.style.transition = 'stroke .15s, stroke-width .15s';
     svg.appendChild(l);
+    axisSpoke[i] = l;
     var t = document.createElementNS(NS, 'text');
     var lp = pt(i, 1.16);
     t.setAttribute('x', lp[0]); t.setAttribute('y', lp[1] + 3);
@@ -690,7 +704,13 @@ bun run compound gate support --candidate kimi-k3 --reference opus-5 --reason &q
     t.setAttribute('font-family', 'Spline Sans Mono, monospace');
     t.setAttribute('fill', '#191817');
     t.textContent = ax.k;
+    t.style.cursor = 'pointer';
+    t.style.transition = 'fill .15s';
+    t.addEventListener('click', function () { toggleAxis(i); });
+    t.addEventListener('mouseenter', function () { previewAxis(i); });
+    t.addEventListener('mouseleave', function () { previewAxis(null); });
     svg.appendChild(t);
+    axisLabel[i] = t;
   });
   var series = {};
   var hover = null;
@@ -724,20 +744,93 @@ bun run compound gate support --candidate kimi-k3 --reference opus-5 --reason &q
   document.getElementById('radarBox').appendChild(svg);
 
   var legend = document.getElementById('radarLegend');
+  // per-axis "best host" interaction (the move from the launch video)
+  var axisSticky = null, axisFocus = null;
+  var AXIS_META = {
+    quality: 'highest task success', reliability: 'zero provider errors',
+    speed: 'fastest calls', determinism: 'most repeatable runs',
+    cost: 'most cost-efficient', TPS: 'highest throughput'
+  };
+  function winnersFor(i) {
+    var max = 0;
+    RADAR_HOSTS.forEach(function (h) { if (PROFILES[h.key][i] > max) max = PROFILES[h.key][i]; });
+    return RADAR_HOSTS.filter(function (h) { return max - PROFILES[h.key][i] < 0.001; });
+  }
+  var markerG = document.createElementNS(NS, 'g');
+  markerG.style.pointerEvents = 'none';
+  svg.appendChild(markerG);
+  var calloutEl = document.getElementById('radarCallout');
+
   function render() {
+    var winKeys = null;
+    if (axisFocus !== null) { winKeys = {}; winnersFor(axisFocus).forEach(function (h) { winKeys[h.key] = 1; }); }
     RADAR_HOSTS.forEach(function (h) {
       var on = active[h.key];
       var isHover = hover === h.key;
-      var dimmed = hover && !isHover;
-      var op = !on ? 0 : (dimmed ? 0.1 : 1);
+      var op, fo, sw;
+      if (winKeys) {
+        var win = winKeys[h.key];
+        op = !on ? 0 : (win ? 1 : 0.08);
+        fo = win ? '0.22' : '0.05'; sw = win ? '2.8' : '1.6';
+      } else {
+        var dimmed = hover && !isHover;
+        op = !on ? 0 : (dimmed ? 0.1 : 1);
+        fo = isHover ? '0.24' : '0.10'; sw = isHover ? '2.6' : '2';
+      }
       series[h.key][0].style.opacity = op;
       series[h.key][1].style.opacity = op;
-      series[h.key][0].setAttribute('fill-opacity', isHover ? '0.24' : '0.10');
-      series[h.key][0].setAttribute('stroke-width', isHover ? '2.6' : '2');
+      series[h.key][0].setAttribute('fill-opacity', fo);
+      series[h.key][0].setAttribute('stroke-width', sw);
       if (legendBtns[h.key]) legendBtns[h.key].style.fontWeight = isHover ? '600' : '400';
     });
-    if (hover && active[hover]) { svg.appendChild(series[hover][0]); svg.appendChild(series[hover][1]); }
+    AXES.forEach(function (ax, i) {
+      var act = axisFocus === i;
+      if (axisSpoke[i]) { axisSpoke[i].setAttribute('stroke', act ? '#1740e6' : '#e6e2d8'); axisSpoke[i].setAttribute('stroke-width', act ? '2' : '1'); }
+      if (axisLabel[i]) { axisLabel[i].setAttribute('fill', act ? '#1740e6' : '#191817'); axisLabel[i].setAttribute('font-weight', act ? '600' : '400'); }
+      if (chipBtns[i]) chipBtns[i].setAttribute('aria-pressed', String(act));
+    });
+    while (markerG.firstChild) markerG.removeChild(markerG.firstChild);
+    if (axisFocus !== null) {
+      winnersFor(axisFocus).forEach(function (h) {
+        if (!active[h.key]) return;
+        var xy = pt(axisFocus, Math.max(PROFILES[h.key][axisFocus], 0.02));
+        var c = document.createElementNS(NS, 'circle');
+        c.setAttribute('cx', xy[0]); c.setAttribute('cy', xy[1]); c.setAttribute('r', '5');
+        c.setAttribute('fill', h.hex); c.setAttribute('stroke', '#fff'); c.setAttribute('stroke-width', '2');
+        markerG.appendChild(c);
+      });
+    }
+    if (winKeys) {
+      RADAR_HOSTS.forEach(function (h) { if (winKeys[h.key] && active[h.key]) { svg.appendChild(series[h.key][0]); svg.appendChild(series[h.key][1]); } });
+      svg.appendChild(markerG);
+    } else if (hover && active[hover]) {
+      svg.appendChild(series[hover][0]); svg.appendChild(series[hover][1]);
+    }
+    updateCallout();
   }
+  function updateCallout() {
+    if (axisFocus === null) { calloutEl.innerHTML = 'Hover a host to focus it, or pick an axis to see which host wins it.'; return; }
+    var ax = AXES[axisFocus].k;
+    var names = winnersFor(axisFocus).filter(function (h) { return active[h.key]; }).map(function (h) { return h.name.split(' (')[0]; });
+    var who = names.length > 2 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names.join(' and ');
+    calloutEl.innerHTML = '<b>' + ax + '</b> &rarr; <span class="win">' + (who || 'no active host') + '</span>' + (AXIS_META[ax] ? '&nbsp;&nbsp;<span style="color:var(--ink-3)">(' + AXIS_META[ax] + ')</span>' : '');
+  }
+  function previewAxis(i) { axisFocus = (i === null ? axisSticky : i); render(); }
+  function toggleAxis(i) { axisSticky = (axisSticky === i ? null : i); axisFocus = axisSticky; render(); }
+
+  var axesEl = document.getElementById('radarAxes');
+  var chipBtns = {};
+  AXES.forEach(function (ax, i) {
+    var b = document.createElement('button');
+    b.className = 'axc'; b.type = 'button';
+    b.textContent = ax.k; b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', function () { toggleAxis(i); });
+    b.addEventListener('mouseenter', function () { previewAxis(i); });
+    b.addEventListener('mouseleave', function () { previewAxis(null); });
+    chipBtns[i] = b;
+    axesEl.appendChild(b);
+  });
+
   RADAR_HOSTS.forEach(function (h) {
     var b = document.createElement('button');
     b.className = 'lg';
@@ -748,7 +841,7 @@ bun run compound gate support --candidate kimi-k3 --reference opus-5 --reason &q
       b.setAttribute('aria-pressed', String(active[h.key]));
       render();
     });
-    b.addEventListener('mouseenter', function () { hover = h.key; render(); });
+    b.addEventListener('mouseenter', function () { if (axisFocus === null) { hover = h.key; render(); } });
     b.addEventListener('mouseleave', function () { hover = null; render(); });
     legendBtns[h.key] = b;
     legend.appendChild(b);
