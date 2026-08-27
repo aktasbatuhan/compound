@@ -8,112 +8,179 @@
 <meta property="og:title" content="Same weights, six hosts: 0% to 55% task success">
 <meta property="og:description" content="One open model, six pinned serving hosts, 252 terminal-bench episodes. The spread is entirely the serving layer.">
 <meta property="og:type" content="article">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='13' height='13' fill='none' stroke='%23111827' stroke-width='2'/%3E%3Crect x='9' y='9' width='13' height='13' fill='%232563eb'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='13' height='13' fill='none' stroke='%23191817' stroke-width='2'/%3E%3Crect x='9' y='9' width='13' height='13' fill='%231740e6'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #ffffff;
-    --bg-soft: #fafafa;
-    --border: #e7e8ea;
-    --border-strong: #d7d9dc;
-    --ink: #111827;
-    --ink-2: #4b5563;
-    --ink-3: #9ca3af;
-    --accent: #2563eb;
-    --accent-bg: #eff4ff;
-    --go: #16803c;
-    --go-bg: #f0fdf4;
+    --paper: #faf9f5;
+    --panel: #ffffff;
+    --line: #e6e2d8;
+    --line-2: #d5d0c2;
+    --ink: #191817;
+    --ink-2: #57534a;
+    --ink-3: #98938a;
+    --accent: #1740e6;
+    --go: #157347;
+    --go-bg: #eaf6ef;
     --warn: #b45309;
-    --warn-bg: #fffbeb;
-    --stop: #b91c1c;
-    --stop-bg: #fef2f2;
-    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --warn-bg: #fdf3e3;
+    --stop: #c92a2a;
+    --stop-bg: #fbeaea;
+    --display: "Anybody", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    --sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
   body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font-family: var(--sans); font-size: 15px; line-height: 1.7;
-    -webkit-font-smoothing: antialiased; font-feature-settings: "cv05";
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 15.5px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
   }
   a { color: inherit; }
-  h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; text-wrap: balance; }
+  h1, h2, h3 { margin: 0; }
+  h1, h2 { font-family: var(--display); font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; }
 
   header {
     position: sticky; top: 0; z-index: 40;
-    background: rgba(255,255,255,0.85); backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--paper) 90%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
   }
-  .nav { max-width: 860px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 28px; height: 58px; }
-  .logo { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 15.5px; text-decoration: none; }
+  .nav { max-width: 880px; margin: 0 auto; padding: 0 26px; display: flex; align-items: center; gap: 24px; height: 58px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-weight: 500; font-size: 15px; text-decoration: none; }
   .logo .glyph { width: 18px; height: 18px; position: relative; flex: none; }
   .logo .glyph::before, .logo .glyph::after { content: ""; position: absolute; }
   .logo .glyph::before { width: 11px; height: 11px; left: 0; top: 0; border: 1.5px solid var(--ink); }
   .logo .glyph::after { width: 11px; height: 11px; right: 0; bottom: 0; background: var(--accent); }
-  .nav-links { margin-left: auto; display: flex; gap: 22px; align-items: center; font-size: 13.5px; color: var(--ink-2); }
-  .nav-links a { text-decoration: none; }
-  .nav-links a:hover { color: var(--ink); }
-  .nav-gh { background: var(--ink); color: #fff !important; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 500; text-decoration: none; }
+  .nav-links { margin-left: auto; display: flex; gap: 2px; align-items: center; }
+  .nav-links > a:not(.gh-btn) { font-family: var(--mono); font-size: 12.5px; text-decoration: none; color: var(--ink-2); padding: 7px 12px; border-radius: 3px; }
+  .nav-links > a:not(.gh-btn):hover { color: var(--ink); background: rgba(0,0,0,0.04); }
+  .gh-btn {
+    display: inline-flex; align-items: center; gap: 8px; margin-left: 12px;
+    background: var(--ink); color: #fff; border-radius: 3px;
+    padding: 8px 14px; font-size: 12.5px; text-decoration: none; font-family: var(--mono);
+  }
+  .gh-btn:hover { background: #000; }
+  .gh-btn svg { width: 15px; height: 15px; fill: currentColor; }
 
-  .doc { max-width: 860px; margin: 0 auto; padding: 56px 24px 72px; }
-  .kicker { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
-  .doc h1 { font-size: clamp(28px, 4.4vw, 40px); line-height: 1.15; margin: 12px 0 14px; }
-  .byline { font-size: 13px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-  .doc h2 { font-size: 21px; margin: 48px 0 12px; }
-  .doc h3 { font-size: 16px; margin: 30px 0 8px; }
+  .doc { max-width: 880px; margin: 0 auto; padding: 52px 26px 72px; }
+  .kicker { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+  .doc h1 { font-size: clamp(36px, 5.2vw, 54px); line-height: 1.05; margin: 14px 0 22px; }
+  .doc h2 { font-size: clamp(27px, 3.4vw, 34px); margin: 50px 0 12px; }
+  .doc h3 { font-size: 16.5px; font-weight: 600; margin: 28px 0 8px; }
   .doc p { color: var(--ink-2); margin: 0 0 14px; }
   .doc strong { color: var(--ink); font-weight: 600; }
-  .doc code { font-family: var(--mono); font-size: 0.85em; background: var(--bg-soft); border: 1px solid var(--border); padding: 1px 5px; border-radius: 5px; }
+  .doc code { font-family: var(--mono); font-size: 0.85em; color: var(--ink); }
   .doc a { color: var(--accent); text-decoration: none; }
   .doc a:hover { text-decoration: underline; }
 
-  .tldr {
-    border: 1px solid #c7d7fb; background: var(--accent-bg);
-    border-radius: 12px; padding: 18px 22px; margin: 26px 0 8px;
+  /* spec grid instead of dot-separated byline */
+  .spec { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line-2); border-radius: 4px; overflow: hidden; background: var(--panel); margin: 0 0 26px; }
+  @media (max-width: 720px) { .spec { grid-template-columns: 1fr 1fr; } }
+  .spec div { padding: 15px 18px; border-right: 1px solid var(--line); }
+  .spec div:last-child { border-right: none; }
+  @media (max-width: 720px) { .spec div:nth-child(2) { border-right: none; } .spec div:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
+  .spec .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+  .spec .v { font-family: var(--mono); font-size: 13.5px; color: var(--ink); margin-top: 9px; line-height: 1.25; }
+  .spec .vs { display: block; font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+  .spec .v.long { font-size: 12px; white-space: nowrap; }
+
+  .tldr { border: 1px solid var(--line-2); background: var(--panel); border-radius: 4px; padding: 18px 22px; margin: 0 0 8px; }
+  .tldr .k { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
+  .tldr p { margin: 0; font-size: 15px; }
+
+  .panel { background: var(--panel); border: 1px solid var(--line-2); border-radius: 4px; overflow: hidden; margin: 24px 0; }
+  .panel-head { padding: 12px 20px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+  .figcap { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin: -14px 0 0; padding: 0 2px; }
+
+  .chart { padding: 18px 20px 6px; }
+  .crow { display: grid; grid-template-columns: 160px 1fr 72px; gap: 12px; align-items: center; padding: 6px 0; }
+  @media (max-width: 640px) { .crow { grid-template-columns: 105px 1fr 58px; } }
+  .crow .name { font-family: var(--mono); font-size: 11.5px; text-align: right; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crow .name .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 7px; }
+  .crow .track { position: relative; height: 28px; background: var(--paper); border-radius: 2px; }
+  .crow .bar { position: absolute; left: 0; top: 4px; bottom: 4px; border-radius: 2px; width: 0; transition: width .9s cubic-bezier(.2,.7,.2,1); }
+  .crow .bar2 { position: absolute; left: 0; top: 12px; bottom: 12px; border-radius: 2px; width: 0; opacity: 0.32; transition: width .9s cubic-bezier(.2,.7,.2,1) .15s; }
+  .crow .ci { position: absolute; top: 50%; height: 1.5px; transform: translateY(-50%); background: rgba(25,24,23,0.4); opacity: 0; transition: opacity .4s .8s; }
+  .crow .ci::before, .crow .ci::after { content: ""; position: absolute; top: -4px; width: 1.5px; height: 9.5px; background: rgba(25,24,23,0.4); }
+  .crow .ci::before { left: 0; } .crow .ci::after { right: 0; }
+  .crow .val { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .crow .val small { color: var(--ink-3); font-size: 10px; display: block; line-height: 1.3; }
+  .crow:hover .track { background: #f2f0e9; }
+  .chart-note { display: flex; gap: 18px; flex-wrap: wrap; padding: 12px 20px 14px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+  .chart-note .k { display: inline-flex; align-items: center; gap: 7px; }
+  .chart-note .sw { width: 14px; height: 8px; border-radius: 2px; background: var(--ink-2); display: inline-block; }
+  .chart-note .sw.lo { opacity: 0.32; }
+  .chart-note .sw.ci-k { height: 1.5px; background: rgba(25,24,23,0.4); border-radius: 0; }
+
+  .tip {
+    position: fixed; z-index: 60; pointer-events: none; max-width: 300px;
+    background: var(--ink); color: #fff; border-radius: 3px; padding: 10px 13px;
+    font-family: var(--mono); font-size: 11px; line-height: 1.7; opacity: 0;
+    transform: translateY(4px); transition: opacity .12s, transform .12s;
   }
-  .tldr .k { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
-  .tldr p { margin: 0; font-size: 14.5px; }
+  .tip.show { opacity: 1; transform: none; }
+  .tip .th { font-weight: 500; margin-bottom: 2px; }
+  .tip .td { color: rgba(255,255,255,0.72); }
 
-  figure { margin: 26px 0; }
-  figure .frame { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #fff; padding: 8px; }
-  figure img { display: block; width: 100%; height: auto; }
-  figcaption { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; }
-
-  .tbl-wrap { overflow-x: auto; margin: 22px 0; border: 1px solid var(--border); border-radius: 12px; }
-  table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
-  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-  th { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); background: var(--bg-soft); }
+  .tbl-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); background: var(--paper); }
   tr:last-child td { border-bottom: none; }
-  tbody tr:hover td { background: var(--bg-soft); }
-  td.num { font-family: var(--mono); font-size: 12.5px; }
-  td .note { color: var(--ink-3); font-size: 12.5px; white-space: normal; }
+  tbody tr:hover td { background: var(--paper); }
+  td.num { font-family: var(--mono); font-size: 12px; }
+  td .note { color: var(--ink-3); font-size: 12px; white-space: normal; }
   tr.dead td:not(:last-child) { color: var(--ink-3); }
-  .pill { font-size: 11px; font-weight: 500; padding: 2px 9px; border-radius: 999px; }
+  .pill { font-family: var(--mono); font-size: 10.5px; padding: 2px 9px; border-radius: 3px; }
   .pill.ok { color: var(--go); background: var(--go-bg); }
   .pill.warn { color: var(--warn); background: var(--warn-bg); }
   .pill.fail { color: var(--stop); background: var(--stop-bg); }
 
+  .radar-box { padding: 8px 6px 0; }
+  .radar-box svg { display: block; width: 100%; height: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 0; padding: 0 20px 16px; }
+  .lg {
+    font-family: var(--mono); font-size: 11px; display: inline-flex; align-items: center; gap: 8px;
+    border: none; background: none; color: var(--ink-2);
+    padding: 5px 14px 5px 0; cursor: pointer; transition: opacity .12s;
+  }
+  .lg .sw { width: 14px; height: 3px; }
+  .lg[aria-pressed="false"] { opacity: 0.35; }
+  .lg[aria-pressed="false"] .sw { background: var(--ink-3) !important; }
+
   .doc ul { margin: 0 0 14px; padding-left: 20px; color: var(--ink-2); }
   .doc li { margin-bottom: 8px; }
 
-  pre.sh {
-    font-family: var(--mono); font-size: 12.5px; line-height: 1.8; color: var(--ink-2);
-    background: var(--bg-soft); border: 1px solid var(--border); border-radius: 12px;
-    padding: 16px 20px; overflow-x: auto; margin: 18px 0;
+  .code-box { background: var(--panel); border: 1px solid var(--ink); border-radius: 4px; overflow: hidden; margin: 18px 0; }
+  .code-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--ink); color: #fff; padding: 8px 14px;
+    font-family: var(--mono); font-size: 11.5px;
   }
-  pre.sh .c { color: var(--ink-3); }
-  pre.sh .p { color: var(--accent); }
+  .code-head .lbl { color: rgba(255,255,255,0.85); }
+  .copy-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 11px; color: rgba(255,255,255,0.65);
+    background: none; border: none; padding: 2px 0; cursor: pointer;
+  }
+  .copy-btn:hover { color: #fff; }
+  .copy-btn.done { color: #7be0a8; }
+  .copy-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+  .code-box pre { margin: 0; padding: 16px 18px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.8; color: var(--ink-2); }
+  .code-box .cm { color: var(--ink-3); }
+  .code-box .p { color: var(--accent); }
 
   .cta-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 34px 0 0; }
-  .btn { display: inline-flex; align-items: center; gap: 8px; text-decoration: none !important; font-size: 13.5px; font-weight: 500; border-radius: 8px; padding: 9px 16px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; text-decoration: none !important; font-family: var(--mono); font-size: 13px; border-radius: 3px; padding: 11px 18px; }
   .btn-primary { background: var(--accent); color: #fff !important; }
-  .btn-primary:hover { background: #1d4fd7; }
-  .btn-ghost { border: 1px solid var(--border-strong); color: var(--ink) !important; background: #fff; }
+  .btn-primary:hover { background: #1236c2; }
+  .btn-ghost { border: 1px solid var(--line-2); color: var(--ink) !important; background: var(--panel); }
 
-  footer.doc-foot { border-top: 1px solid var(--border); margin-top: 56px; padding-top: 22px; font-size: 12.5px; color: var(--ink-3); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  footer.doc-foot { border-top: 1px solid var(--line); margin-top: 54px; padding-top: 22px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   footer.doc-foot a { color: var(--ink-2); text-decoration: none; }
   footer.doc-foot a:hover { color: var(--ink); }
 </style>
@@ -124,16 +191,25 @@
   <div class="nav">
     <a class="logo" href="../"><span class="glyph"></span>compound</a>
     <nav class="nav-links">
-      <a href="../">Home</a>
-      <a class="nav-gh" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+      <a href="../">home</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        GitHub
+      </a>
     </nav>
   </div>
 </header>
 
 <article class="doc">
-  <div class="kicker">A Compound report · August 2026</div>
+  <div class="kicker">A Compound report, August 2026</div>
   <h1>Same weights, six hosts: 0% to 55% task success.</h1>
-  <div class="byline">deepseek-v4-flash-0731 · terminal-bench · 6 pinned serving hosts · 14 tasks × 3 trials per host · 252 scored episodes</div>
+
+  <div class="spec">
+    <div><div class="k">Model</div><div class="v long">deepseek-v4-flash<span class="vs">snapshot 0731</span></div></div>
+    <div><div class="k">Benchmark</div><div class="v">terminal-bench<span class="vs">agentic, container-graded</span></div></div>
+    <div><div class="k">Hosts</div><div class="v">6<span class="vs">pinned + verified</span></div></div>
+    <div><div class="k">Episodes</div><div class="v">252<span class="vs">14 tasks &times; 3 trials</span></div></div>
+  </div>
 
   <div class="tldr">
     <div class="k">TL;DR</div>
@@ -159,14 +235,18 @@
 
   <h2>Results</h2>
 
-  <figure>
-    <div class="frame">
-      <img alt="Terminal-bench results: same model on six hosts, end-to-end success 0 to 55 percent, driven by provider reliability rather than model quality" src="../assets/tb-results-light.svg">
+  <div class="panel">
+    <div class="panel-head">end-to-end task success by serving host</div>
+    <div class="chart" id="barChart"></div>
+    <div class="chart-note">
+      <span class="k"><span class="sw"></span> end-to-end (provider failures count)</span>
+      <span class="k"><span class="sw lo"></span> excluding provider-killed episodes</span>
+      <span class="k"><span class="sw ci-k"></span> Wilson 95% CI</span>
     </div>
-    <figcaption>Fig 1. End-to-end task success per host, with provider-caused failures broken out.</figcaption>
-  </figure>
+  </div>
+  <p class="figcap">Fig 1. Hover a row for pass counts, per-trial results, and confidence intervals.</p>
 
-  <div class="tbl-wrap">
+  <div class="panel tbl-wrap">
     <table>
       <thead>
         <tr><th>Host</th><th>Pass</th><th>Rate</th><th>Wilson 95% CI</th><th>Status</th><th>What the audit found</th></tr>
@@ -228,14 +308,15 @@
   If your agent's behavior depends on who serves the weights, "the same model" is not the same
   product.</p>
 
-  <figure>
-    <div class="frame">
-      <img alt="Six-axis provider profiles: quality, reliability, speed, determinism, cost, TPS per host" src="../assets/tb-radar-light.svg">
-    </div>
-    <figcaption>Fig 2. Provider profiles. Cost and TPS come from a 164-task tau2 run of the same
-    model on the same hosts; the other four axes are terminal-bench. Novita's cost and TPS are
-    excellent; its collapse is a capability gap, not capacity.</figcaption>
-  </figure>
+  <div class="panel">
+    <div class="panel-head">provider profiles, outer edge is best on each axis</div>
+    <div class="radar-box" id="radarBox"></div>
+    <div class="legend" id="radarLegend"></div>
+  </div>
+  <p class="figcap">Fig 2. All six axes from this terminal-bench run, normalized so the outer edge
+  is best on each. Hover a host to focus it, or click the legend to toggle. Novita is excluded: with
+  zero successful calls it has no latency, cost, or throughput to plot (see Fig 1). No remaining host
+  wins every axis.</p>
 
   <h2>What this says about picking a provider</h2>
   <p>The three questions that decided these six rows never appear on a pricing page: does the host
@@ -260,14 +341,28 @@
 
   <h2>Reproduce it</h2>
   <p>Any model, your pick of hosts, dry run by default:</p>
-  <pre class="sh"><span class="c"># discover pinnable hosts for a model</span>
+  <div class="code-box">
+    <div class="code-head">
+      <span class="lbl">shell</span>
+      <button class="copy-btn" data-copy="git clone https://github.com/aktasbatuhan/compound
+cd compound
+uv sync --extra dev
+compound-bench providers deepseek/deepseek-v4-flash-0731
+compound-bench run terminal_bench --model deepseek/deepseek-v4-flash-0731 --providers openrouter/deepinfra,doubleword/realtime,doubleword/flex --tasks fix-permissions,create-bucket --trials 3 --go"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>copy</button>
+    </div>
+<pre><span class="cm"># clone and install the benchmark engine</span>
+<span class="p">$</span> git clone https://github.com/aktasbatuhan/compound
+<span class="p">$</span> cd compound &amp;&amp; uv sync --extra dev
+
+<span class="cm"># discover pinnable hosts for a model</span>
 <span class="p">$</span> compound-bench providers deepseek/deepseek-v4-flash-0731
 
-<span class="c"># run the sweep (drop --go for a free dry run)</span>
+<span class="cm"># run the sweep (drop --go for a free dry run)</span>
 <span class="p">$</span> compound-bench run terminal_bench \
     --model deepseek/deepseek-v4-flash-0731 \
     --providers openrouter/deepinfra,doubleword/realtime,doubleword/flex \
     --tasks fix-permissions,create-bucket --trials 3 --go</pre>
+  </div>
   <p>Since this run, Compound's pinning proxy auto-retries 408/429/5xx with backoff and pins with
   <code>require_parameters</code>, so both provider-failure classes above are absorbed or fail
   fast at episode one.</p>
@@ -276,12 +371,196 @@
     <a class="btn btn-primary" href="https://github.com/aktasbatuhan/compound">Run it on your traffic</a>
     <a class="btn btn-ghost" href="../">What Compound is</a>
   </div>
-
-  <footer class="doc-foot">
-    <span>compound · Apache-2.0</span>
-    <span><a href="https://github.com/aktasbatuhan/compound/issues">roadmap</a> · <a href="https://github.com/laude-institute/terminal-bench">terminal-bench</a></span>
-  </footer>
 </article>
 
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+(function () {
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var HOSTS = [
+    { key: 'dwrt', name: 'doubleword realtime', hex: '#1740e6',
+      pass: 23, n: 42, e2e: 54.8, excl: 54.8, ci: [40, 69], trials: '8 / 7 / 8',
+      note: '0 provider errors, fastest calls (4.1s median)' },
+    { key: 'para', name: 'parasail (fp8)', hex: '#7048e8',
+      pass: 20, n: 42, e2e: 47.6, excl: 57.1, ci: [33, 62], trials: '8 / 6 / 6',
+      note: 'clean episodes' },
+    { key: 'dinf', name: 'deepinfra (fp4)', hex: '#0d9373',
+      pass: 20, n: 42, e2e: 47.6, excl: 50.0, ci: [33, 62], trials: '7 / 7 / 6',
+      note: 'clean episodes, cheapest of the six' },
+    { key: 'dwfx', name: 'doubleword flex', hex: '#0e93c0',
+      pass: 19, n: 42, e2e: 45.2, excl: 45.2, ci: [31, 60], trials: '6 / 7 / 6',
+      note: 'async queue tier: same weights, slower first token' },
+    { key: 'fire', name: 'fireworks', hex: '#e8590c',
+      pass: 14, n: 42, e2e: 33.3, excl: 52.4, ci: [21, 48], trials: '6 / 5 / 3',
+      note: '15 of 42 episodes killed by shared-pool rate limits' },
+    { key: 'novi', name: 'novita (fp8)', hex: '#c92a2a',
+      pass: 0, n: 42, e2e: 0, excl: null, ci: [0, 8], trials: '0 / 0 / 0',
+      note: 'endpoint rejects json_schema on every turn, healthy model behind it' }
+  ];
+
+  var chart = document.getElementById('barChart');
+  var tip = document.getElementById('tip');
+  HOSTS.forEach(function (h) {
+    var row = document.createElement('div');
+    row.className = 'crow';
+    row.innerHTML =
+      '<span class="name"><span class="dot" style="background:' + h.hex + '"></span>' + h.name + '</span>' +
+      '<span class="track">' +
+        (h.excl !== null ? '<span class="bar2" data-w="' + h.excl + '" style="background:' + h.hex + '"></span>' : '') +
+        '<span class="bar" data-w="' + h.e2e + '" style="background:' + h.hex + '"></span>' +
+        '<span class="ci" style="left:' + h.ci[0] + '%;width:' + (h.ci[1] - h.ci[0]) + '%"></span>' +
+      '</span>' +
+      '<span class="val">' + h.e2e.toFixed(0) + '%<small>' + h.pass + '/' + h.n + '</small></span>';
+    row.addEventListener('mousemove', function (e) {
+      tip.innerHTML =
+        '<div class="th">' + h.name + '</div>' +
+        '<div class="td">pass ' + h.pass + '/' + h.n + ' (' + h.e2e.toFixed(1) + '%), trials ' + h.trials + '</div>' +
+        '<div class="td">Wilson 95% CI ' + h.ci[0] + '&ndash;' + h.ci[1] + '%' +
+        (h.excl !== null && h.excl !== h.e2e ? ', excl. provider kills ' + h.excl.toFixed(0) + '%' : '') + '</div>' +
+        '<div class="td">' + h.note + '</div>';
+      tip.classList.add('show');
+      var w = tip.offsetWidth, x = Math.min(e.clientX + 14, window.innerWidth - w - 12);
+      tip.style.left = x + 'px';
+      tip.style.top = (e.clientY + 16) + 'px';
+    });
+    row.addEventListener('mouseleave', function () { tip.classList.remove('show'); });
+    chart.appendChild(row);
+  });
+  function fireBars() {
+    chart.querySelectorAll('.bar, .bar2').forEach(function (b) { b.style.width = b.dataset.w + '%'; });
+    chart.querySelectorAll('.ci').forEach(function (c) { c.style.opacity = '1'; });
+  }
+  if (reduce) { fireBars(); }
+  else {
+    var obs = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { fireBars(); obs.disconnect(); } });
+    }, { threshold: 0.3 });
+    obs.observe(chart);
+  }
+
+  var AXES = [
+    { k: 'quality' }, { k: 'reliability' }, { k: 'speed' },
+    { k: 'determinism' }, { k: 'cost' }, { k: 'TPS' }
+  ];
+  // all six axes from the same terminal-bench run (252 episodes); novita excluded (0 successful calls)
+  var PROFILES = {
+    dwrt: [1.00, 1.00, 1.00, 0.64, 0.11, 0.34],
+    dwfx: [0.82, 1.00, 0.67, 0.71, 0.15, 0.23],
+    dinf: [0.87, 1.00, 0.20, 0.86, 1.00, 0.36],
+    para: [0.87, 1.00, 0.24, 0.50, 0.34, 0.51],
+    fire: [0.61, 0.64, 0.56, 0.64, 0.73, 1.00]
+  };
+  var RADAR_HOSTS = HOSTS.filter(function (h) { return h.key !== 'novi'; });
+  var active = { dwrt: true, dwfx: true, dinf: true, para: true, fire: true };
+  var NS = 'http://www.w3.org/2000/svg';
+  var W = 640, H = 430, CX = W / 2, CY = H / 2 + 8, R = 150;
+  function pt(i, v) {
+    var a = -Math.PI / 2 + i * Math.PI / 3;
+    return [CX + R * v * Math.cos(a), CY + R * v * Math.sin(a)];
+  }
+  var svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Radar chart of six provider profiles across quality, reliability, speed, determinism, cost, and TPS');
+  [0.25, 0.5, 0.75, 1].forEach(function (g) {
+    var p = document.createElementNS(NS, 'polygon');
+    p.setAttribute('points', AXES.map(function (_, i) { return pt(i, g).join(','); }).join(' '));
+    p.setAttribute('fill', 'none');
+    p.setAttribute('stroke', g === 1 ? '#d5d0c2' : '#e6e2d8');
+    svg.appendChild(p);
+  });
+  AXES.forEach(function (ax, i) {
+    var l = document.createElementNS(NS, 'line');
+    var e = pt(i, 1);
+    l.setAttribute('x1', CX); l.setAttribute('y1', CY);
+    l.setAttribute('x2', e[0]); l.setAttribute('y2', e[1]);
+    l.setAttribute('stroke', '#e6e2d8');
+    svg.appendChild(l);
+    var t = document.createElementNS(NS, 'text');
+    var lp = pt(i, 1.16);
+    t.setAttribute('x', lp[0]); t.setAttribute('y', lp[1] + 3);
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('font-size', '12.5');
+    t.setAttribute('font-family', 'Spline Sans Mono, monospace');
+    t.setAttribute('fill', '#191817');
+    t.textContent = ax.k;
+    svg.appendChild(t);
+  });
+  var series = {};
+  var hover = null;
+  var legendBtns = {};
+  RADAR_HOSTS.forEach(function (h) {
+    var p = document.createElementNS(NS, 'polygon');
+    p.setAttribute('points', PROFILES[h.key].map(function (v, i) { return pt(i, Math.max(v, 0.02)).join(','); }).join(' '));
+    p.setAttribute('fill', h.hex);
+    p.setAttribute('fill-opacity', '0.10');
+    p.setAttribute('stroke', h.hex);
+    p.setAttribute('stroke-width', '2');
+    p.setAttribute('stroke-linejoin', 'round');
+    p.style.transition = 'opacity .2s, fill-opacity .2s, stroke-width .2s';
+    p.style.cursor = 'pointer';
+    p.addEventListener('mouseenter', function () { hover = h.key; render(); });
+    p.addEventListener('mouseleave', function () { hover = null; render(); });
+    svg.appendChild(p);
+    var dots = document.createElementNS(NS, 'g');
+    dots.style.pointerEvents = 'none';
+    PROFILES[h.key].forEach(function (v, i) {
+      var c = document.createElementNS(NS, 'circle');
+      var xy = pt(i, Math.max(v, 0.02));
+      c.setAttribute('cx', xy[0]); c.setAttribute('cy', xy[1]); c.setAttribute('r', '3.2');
+      c.setAttribute('fill', '#ffffff'); c.setAttribute('stroke', h.hex); c.setAttribute('stroke-width', '2');
+      dots.appendChild(c);
+    });
+    dots.style.transition = 'opacity .2s';
+    svg.appendChild(dots);
+    series[h.key] = [p, dots];
+  });
+  document.getElementById('radarBox').appendChild(svg);
+  var legend = document.getElementById('radarLegend');
+  function render() {
+    RADAR_HOSTS.forEach(function (h) {
+      var on = active[h.key];
+      var isHover = hover === h.key;
+      var dimmed = hover && !isHover;
+      var op = !on ? 0 : (dimmed ? 0.1 : 1);
+      series[h.key][0].style.opacity = op;
+      series[h.key][1].style.opacity = op;
+      series[h.key][0].setAttribute('fill-opacity', isHover ? '0.24' : '0.10');
+      series[h.key][0].setAttribute('stroke-width', isHover ? '2.6' : '2');
+      if (legendBtns[h.key]) legendBtns[h.key].style.fontWeight = isHover ? '600' : '400';
+    });
+    if (hover && active[hover]) { svg.appendChild(series[hover][0]); svg.appendChild(series[hover][1]); }
+  }
+  RADAR_HOSTS.forEach(function (h) {
+    var b = document.createElement('button');
+    b.className = 'lg';
+    b.setAttribute('aria-pressed', String(active[h.key]));
+    b.innerHTML = '<span class="sw" style="background:' + h.hex + '"></span>' + h.name.split(' (')[0];
+    b.addEventListener('click', function () {
+      active[h.key] = !active[h.key];
+      b.setAttribute('aria-pressed', String(active[h.key]));
+      render();
+    });
+    b.addEventListener('mouseenter', function () { hover = h.key; render(); });
+    b.addEventListener('mouseleave', function () { hover = null; render(); });
+    legendBtns[h.key] = b;
+    legend.appendChild(b);
+  });
+  render();
+
+  document.querySelectorAll('.copy-btn').forEach(function (b) {
+    b.addEventListener('click', function () {
+      navigator.clipboard.writeText(b.dataset.copy).then(function () {
+        b.classList.add('done');
+        var old = b.innerHTML;
+        b.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>copied';
+        setTimeout(function () { b.classList.remove('done'); b.innerHTML = old; }, 1600);
+      });
+    });
+  });
+})();
+</script>
 </body>
 </html>
