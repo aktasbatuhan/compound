@@ -1,64 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 560" width="720" height="560" font-family="'Spline Sans Mono', ui-monospace, SFMono-Regular, Menlo, monospace">
-<rect width="720" height="560" fill="#17150f"/>
-<polygon points="360.0,205.5 398.5,227.8 398.5,272.2 360.0,294.5 321.5,272.2 321.5,227.8" fill="none" stroke="#332f27" stroke-width="1"/>
-<polygon points="360.0,161.0 437.1,205.5 437.1,294.5 360.0,339.0 282.9,294.5 282.9,205.5" fill="none" stroke="#332f27" stroke-width="1"/>
-<polygon points="360.0,116.5 475.6,183.2 475.6,316.8 360.0,383.5 244.4,316.8 244.4,183.2" fill="none" stroke="#332f27" stroke-width="1"/>
-<polygon points="360.0,72.0 514.2,161.0 514.2,339.0 360.0,428.0 205.8,339.0 205.8,161.0" fill="none" stroke="#443f34" stroke-width="1"/>
-<line x1="360" y1="250" x2="360.0" y2="72.0" stroke="#332f27" stroke-width="1"/>
-<text x="360.0" y="49.3" text-anchor="middle" font-size="14" fill="#f3efe6">quality</text>
-<line x1="360" y1="250" x2="514.2" y2="161.0" stroke="#332f27" stroke-width="1"/>
-<text x="537.3" y="151.7" text-anchor="middle" font-size="14" fill="#f3efe6">reliability</text>
-<line x1="360" y1="250" x2="514.2" y2="339.0" stroke="#332f27" stroke-width="1"/>
-<text x="537.3" y="356.3" text-anchor="middle" font-size="14" fill="#f3efe6">speed</text>
-<line x1="360" y1="250" x2="360.0" y2="428.0" stroke="#332f27" stroke-width="1"/>
-<text x="360.0" y="458.7" text-anchor="middle" font-size="14" fill="#f3efe6">determinism</text>
-<line x1="360" y1="250" x2="205.8" y2="339.0" stroke="#332f27" stroke-width="1"/>
-<text x="182.7" y="356.4" text-anchor="middle" font-size="14" fill="#f3efe6">cost</text>
-<line x1="360" y1="250" x2="205.8" y2="161.0" stroke="#332f27" stroke-width="1"/>
-<text x="182.7" y="151.6" text-anchor="middle" font-size="14" fill="#f3efe6">TPS</text>
-<polygon points="360.0,72.0 514.2,161.0 514.2,339.0 360.0,363.9 343.0,259.8 307.6,219.7" fill="#1740e6" fill-opacity="0.10" stroke="#1740e6" stroke-width="2" stroke-linejoin="round"/>
-<polygon points="360.0,95.1 514.2,161.0 397.0,271.4 360.0,339.0 307.6,280.3 281.4,204.6" fill="#7048e8" fill-opacity="0.10" stroke="#7048e8" stroke-width="2" stroke-linejoin="round"/>
-<polygon points="360.0,95.1 514.2,161.0 390.8,267.8 360.0,403.1 205.8,339.0 304.5,218.0" fill="#0d9373" fill-opacity="0.10" stroke="#0d9373" stroke-width="2" stroke-linejoin="round"/>
-<polygon points="360.0,104.0 514.2,161.0 463.3,309.6 360.0,376.4 336.9,263.4 324.5,229.5" fill="#0e93c0" fill-opacity="0.10" stroke="#0e93c0" stroke-width="2" stroke-linejoin="round"/>
-<polygon points="360.0,141.4 458.7,193.0 446.3,299.8 360.0,363.9 247.5,315.0 205.8,161.0" fill="#e8590c" fill-opacity="0.10" stroke="#e8590c" stroke-width="2" stroke-linejoin="round"/>
-<circle cx="360.0" cy="72.0" r="3" fill="#17150f" stroke="#1740e6" stroke-width="2"/>
-<circle cx="514.2" cy="161.0" r="3" fill="#17150f" stroke="#1740e6" stroke-width="2"/>
-<circle cx="514.2" cy="339.0" r="3" fill="#17150f" stroke="#1740e6" stroke-width="2"/>
-<circle cx="360.0" cy="363.9" r="3" fill="#17150f" stroke="#1740e6" stroke-width="2"/>
-<circle cx="343.0" cy="259.8" r="3" fill="#17150f" stroke="#1740e6" stroke-width="2"/>
-<circle cx="307.6" cy="219.7" r="3" fill="#17150f" stroke="#1740e6" stroke-width="2"/>
-<circle cx="360.0" cy="95.1" r="3" fill="#17150f" stroke="#7048e8" stroke-width="2"/>
-<circle cx="514.2" cy="161.0" r="3" fill="#17150f" stroke="#7048e8" stroke-width="2"/>
-<circle cx="397.0" cy="271.4" r="3" fill="#17150f" stroke="#7048e8" stroke-width="2"/>
-<circle cx="360.0" cy="339.0" r="3" fill="#17150f" stroke="#7048e8" stroke-width="2"/>
-<circle cx="307.6" cy="280.3" r="3" fill="#17150f" stroke="#7048e8" stroke-width="2"/>
-<circle cx="281.4" cy="204.6" r="3" fill="#17150f" stroke="#7048e8" stroke-width="2"/>
-<circle cx="360.0" cy="95.1" r="3" fill="#17150f" stroke="#0d9373" stroke-width="2"/>
-<circle cx="514.2" cy="161.0" r="3" fill="#17150f" stroke="#0d9373" stroke-width="2"/>
-<circle cx="390.8" cy="267.8" r="3" fill="#17150f" stroke="#0d9373" stroke-width="2"/>
-<circle cx="360.0" cy="403.1" r="3" fill="#17150f" stroke="#0d9373" stroke-width="2"/>
-<circle cx="205.8" cy="339.0" r="3" fill="#17150f" stroke="#0d9373" stroke-width="2"/>
-<circle cx="304.5" cy="218.0" r="3" fill="#17150f" stroke="#0d9373" stroke-width="2"/>
-<circle cx="360.0" cy="104.0" r="3" fill="#17150f" stroke="#0e93c0" stroke-width="2"/>
-<circle cx="514.2" cy="161.0" r="3" fill="#17150f" stroke="#0e93c0" stroke-width="2"/>
-<circle cx="463.3" cy="309.6" r="3" fill="#17150f" stroke="#0e93c0" stroke-width="2"/>
-<circle cx="360.0" cy="376.4" r="3" fill="#17150f" stroke="#0e93c0" stroke-width="2"/>
-<circle cx="336.9" cy="263.4" r="3" fill="#17150f" stroke="#0e93c0" stroke-width="2"/>
-<circle cx="324.5" cy="229.5" r="3" fill="#17150f" stroke="#0e93c0" stroke-width="2"/>
-<circle cx="360.0" cy="141.4" r="3" fill="#17150f" stroke="#e8590c" stroke-width="2"/>
-<circle cx="458.7" cy="193.0" r="3" fill="#17150f" stroke="#e8590c" stroke-width="2"/>
-<circle cx="446.3" cy="299.8" r="3" fill="#17150f" stroke="#e8590c" stroke-width="2"/>
-<circle cx="360.0" cy="363.9" r="3" fill="#17150f" stroke="#e8590c" stroke-width="2"/>
-<circle cx="247.5" cy="315.0" r="3" fill="#17150f" stroke="#e8590c" stroke-width="2"/>
-<circle cx="205.8" cy="161.0" r="3" fill="#17150f" stroke="#e8590c" stroke-width="2"/>
-<rect x="39.5" y="517" width="16" height="4" rx="1" fill="#1740e6"/>
-<text x="63.5" y="524" font-size="12.5" fill="#8c857a">doubleword realtime</text>
-<rect x="223.2" y="517" width="16" height="4" rx="1" fill="#7048e8"/>
-<text x="247.2" y="524" font-size="12.5" fill="#8c857a">parasail</text>
-<rect x="325.9" y="517" width="16" height="4" rx="1" fill="#0d9373"/>
-<text x="349.9" y="524" font-size="12.5" fill="#8c857a">deepinfra</text>
-<rect x="436.1" y="517" width="16" height="4" rx="1" fill="#0e93c0"/>
-<text x="460.1" y="524" font-size="12.5" fill="#8c857a">doubleword flex</text>
-<rect x="590.3" y="517" width="16" height="4" rx="1" fill="#e8590c"/>
-<text x="614.3" y="524" font-size="12.5" fill="#8c857a">fireworks</text>
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 860 500' width='860' height='500'>
+<rect width='860' height='500' fill='#17150f' rx='6'/>
+<text x='24' y='30' font-family='Helvetica,Arial,sans-serif' font-size='15' font-weight='bold' fill='#f3efe6'>provider profiles, six axes, outer edge best</text>
+<text x='24' y='48' font-family='Helvetica,Arial,sans-serif' font-size='11' fill='#8a8377'>quality + cost from the fair matrix · timing + reliability from the 5-host streamed harness</text>
+<polygon points='350.0,195.6 397.2,222.8 397.2,277.2 350.0,304.4 302.8,277.2 302.8,222.8' fill='none' stroke='#3a372f' stroke-width='1'/>
+<polygon points='350.0,141.1 444.3,195.6 444.3,304.4 350.0,358.9 255.7,304.5 255.7,195.5' fill='none' stroke='#3a372f' stroke-width='1'/>
+<polygon points='350.0,85.0 492.9,167.5 492.9,332.5 350.0,415.0 207.1,332.5 207.1,167.5' fill='none' stroke='#3a372f' stroke-width='1'/>
+<line x1='350' y1='250' x2='350.0' y2='85.0' stroke='#3a372f' stroke-width='1'/>
+<text x='350.0' y='55.3' font-family='Helvetica,Arial,sans-serif' font-size='11.5' fill='#b5aea1' text-anchor='middle'>quality (on)</text>
+<line x1='350' y1='250' x2='492.9' y2='167.5' stroke='#3a372f' stroke-width='1'/>
+<text x='518.6' y='152.7' font-family='Helvetica,Arial,sans-serif' font-size='11.5' fill='#b5aea1' text-anchor='start'>quality (off)</text>
+<line x1='350' y1='250' x2='492.9' y2='332.5' stroke='#3a372f' stroke-width='1'/>
+<text x='518.6' y='347.3' font-family='Helvetica,Arial,sans-serif' font-size='11.5' fill='#b5aea1' text-anchor='start'>first token</text>
+<line x1='350' y1='250' x2='350.0' y2='415.0' stroke='#3a372f' stroke-width='1'/>
+<text x='350.0' y='444.7' font-family='Helvetica,Arial,sans-serif' font-size='11.5' fill='#b5aea1' text-anchor='middle'>decode speed</text>
+<line x1='350' y1='250' x2='207.1' y2='332.5' stroke='#3a372f' stroke-width='1'/>
+<text x='181.4' y='347.4' font-family='Helvetica,Arial,sans-serif' font-size='11.5' fill='#b5aea1' text-anchor='end'>reliability</text>
+<line x1='350' y1='250' x2='207.1' y2='167.5' stroke='#3a372f' stroke-width='1'/>
+<text x='181.4' y='152.6' font-family='Helvetica,Arial,sans-serif' font-size='11.5' fill='#b5aea1' text-anchor='end'>cost</text>
+<polygon points='350.0,98.2 492.9,167.5 480.0,325.1 350.0,395.2 207.1,332.5 277.1,207.9' fill='#0d9373' fill-opacity='0.07' stroke='#0d9373' stroke-width='1.8'/>
+<polygon points='350.0,85.0 457.2,188.1 461.5,314.3 350.0,367.1 207.1,332.5 317.1,231.0' fill='#7048e8' fill-opacity='0.07' stroke='#7048e8' stroke-width='1.8'/>
+<polygon points='350.0,91.6 475.7,177.4 451.5,308.6 350.0,415.0 237.1,315.2 317.1,231.0' fill='#e8590c' fill-opacity='0.07' stroke='#e8590c' stroke-width='1.8'/>
+<polygon points='350.0,136.2 481.5,174.1 492.9,332.5 350.0,279.7 207.1,332.5 218.5,174.1' fill='#1740e6' fill-opacity='0.07' stroke='#1740e6' stroke-width='1.8'/>
+<polygon points='350.0,147.7 457.2,188.1 367.1,259.9 350.0,276.4 207.1,332.5 207.1,167.5' fill='#0e93c0' fill-opacity='0.07' stroke='#0e93c0' stroke-width='1.8'/>
+<rect x='620' y='83' width='11' height='11' fill='#0d9373' rx='2'/>
+<text x='638' y='93' font-family='Helvetica,Arial,sans-serif' font-size='12' fill='#f3efe6'>deepinfra (fp4)</text>
+<rect x='620' y='107' width='11' height='11' fill='#7048e8' rx='2'/>
+<text x='638' y='117' font-family='Helvetica,Arial,sans-serif' font-size='12' fill='#f3efe6'>parasail (fp8)</text>
+<rect x='620' y='131' width='11' height='11' fill='#e8590c' rx='2'/>
+<text x='638' y='141' font-family='Helvetica,Arial,sans-serif' font-size='12' fill='#f3efe6'>fireworks</text>
+<rect x='620' y='155' width='11' height='11' fill='#1740e6' rx='2'/>
+<text x='638' y='165' font-family='Helvetica,Arial,sans-serif' font-size='12' fill='#f3efe6'>doubleword realtime</text>
+<rect x='620' y='179' width='11' height='11' fill='#0e93c0' rx='2'/>
+<text x='638' y='189' font-family='Helvetica,Arial,sans-serif' font-size='12' fill='#f3efe6'>doubleword flex</text>
+<text x='620' y='220' font-family='Helvetica,Arial,sans-serif' font-size='10' fill='#8a8377'>cloudflare, together: serving</text>
+<text x='620' y='234' font-family='Helvetica,Arial,sans-serif' font-size='10' fill='#8a8377'>measurements in progress, quality in bars</text>
 </svg>

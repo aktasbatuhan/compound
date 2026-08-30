@@ -23,7 +23,7 @@ and hands you a verdict with a confidence interval, never a vibe.
 
 [![Watch the explainer: one model across five hosts, the quality frontier, and the per-axis best provider](assets/explainer-poster.png)](assets/compound-explainer.mp4)
 
-<sub>▶ **[Watch the 50s explainer](assets/compound-explainer.mp4)** — the serving-layer gap, the quality frontier, and why every workload has a different best host.</sub>
+<sub>▶ **[Watch the 50s explainer](assets/compound-explainer.mp4)**: the serving-layer gap, the quality frontier, and why every workload has a different best host.</sub>
 
 </div>
 
@@ -34,10 +34,14 @@ and hands you a verdict with a confidence interval, never a vibe.
 Every leaderboard tells you which model is best on average. None of them can tell you
 whether the switch is safe on **your** workload, and the gap is not academic:
 
-- **The serving host moves outcomes as much as the model does.** In our pinned-host
-  terminal-bench sweep, identical open-model weights ranged from **33% to 55% end-to-end
-  task success** purely from the serving layer: shared-pool rate-limit kills and a 5x
-  latency spread, with model quality a statistical tie. None of it is visible on a pricing page.
+- **Same model, same quality, up to 9.6x the cost.** In our matched-condition terminal-bench
+  matrix (8 hosts x 2 pinned reasoning modes, 588 episodes), quality is a near-tie once the clock
+  is unbound (the slowest host and the five OpenRouter hosts pooled resolve 52.4% vs 49.5%, p = 0.87),
+  so the model's ability does not depend on the host. What does depend on the host is the bill:
+  DeepInfra and Cloudflare resolve the identical 57.1% of tasks at **$0.43 vs $4.13 per cell**, about
+  **$8,800/month apart** at 100k task-runs. **The host also decides whether thinking is affordable**:
+  fast hosts gain ~9 to 13 points with reasoning on (directional), while a ~20 tok/s host loses
+  ground because thinking exhausts even tripled time limits. Pick by your workload, not a pricing page.
 - **Evals rot.** Hand-written eval sets go stale the week after you write them, so most
   teams ship model switches on a demo and a prayer.
 - **Experiments burn money invisibly.** One retry loop against a paid API and your
@@ -75,40 +79,60 @@ The gate emits one of five verdicts: **meets gate**, **fails**, **insufficient d
 **judge abstained**, **no reliable improvement**. If the data cannot support a decision,
 Compound says so instead of rounding noise up to a recommendation.
 
-## Same weights, five hosts: what actually differs
+## Same open model, eight hosts: identical quality, up to 9.6x the cost
 
-> One model (`deepseek-v4-flash`), five pinned serving hosts, **terminal-bench**: 14 agentic
-> terminal tasks x 3 identical trials per host, pass/fail decided by each task's own test
-> suite inside a container. No LLM judge, no user simulator, temperature pinned by the
-> agent. Then every failed episode's raw API traffic was audited to separate model
-> failures from provider failures.
+> One model (`deepseek-v4-flash`), eight serving configurations (six pinned hosts fully
+> crossed, one off-mode-only, one unpinned control), **terminal-bench**: 14 agentic terminal
+> tasks x 3+ trials x 2 explicitly pinned reasoning modes = 588 scored episodes, pass/fail
+> decided by each task's own test suite inside a container. Every task time limit tripled
+> so no host fails merely for being slow (a labeled deviation from official limits). Prompt
+> caching enabled the best way each host supports. No LLM judge, no user simulator. Every
+> API call traced; a streamed harness measured first-token and decode speed hourly through
+> a night with matched modes and busted caches.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/tb-results-dark.svg">
-  <img alt="Terminal-bench results: same model on five hosts, end-to-end success 33 to 55 percent, driven by the serving layer rather than model quality" src="assets/tb-results-light.svg">
+  <img alt="Terminal-bench fair matrix: same model on six fully crossed hosts in both pinned reasoning modes at tripled time limits. Fast hosts gain with reasoning on; the ~20 tokens per second host loses ground because thinking exhausts even tripled limits" src="assets/tb-results-light.svg">
 </picture>
 
-- **Model quality is a tie; the serving layer is not.** Excluding provider-killed
-  episodes, every host lands at 45-57%, indistinguishable at this sample size. End-to-end
-  the visible spread is 33-55%, and the gap is provider reliability, not the model.
-- **fireworks lost 15 of 42 episodes to shared-pool rate limits.** Its apparent degradation
-  across trials was weather, not the model. Its error-free trial scored right in the pack.
-- **Identical calls, 5x latency spread** (4.1s vs 21.2s median), and different
-  determinism: one host flipped 2/14 task outcomes between identical trials, another 7/14.
+- **With time pressure removed and reasoning off, the hosts tie.** The dedicated
+  deployment decoding at ~20 tok/s resolved 52.4% (n=42); five OpenRouter hosts pooled
+  resolved 49.5% (n=210). Fisher p = 0.87, and it survives a discriminating-task
+  sensitivity check. The weights are the weights, wherever they run.
+- **The host decides whether thinking is affordable.** Fast hosts (76-108 tok/s decode)
+  gain about 9 to 13 points with reasoning on, a directional effect that does not clear
+  significance at this sample size (p = 0.056 on the tasks that discriminate). The
+  ~20 tok/s host loses ground with reasoning on: 20 of its 24 failures still burned 85%+
+  of the tripled time limit on API calls alone. Slow-decode thinking is a throughput
+  ceiling, not a deadline artifact.
+- **Hosts silently disagree on defaults, and some cannot serve your workload at all.**
+  With no reasoning parameter, hosts split thinking on/off invisibly. Worse: 6 of 30
+  listed endpoints for this model failed our capability probes (structured-output
+  refusals, metadata the router contradicts, one host that silently disables thinking
+  under json_schema and then answers incorrectly).
+- **Caching is where the money moves.** Measured steady-state hit ratios span 82% down to
+  35%, and exactly 0% on the opt-in host under a stock client. Unpinned auto routing cut
+  both ways, measured: cheaper than pinned on small schema-free calls, but 2.7x the cost
+  of the cheapest pinned host ($1.16 vs $0.43) for equal quality on our real
+  schema-constrained workload.
 
-<sub>Pass rates use all three trials (210 episodes). Latency, cost, and throughput are per-call
-metrics from about 2,130 API traces captured on two of the three trials.</sub>
+<sub>588 episodes across eight serving configurations and two pinned modes at tripled
+(non-official) limits, Wilson 95% CIs, full per-call traces; timing from 1,080 streamed
+matched-mode calls; cache behavior from a 432-call growing-prefix replay. Within-mode
+host differences are not statistically significant and are reported as ties.</sub>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/tb-provider-radar-dark.svg">
-  <img alt="Six-axis provider profiles for five hosts serving one model: quality, reliability, speed, determinism, cost, and TPS" src="assets/tb-provider-radar-light.svg">
+  <img alt="Six-axis provider profiles for the five serving-measured hosts of one model: quality in both reasoning modes, first token, decode speed, reliability, and cost" src="assets/tb-provider-radar-light.svg">
 </picture>
 
-<sub>All six axes from one terminal-bench run (five hosts, 210 episodes), normalized so the outer
-edge is best on each. No host wins every axis: <b>doubleword realtime</b> takes speed, <b>deepinfra</b>
-takes cost, <b>fireworks</b> takes throughput. Each workload weights these axes differently, so each
-has a different best host. The <a href="https://compound-1js.pages.dev/#profiles">interactive version</a>
-lets you pick an axis and watch the winner change: <b>find yours.</b></sub>
+<sub>Quality and cost axes from the fair matrix, timing and reliability from the streamed
+harness (the five serving-measured hosts; cloudflare and together appear in the bars). No host wins every axis: <b>parasail</b> takes
+reasoning-mode quality, <b>fireworks</b> takes decode speed but is the only host that
+rate-limits, <b>doubleword realtime</b> takes first-token stability, <b>doubleword flex</b>
+takes cost. Each workload weights these axes differently, so each has a different best host.
+The <a href="https://compound-1js.pages.dev/#profiles">interactive version</a> lets you pick
+an axis and watch the winner change: <b>find yours.</b></sub>
 
 Reproduce it (any model, your pick of hosts):
 
@@ -229,8 +253,8 @@ compound-bench run mmlu --model deepseek/deepseek-v4-flash-0731 \
 `run tau2 --go` without it stops with a pointer instead of an import error. Dry
 runs (no `--go`) preview the plan without it.
 
-Any OpenAI-compatible host can serve the model — vLLM, Fireworks direct, Groq,
-your own box — no adapter code required:
+Any OpenAI-compatible host can serve the model (vLLM, Fireworks direct, Groq,
+your own box), no adapter code required:
 
 ```bash
 compound-bench run tau2 --model my-model \
@@ -241,8 +265,8 @@ The same fields (`provider`, `api_base`, `api_key_env`) work per-config in sweep
 specs, so a custom host can sit in the same frontier chart as the pinned
 OpenRouter routes. Adding a benchmark is one registry entry backed by a
 partitioned manifest; see
-[#33](https://github.com/aktasbatuhan/compound/issues/33) for the adapter
-interface.
+[`src/compound/adapters/`](https://github.com/aktasbatuhan/compound/tree/main/src/compound/adapters)
+for the adapter interface.
 
 ### Same model, many hosts: `--providers`
 
@@ -321,7 +345,7 @@ automated like both, with a stop-loss. The proof is ambient; the switch is earne
 ## Status
 
 Everything above works today and is tested end to end (`bun test`, `uv run pytest`).
-What comes next — live verification, automated switching, the continuous loop — is
+What comes next (live verification, automated switching, the continuous loop) is
 tracked in the [issues](https://github.com/aktasbatuhan/compound/issues). Expect sharp
 edges; expect honest verdicts.
 

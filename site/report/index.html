@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Same weights, five hosts: the model tied, the serving layer didn't | a Compound report</title>
-<meta name="description" content="One open model, five pinned serving hosts, 210 terminal-bench episodes. Model quality is a statistical tie; the serving layer is not. Full results with confidence intervals and raw-traffic audits.">
-<meta property="og:title" content="Same weights, five hosts: the model tied, the serving layer didn't">
-<meta property="og:description" content="One open model, five pinned serving hosts, 210 terminal-bench episodes. The spread is entirely the serving layer.">
+<title>Same open model, eight hosts, up to 9.6x the cost for identical quality: measuring provider economics with Compound</title>
+<meta name="description" content="One open model, eight serving hosts, two pinned reasoning modes, 588 terminal-bench episodes at tripled time limits, plus a streamed timing harness and 432 cache-replay calls. Quality is a tie once the clock stops binding; the slow decoders run thinking out of time. Full results, confidence intervals, per-call traces.">
+<meta property="og:title" content="Same open model, eight hosts, up to 9.6x the cost for identical quality">
+<meta property="og:description" content="One open model served eight ways. Quality is roughly fixed; what moves is the provider's economics: cost per solved task spans nearly 10x, decode speed 5x, cache 0 to 94%. Compound measures all of it, on a benchmark or on your own traces.">
 <meta property="og:type" content="article">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='13' height='13' fill='none' stroke='%23191817' stroke-width='2'/%3E%3Crect x='9' y='9' width='13' height='13' fill='%231740e6'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -135,22 +135,15 @@
   td.num { font-family: var(--mono); font-size: 12px; }
   td .note { color: var(--ink-3); font-size: 12px; white-space: normal; }
   tr.dead td:not(:last-child) { color: var(--ink-3); }
+  tr.grp td { border-top: 1px solid var(--line-2); }
   .pill { font-family: var(--mono); font-size: 10.5px; padding: 2px 9px; border-radius: 3px; }
   .pill.ok { color: var(--go); background: var(--go-bg); }
   .pill.warn { color: var(--warn); background: var(--warn-bg); }
   .pill.fail { color: var(--stop); background: var(--stop-bg); }
+  .pill.m { color: var(--ink-2); background: var(--paper); border: 1px solid var(--line); }
 
   .radar-box { padding: 8px 6px 0; }
   .radar-box svg { display: block; width: 100%; height: auto; }
-  .legend { display: flex; flex-wrap: wrap; gap: 0; padding: 0 20px 16px; }
-  .lg {
-    font-family: var(--mono); font-size: 11px; display: inline-flex; align-items: center; gap: 8px;
-    border: none; background: none; color: var(--ink-2);
-    padding: 5px 14px 5px 0; cursor: pointer; transition: opacity .12s;
-  }
-  .lg .sw { width: 14px; height: 3px; }
-  .lg[aria-pressed="false"] { opacity: 0.35; }
-  .lg[aria-pressed="false"] .sw { background: var(--ink-3) !important; }
 
   .doc ul { margin: 0 0 14px; padding-left: 20px; color: var(--ink-2); }
   .doc li { margin-bottom: 8px; }
@@ -166,10 +159,18 @@
     display: inline-flex; align-items: center; gap: 6px;
     font-family: var(--mono); font-size: 11px; color: rgba(255,255,255,0.65);
     background: none; border: none; padding: 2px 0; cursor: pointer;
+    transition-property: color, scale; transition-duration: .12s, .15s; transition-timing-function: ease-out;
   }
   .copy-btn:hover { color: #fff; }
+  .copy-btn:active { scale: 0.96; }
   .copy-btn.done { color: #7be0a8; }
-  .copy-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+  .copy-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+  /* scale-on-press: tactile feedback on the segmented axis toggle */
+  .axis-ctrl .seg button { transition-property: scale; transition-duration: .15s; transition-timing-function: ease-out; }
+  .axis-ctrl .seg button:active { scale: 0.96; }
+  @media (prefers-reduced-motion: reduce) {
+    .copy-btn:active, .axis-ctrl .seg button:active { scale: 1; }
+  }
   .code-box pre { margin: 0; padding: 16px 18px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.8; color: var(--ink-2); }
   .code-box .cm { color: var(--ink-3); }
   .code-box .p { color: var(--accent); }
@@ -183,6 +184,48 @@
   footer.doc-foot { border-top: 1px solid var(--line); margin-top: 54px; padding-top: 22px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   footer.doc-foot a { color: var(--ink-2); text-decoration: none; }
   footer.doc-foot a:hover { color: var(--ink); }
+
+  /* pareto scatter */
+  .axis-ctrl { display: flex; align-items: center; gap: 10px; padding: 14px 20px 2px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); flex-wrap: wrap; }
+  .axis-ctrl .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 3px; overflow: hidden; }
+  .axis-ctrl .seg button { font-family: var(--mono); font-size: 11.5px; padding: 5px 13px; background: var(--panel); border: none; border-right: 1px solid var(--line); color: var(--ink-2); cursor: pointer; }
+  .axis-ctrl .seg button:last-child { border-right: none; }
+  .axis-ctrl .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  #paretoBox svg { display: block; width: 100%; height: auto; }
+  .pareto-legend .mk-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-2); display: inline-block; }
+  .pareto-legend .mk-sq { width: 9px; height: 9px; border: 2px solid var(--ink-2); background: var(--paper); display: inline-block; }
+  .pareto-legend .sw.fr { background: var(--accent); opacity: 0.3; }
+
+  /* waffle grid */
+  .waffle-scroll { overflow-x: auto; padding: 2px 0 0; }
+  .waffle-grid { display: grid; min-width: max-content; }
+  .waffle-grid .wh { font-family: var(--mono); font-size: 10.5px; color: var(--ink-2); padding: 9px 11px 11px; line-height: 1.35; white-space: nowrap; border-bottom: 1px solid var(--line-2); }
+  .waffle-grid .wh small { display: block; color: var(--ink-3); font-size: 9.5px; margin-top: 2px; }
+  .waffle-grid .wtask { font-family: var(--mono); font-size: 11px; color: var(--ink-2); padding: 0 16px 0 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; white-space: nowrap; border-bottom: 1px solid var(--line); position: sticky; left: 0; background: var(--panel); z-index: 1; }
+  .waffle-grid .wtask small { color: var(--ink-3); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+  .waffle-grid .wcell { padding: 7px 11px; border-bottom: 1px solid var(--line); display: flex; gap: 3px; align-items: center; flex-wrap: wrap; max-width: 92px; }
+  .waffle-grid .hostsep { border-left: 1px solid var(--line-2); }
+  .waffle-sq { width: 11px; height: 11px; border-radius: 2px; flex: none; cursor: pointer; }
+  /* embedded trace viewer */
+  .tv-wrap { border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; background: var(--panel); }
+  .tv-tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); background: var(--paper); }
+  .tv-tab { font-family: var(--mono); font-size: 12px; padding: 10px 16px; cursor: pointer; border: none; background: none; color: var(--ink-2); display: inline-flex; align-items: center; gap: 7px; border-right: 1px solid var(--line); transition-property: color, background, scale; transition-duration: .12s; transition-timing-function: ease-out; }
+  .tv-tab:active { scale: 0.97; }
+  .tv-tab[aria-selected="true"] { background: var(--ink); color: #fff; }
+  .tv-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+  .tv-head { padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .tv-head .task { font-family: var(--mono); font-size: 13px; color: var(--ink); font-weight: 600; }
+  .tv-badge { display: inline-block; font-family: var(--mono); font-size: 10.5px; padding: 2px 8px; border-radius: 3px; vertical-align: 1px; letter-spacing: .04em; }
+  .tv-head .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+  .tv-instr { font-size: 12.5px; color: var(--ink-2); margin: 8px 0 0; line-height: 1.5; max-width: 78ch; }
+  .tv-body { max-height: 480px; overflow-y: auto; }
+  .tv-turn { padding: 12px 18px; border-bottom: 1px solid var(--line); }
+  .tv-turn:last-child { border-bottom: none; }
+  .tv-n { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
+  .tv-term { font-family: var(--mono); font-size: 11.5px; background: #17150f; color: #cfc9bd; border-radius: 4px; padding: 10px 12px; margin: 7px 0; white-space: pre-wrap; overflow-x: auto; line-height: 1.5; }
+  .tv-reason { font-size: 12.5px; color: var(--ink-2); font-style: italic; margin: 7px 0; line-height: 1.45; }
+  .tv-cmd { font-family: var(--mono); font-size: 12px; background: var(--paper); border-left: 2px solid var(--accent); padding: 7px 10px 7px 4px; white-space: pre-wrap; color: var(--ink); border-radius: 0 3px 3px 0; }
+  .tv-cmd .p { color: var(--accent); user-select: none; }
 </style>
 </head>
 <body>
@@ -202,134 +245,433 @@
 
 <article class="doc">
   <div class="kicker">A Compound report, August 2026</div>
-  <h1>Same weights, five hosts: the model tied, the serving layer didn't.</h1>
+  <h1>The same open model, eight hosts: identical quality can cost 9.6x more. Compound is how you find the provider your workload can afford.</h1>
 
   <div class="spec">
     <div><div class="k">Model</div><div class="v long">deepseek-v4-flash<span class="vs">snapshot 0731</span></div></div>
     <div><div class="k">Benchmark</div><div class="v">terminal-bench<span class="vs">agentic, container-graded</span></div></div>
-    <div><div class="k">Hosts</div><div class="v">5<span class="vs">pinned + verified</span></div></div>
-    <div><div class="k">Episodes</div><div class="v">210<span class="vs">14 tasks &times; 3 trials</span></div></div>
+    <div><div class="k">Hosts &times; modes</div><div class="v">8 &times; 2<span class="vs">pinned + verified</span></div></div>
+    <div><div class="k">Episodes</div><div class="v">588<span class="vs">+ serving harness + 432 replay</span></div></div>
   </div>
 
   <div class="tldr">
     <div class="k">TL;DR</div>
-    <p>We ran identical open-model weights on five serving hosts through the same 14 agentic
-    terminal-bench tasks, three trials each, pass or fail decided by each task's own test suite
-    inside a container. <strong>Model quality was a statistical tie: four hosts landed in a 45 to 57%
-    dead heat.</strong> Everything else was 5x apart. The fifth host dropped to 33% purely from
-    shared-pool rate limits, identical calls showed a 5x median latency spread (4.1s vs 21.2s), and
-    per-token cost and throughput varied just as widely. None of this is visible on a pricing page.</p>
+    <p>Compound is a measurement tool, not a benchmark. We pointed it at terminal-bench here, but
+    the same run works on your own production traces. Either way the question is identical: the same
+    open-model weights are served eight ways, and each host is a different economic profile, not a
+    different level of ability. Once the clock is unbound and reasoning is off, every host resolves
+    within a few points of the rest (43 to 57%; the self-hosted Doubleword tiers match the cloud
+    routes, 52.4% vs 49.5% pooled, Fisher p = 0.87). Quality is roughly fixed, so everything that
+    moves is the provider's economics, and it moves a lot.
+    <strong>DeepInfra and Cloudflare resolve the same 57.1% of tasks, but the DeepInfra cell costs
+    $0.43 and the Cloudflare cell costs $4.13, 9.6x more for an identical result. On 100,000 such
+    task-runs a month that is about $1,000 versus $9,800, roughly $8,800 spent on nothing.</strong>
+    That is the price of the wrong default. Each host trades differently: DeepInfra is the cheapest
+    at flat quality, parasail buys the highest reasoning-on rate, fireworks decodes fastest (~108
+    tokens/s), cloudflare is the most deterministic but 4 to 10x the price, together is cheap but
+    silently drops reasoning, and the self-hosted Doubleword tiers give you data control, the best
+    cache (94%), and the cheapest tokens, but decode so slowly that reasoning stops being affordable.
+    Which of those is your cheapest correct answer depends on your workload's shape, its volume, how
+    much of its prompt is cacheable, and whether it needs to think. So the only honest way to choose
+    is to measure your own, and this report is what that measurement looks like.</p>
   </div>
 
   <h2>Setup</h2>
-  <p>One model, <code>deepseek/deepseek-v4-flash-0731</code>, served by five hosts: Doubleword
-  (realtime and flex tiers) and three OpenRouter upstreams pinned with fallbacks disabled
-  (DeepInfra fp4, Parasail fp8, Fireworks). The served host is verified on every call,
-  so a pinned run is checked, not trusted.</p>
-  <p>The workload is <a href="https://github.com/laude-institute/terminal-bench">terminal-bench</a>:
-  agentic terminal tasks where the model drives a shell inside a container and the task's own test
-  suite decides pass or fail. No LLM judge, no user simulator, temperature pinned by the agent.
-  14 tasks, 3 identical trials per host, 210 scored episodes. After the runs, every failed
-  episode's raw API traffic was audited to separate model failures from provider failures.
-  Pass/fail rates use all three trials; the per-call latency, cost, and throughput figures come
-  from the API traces we captured on two of the three trials (about 2,130 calls).</p>
+  <p>One model, <code>deepseek/deepseek-v4-flash-0731</code>, served eight ways: Doubleword
+  (realtime and flex tiers, direct API) and six OpenRouter routes pinned with fallbacks disabled
+  (DeepInfra fp4, Parasail fp8, Fireworks, Cloudflare, Together, and one arm left on
+  OpenRouter's own unpinned auto routing). The served host is verified on every call, so a pinned
+  run is checked, not trusted.</p>
+  <p>Every cell shares the same conditions: each task's agent time limit multiplied by three and
+  labeled non-official in every run's metadata, the reasoning mode pinned per host, and the best
+  prompt cache each host offers switched on (implicit prefix caching on OpenRouter, explicit
+  cache markers on Doubleword). Six hosts are fully crossed on both reasoning modes. Together
+  serves only its reasoning-off cell because
+  its reasoning-on path fails a capability probe (below), and the auto arm runs reasoning-on only.</p>
 
-  <h2>Results</h2>
+  <div class="tldr">
+    <div class="k">Non-official limits</div>
+    <p>Every run in this report multiplies each task's agent time limit by 3, so it deviates from
+    the official terminal-bench limits and is labeled non-official in each run's metadata. The
+    tripled clock is deliberate: it removes the deadline as a confound so quality and the failure
+    mechanism can be read directly. These numbers are never a leaderboard and never sit beside
+    official-limit figures.</p>
+  </div>
+
+  <h3>Hosts silently disagree about how your model runs</h3>
+  <p>Before pinning anything, we sent byte-identical requests with no reasoning parameter, and the
+  serving layer made opposite choices: both Doubleword tiers ran the model with reasoning off (0
+  reasoning tokens across 1,370 calls) while every OpenRouter upstream ran it with reasoning on.
+  Same weights, same request, different model behavior, and nothing in the response flags it. Each
+  host also has its own pin dialect (<code>reasoning_effort</code> versus a <code>reasoning</code>
+  block), and one host even flipped its default between streaming and non-streaming calls. A latency
+  or quality chart comparing hosts that silently disagree on mode is comparing completion lengths,
+  not serving. So we pinned the mode explicitly in each host's own dialect and verified it in the
+  traces; every comparison below is same-mode.</p>
+
+  <h2>The fair matrix</h2>
+  <p>The result is a single, condition-matched matrix: 8 hosts, 2 reasoning modes, tripled clock,
+  best-available cache, 588 terminal-bench episodes across 14 filled cells, every cell grepped for
+  billing errors before it entered the table. The bars below are reasoning-on resolve rate with the
+  reasoning-off rate behind them for the six fully-crossed hosts; the two partial arms, Together
+  (off only) and unpinned auto (on only), sit in the table underneath.</p>
 
   <div class="panel">
-    <div class="panel-head">end-to-end task success by serving host</div>
+    <div class="panel-head">task success by serving host, same weights, both reasoning modes pinned, tripled clock</div>
+    <div class="axis-ctrl">
+      <span>resolve rate over</span>
+      <div class="seg" id="clockToggle">
+        <button data-clock="all" aria-pressed="true">all runs</button>
+        <button data-clock="excl" aria-pressed="false">wall-clock failures excluded</button>
+      </div>
+    </div>
     <div class="chart" id="barChart"></div>
     <div class="chart-note">
-      <span class="k"><span class="sw"></span> end-to-end (provider failures count)</span>
-      <span class="k"><span class="sw lo"></span> excluding provider-killed episodes</span>
-      <span class="k"><span class="sw ci-k"></span> Wilson 95% CI</span>
+      <span class="k"><span class="sw"></span> reasoning on</span>
+      <span class="k"><span class="sw lo"></span> reasoning off</span>
+      <span class="k"><span class="sw ci-k"></span> Wilson 95% CI (on)</span>
     </div>
   </div>
-  <p class="figcap">Fig 1. Hover a row for pass counts, per-trial results, and confidence intervals.</p>
+  <p class="figcap">Fig 1. Six fully-crossed hosts, 42 episodes per cell. Together (reasoning-off only, 20/42) and unpinned auto (reasoning-on
+  only, 23/42) are in the table. Toggle the resolve rate between all runs and wall-clock failures
+  excluded; hover a row for counts, cache share, and the confidence interval.</p>
 
   <div class="panel tbl-wrap">
     <table>
       <thead>
-        <tr><th>Host</th><th>Pass</th><th>Rate</th><th>Wilson 95% CI</th><th>Status</th><th>What the audit found</th></tr>
+        <tr><th>Host</th><th>Reasoning</th><th>Resolved</th><th>Cost</th><th>Cache share</th><th>Wall hrs</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td>doubleword realtime</td><td class="num">23/42</td><td class="num">54.8%</td><td class="num">40&ndash;69%</td>
-          <td><span class="pill ok">healthy</span></td><td><span class="note">clean episodes, fastest median latency of the six</span></td>
-        </tr>
-        <tr>
-          <td>deepinfra (fp4)</td><td class="num">20/42</td><td class="num">47.6%</td><td class="num">33&ndash;62%</td>
-          <td><span class="pill ok">healthy</span></td><td><span class="note">clean episodes</span></td>
-        </tr>
-        <tr>
-          <td>parasail (fp8)</td><td class="num">20/42</td><td class="num">47.6%</td><td class="num">33&ndash;62%</td>
-          <td><span class="pill ok">healthy</span></td><td><span class="note">clean episodes</span></td>
-        </tr>
-        <tr>
-          <td>doubleword flex</td><td class="num">19/42</td><td class="num">45.2%</td><td class="num">31&ndash;60%</td>
-          <td><span class="pill ok">healthy</span></td><td><span class="note">async queue tier; same weights, slower first token</span></td>
-        </tr>
-        <tr>
-          <td>fireworks</td><td class="num">14/42</td><td class="num">33.3%</td><td class="num">21&ndash;48%</td>
-          <td><span class="pill warn">rate-limited</span></td><td><span class="note">15 of 42 episodes killed by shared-pool 429s; its error-free trial scored in the pack</span></td>
-        </tr>
+        <tr><td>deepinfra (fp4)</td><td>on</td><td class="num res" data-res="24" data-n="42" data-cf="9">24/42 &middot; 57.1%</td><td class="num">$0.43 <span class="pill m">measured</span></td><td class="num">82%</td><td class="num">7.5</td></tr>
+        <tr><td>deepinfra (fp4)</td><td>off</td><td class="num res" data-res="24" data-n="42" data-cf="1">24/42 &middot; 57.1%</td><td class="num">$0.36 <span class="pill m">measured</span></td><td class="num">88%</td><td class="num">4.2</td></tr>
+        <tr class="grp"><td>parasail (fp8)</td><td>on</td><td class="num res" data-res="26" data-n="42" data-cf="5">26/42 &middot; 61.9%</td><td class="num">$0.92 <span class="pill m">measured</span></td><td class="num">80%</td><td class="num">6.1</td></tr>
+        <tr><td>parasail (fp8)</td><td>off</td><td class="num res" data-res="18" data-n="42" data-cf="3">18/42 &middot; 42.9%</td><td class="num">$1.02 <span class="pill m">measured</span></td><td class="num">80%</td><td class="num">4.8</td></tr>
+        <tr class="grp"><td>fireworks</td><td>on</td><td class="num res" data-res="25" data-n="42" data-cf="5">25/42 &middot; 59.5%</td><td class="num">$0.95 <span class="pill m">measured</span></td><td class="num">88%</td><td class="num">5.9</td></tr>
+        <tr><td>fireworks</td><td>off</td><td class="num res" data-res="21" data-n="42" data-cf="2">21/42 &middot; 50.0%</td><td class="num">$0.57 <span class="pill m">measured</span></td><td class="num">90%</td><td class="num">5.1</td></tr>
+        <tr class="grp"><td>cloudflare</td><td>on</td><td class="num res" data-res="24" data-n="42" data-cf="4">24/42 &middot; 57.1%</td><td class="num">$4.13 <span class="pill m">measured</span></td><td class="num">55%</td><td class="num">6.3</td></tr>
+        <tr><td>cloudflare</td><td>off</td><td class="num res" data-res="21" data-n="42" data-cf="0">21/42 &middot; 50.0%</td><td class="num">$2.54 <span class="pill m">measured</span></td><td class="num">75%</td><td class="num">3.5</td></tr>
+        <tr class="grp"><td>together</td><td>off</td><td class="num res" data-res="20" data-n="42" data-cf="1">20/42 &middot; 47.6%</td><td class="num">$0.67 <span class="pill m">measured</span></td><td class="num">89%</td><td class="num">3.2</td></tr>
+        <tr class="grp"><td>openrouter auto</td><td>on</td><td class="num res" data-res="23" data-n="42" data-cf="10">23/42 &middot; 54.8%</td><td class="num">$1.16 <span class="pill m">measured</span></td><td class="num">62%</td><td class="num">7.9</td></tr>
+        <tr class="grp"><td>doubleword realtime</td><td>on</td><td class="num res" data-res="18" data-n="42" data-cf="20">18/42 &middot; 42.9%</td><td class="num">$0.23 <span class="pill warn">derived</span></td><td class="num">81%</td><td class="num">12.1</td></tr>
+        <tr><td>doubleword realtime</td><td>off</td><td class="num res" data-res="22" data-n="42" data-cf="0">22/42 &middot; 52.4%</td><td class="num">$0.52 <span class="pill warn">derived</span></td><td class="num">94%</td><td class="num">3.1</td></tr>
+        <tr class="grp"><td>doubleword flex</td><td>on</td><td class="num res" data-res="16" data-n="42" data-cf="25">16/42 &middot; 38.1%</td><td class="num">$0.22 <span class="pill warn">derived</span></td><td class="num">86%</td><td class="num">14.0</td></tr>
+        <tr><td>doubleword flex</td><td>off</td><td class="num res" data-res="18" data-n="42" data-cf="1">18/42 &middot; 42.9%</td><td class="num">$0.31 <span class="pill warn">derived</span></td><td class="num">95%</td><td class="num">4.1</td></tr>
       </tbody>
     </table>
   </div>
+  <p class="figcap">Table 1. All measured cells at tripled, non-official limits. Cost is the whole
+  42-episode cell. OpenRouter cost is the provider-billed amount
+  measured per call; Doubleword returns no billing API, so its cost is derived from its own reported
+  token meters at its published rates. Cache share is measured from per-call cache-token meters.
+  The toggle above recomputes the resolve column two ways: over all runs, or with wall-clock-bound
+  failures (episodes that spent the whole tripled limit on API time without finishing) removed from
+  the denominator, which isolates model quality from decode speed.</p>
 
-  <h2>The three findings</h2>
+  <h2>Reading the matrix as a budget</h2>
+  <p>A resolve rate does not pay an invoice. The reason to measure cost, decode speed, and cache is
+  that each one becomes a line on your bill, and which line dominates depends entirely on the shape
+  and volume of your workload. The same matrix points at three different providers depending on what
+  you run. These figures scale our measured 42-task cell to a hypothetical 100,000 task-runs a month
+  so the gap is legible as money, not as a decimal.</p>
 
-  <h3>1. Model quality is a tie. The serving layer is not.</h3>
-  <p>Excluding provider-killed episodes, every host lands at 45 to 57%,
-  indistinguishable at this sample size (pairwise Fisher exact p = 0.51 to 1.0 across the healthy
-  band). End to end, the visible spread is 33 to 55%, and the gap is provider reliability, not the
-  model. The ranking a leaderboard would print for these five rows would be a ranking of
-  infrastructure weather, not of the model.</p>
+  <div class="panel" style="padding:6px 20px 18px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px;margin-top:14px">
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#0d9373">High volume, quality is flat &rarr; cost wins</div>
+        <p style="margin:6px 0 0;font-size:13px;line-height:1.5">A production agent doing the same class of task at scale, where every host clears your quality bar. Cost per task-run is the only axis that matters. DeepInfra and Cloudflare resolve the identical 57.1%, but at <strong>$0.0102 vs $0.0983 per run</strong> that is <strong>$1,024 vs $9,833 a month</strong> at 100k runs. The wrong default burns ~$8,800/month for the same output. <strong>Pick: DeepInfra.</strong></p>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#e8590c">Reasoning-heavy, latency-bound &rarr; decode speed wins</div>
+        <p style="margin:6px 0 0;font-size:13px;line-height:1.5">A workload that needs the model to think through long chains inside a latency budget. The cheapest tokens are a trap here: Doubleword at ~20 tokens/s decodes so slowly that most of its reasoning-on runs hit the clock (42.9%), while Fireworks at ~108 tokens/s fits the thinking and holds 59.5%. The token bill is lower on the slow host but the work does not finish. <strong>Pick: a fast decoder (Fireworks/Parasail).</strong></p>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#1740e6">Large reused prefix &rarr; cache hit ratio wins</div>
+        <p style="margin:6px 0 0;font-size:13px;line-height:1.5">An agent with a big fixed system prompt and tool context repeated on every call. Your real input bill is set by the cache, not the rate card. A working cache (Doubleword-marked 94%, DeepInfra 75%) bills a fraction of input; a stock client against an opt-in host hits <strong>0%</strong> and pays full input price on every single call, a &gt;10x swing on the input line for identical traffic. <strong>Pick: the host whose cache your client actually warms.</strong></p>
+      </div>
+    </div>
+  </div>
+  <p class="figcap">The point is not that one of these hosts is best. It is that your workload picks a
+  different one, and the only way to know which is to run your own numbers. The rest of this page is
+  the evidence behind each axis; the next section shows how little it takes to reproduce on a
+  benchmark or on your own traces.</p>
 
-  <h3>2. Rate limits masquerade as model degradation.</h3>
-  <p>Fireworks lost 15 of 42 episodes to shared-pool rate limits. Averaged naively, that reads as
-  a 33% model. Audited, it is weather: the one trial that drew no 429s scored right in the healthy
-  pack. Against the top host the gap is p = 0.078, and we make no quality claim from it; the claim
-  is the counted, audited kill mechanism.</p>
+  <h3>1. The ability is fixed, so the choice is economic.</h3>
+  <p>With the clock unbound, doubleword-realtime with reasoning off resolves 22/42 (52.4%, Wilson
+  95% CI [37.7, 66.6]), statistically identical to the five OpenRouter hosts with reasoning off
+  pooled at 104/210 (49.5%, CI [42.8, 56.2]), Fisher exact p = 0.87. The result survives the
+  discriminating-task sensitivity check (p = 0.82), so it is not an artifact of the easy tasks
+  everyone passes. None of doubleword-realtime's 42 reasoning-off episodes were clock-bound at
+  all, so this is a clean read: the same weights reach the same resolve rate once time pressure is
+  off the table. This matters because it fixes the variable you were worried about. The model's
+  ability does not depend on the host, which means every difference in the rest of this report,
+  cost, decode speed, cache, whether reasoning fits the clock, is the provider's economics, not the
+  model's intelligence. Economics is exactly what you get to choose.</p>
 
-  <h3>3. Identical calls, different physics.</h3>
-  <p>Median latency for the same calls spread 5x across hosts (4.1s vs 21.2s), and determinism
-  differed: one host flipped 2 of 14 task outcomes between identical trials, another 7 of 14.
-  If your agent's behavior depends on who serves the weights, "the same model" is not the same
-  product.</p>
+  <h3>2. Thinking does not fit slow decode, even at 3x.</h3>
+  <p>Pool reasoning-on quality and the split is real: the two Doubleword tiers together resolve
+  34/84 (40.5%) against the four fast OpenRouter hosts' 99/168 (58.9%), Fisher exact p = 0.0073.
+  The mechanism is not model quality, it is the clock. Doubleword-realtime with reasoning on still
+  spent at least 85% of the tripled limit on API time in 20 of its 24 failures; flex is worse at 25
+  of 26. At roughly 20 tokens/s, thinking does not fit even a window three times the official one.
+  Reasoning-on slow decode is a throughput ceiling, not a tight-deadline artifact you can buy your
+  way out of with more wall time.</p>
+
+  <h3>3. Reasoning pays only where decode affords it.</h3>
+  <p>On the four fast hosts, reasoning on resolves 58.9% (99/168) against reasoning off's 50.0%
+  (84/168) on the same four hosts: +8.9 points, p = 0.125 across the full corpus and p = 0.056 on
+  the ten discriminating tasks (+12.5 points there). Reasoning adds roughly nine to thirteen points
+  on fast hosts, but the effect does not clear significance at this sample size, so we report it as
+  directional rather than established. The direction is consistent with finding 2: reasoning is
+  worth its tokens only on a host whose decode leaves room to spend them, and the hosts that clear
+  76 tokens/s have that room while the 20 tokens/s tiers do not.</p>
+  <p><strong>A trap worth naming, since Fig 1 lets you toggle it:</strong> exclude every wall-clock
+  failure and Doubleword's reasoning-on rate leaps to 87% pooled (34/39), above the fast hosts. That
+  is survivorship, not a quality edge. Excluding clock-bound runs removes Doubleword's attempts on
+  exactly the long, hard tasks it never finished, leaving mostly the easy tasks everyone solves. The
+  honest test is task by task, clock-bound runs dropped from both sides: against the four fast hosts,
+  Doubleword wins 2 tasks, loses 2, and ties 7 with reasoning on. In reasoning off, where the clock
+  is not a factor at all, the two are dead even, 47.6% versus 50.0% pooled and 4 wins, 4 losses, 6
+  ties task by task. Doubleword never beats the cloud routes on quality; it matches them. Its lower
+  reasoning-on score is the clock, not worse answers. Choose Doubleword for data control and price,
+  and only where its decode speed leaves reasoning affordable, not for a quality edge that the
+  matched comparison does not show.</p>
+
+  <h3>4. Six of thirty candidate endpoints could not serve the workload.</h3>
+  <p>Eight hosts made the matrix; more were probed and rejected with receipts, because a route that
+  cannot serve the real workload should fail the probe, not quietly degrade a run. Baseten and
+  CoreWeave refuse <code>response_format</code> under <code>require_parameters</code>, so a
+  schema-constrained agent call never lands. The deepseek-origin route advertises schema support in
+  its metadata but the router 404s the same call. Together silently disables thinking under a
+  <code>json_schema</code> request: across three reproducible probes it returned a different wrong
+  arithmetic answer each time while Cloudflare answered 198849 correctly with 56 reasoning tokens,
+  which is why Together appears reasoning-off only. Each exclusion is a deterministic probe repeated
+  three times. In total 6 of 30 listed endpoints could not serve this workload as specified, and
+  none of that shows up on a model card.</p>
+
+  <h3>5. Cache is a serving decision, and hosts differ more than 2x.</h3>
+  <p>Cache economics dwarf rate cards for agentic workloads, where every turn resends a growing
+  transcript. A growing-prefix replay of a real 41-message transcript, 12 turns per session, three
+  sessions per route, measured steady-state hit ratios (cached tokens over prompt tokens on turns
+  2 to 11) that span from 59.8% to 82.3% across working caches: Doubleword marked and Together both 82.3%,
+  DeepInfra 75.3%, Fireworks 71.5%, Parasail 69.0%, Cloudflare 63.8%, and unpinned auto 59.8% as the
+  weakest working cache, and a Doubleword stock client at 0.0%, the opt-in trap that a default
+  client walks straight into. The fair-tier cells in Table 1 show the same story on the real
+  workload: cache share runs from 55% on Cloudflare-on to 95% on Doubleword-flex-off. The cheapest
+  rate card does not win if the client never warms its cache.</p>
+
+  <h3>6. Unpinned routing holds quality, but its cost verdict is conditional.</h3>
+  <p>The auto arm, left on OpenRouter's default routing, resolves 23/42 (54.8%), a statistical tie
+  with the pinned hosts. Cost is where it turns, and the direction depends entirely on the workload.
+  On our schema-constrained agent traffic auto billed $1.16 against DeepInfra's $0.43 for the same
+  resolve rate, 2.7x more, with 62% cache share versus 82%, because the schema requirement excludes
+  the cheap long-tail upstreams and auto then concentrates on premium upstreams (its top pick took
+  63% of its calls). But on
+  the small, schema-free replay calls the sign flips: auto averaged $0.0041 per session against
+  pinned DeepInfra's $0.0046, because there the cheap upstreams are admissible and their list price
+  outweighs the cache loss. Both are measured. The honest claim is that auto fragments cache and
+  makes cost unpredictable; whether it costs more or less depends on whether your workload's
+  constraints exclude the cheap upstreams.</p>
+
+  <p>The frontier below plots all fourteen cells against what each costs to run. Toggle the
+  horizontal axis between dollars, total tokens, and wall-clock hours, and the Pareto-best set
+  reshuffles: the shaded step marks the non-dominated cells for that axis, and dominated cells fade
+  back.</p>
 
   <div class="panel">
-    <div class="panel-head">provider profiles, outer edge is best on each axis</div>
-    <div class="radar-box" id="radarBox"></div>
-    <div class="legend" id="radarLegend"></div>
+    <div class="panel-head">resolve rate against cost, tokens, or wall time, tripled (3x) limits</div>
+    <div class="axis-ctrl" id="paretoCtrl">
+      <span>x-axis</span>
+      <span class="seg">
+        <button data-axis="cost" aria-pressed="true">cost</button>
+        <button data-axis="tokens" aria-pressed="false">tokens</button>
+        <button data-axis="time" aria-pressed="false">time</button>
+      </span>
+    </div>
+    <div class="radar-box" id="paretoBox"></div>
+    <div class="chart-note pareto-legend">
+      <span class="k"><span class="mk-dot"></span> OpenRouter cost measured per call</span>
+      <span class="k"><span class="mk-sq"></span> Doubleword cost derived from token meters &times; published rates</span>
+      <span class="k"><span class="sw ci-k"></span> Wilson 95% CI</span>
+      <span class="k"><span class="sw fr"></span> Pareto frontier, dominated cells dimmed</span>
+    </div>
   </div>
-  <p class="figcap">Fig 2. All six axes from this terminal-bench run, normalized so the outer edge
-  is best on each. Hover a host to focus it, or click the legend to toggle. No host wins every axis:
-  one takes speed and reliability, another cost, another throughput.</p>
+  <p class="figcap">Fig 2. Every point is one full cell at tripled, non-official limits, so the
+  cost, token, and hour figures all cover the whole cell. Doubleword cost is derived from its own
+  token meters at published rates; OpenRouter cost is the provider-billed amount measured per call.
+  Frontier cells are drawn full-strength, dominated cells at 40%.</p>
+
+  <h3>7. Four outcomes, kept separate: pass, timeout, error, fail.</h3>
+  <p>The single most important choice in this report is that a timeout is not a failure. A run that
+  spent the whole tripled clock still working is a fact about the host's speed, not the model's
+  ability, and an ungraded harness error is not a verdict at all. So we score every trial into four
+  buckets and never fold them together: pass, fail (wrong on merit), timeout, and error. The grid
+  below is that scoring, one square per trial. It is also where the corpus shows what it can and
+  cannot discriminate. Not every task carries signal. Three of the fourteen tasks are never passed by
+  any host
+  (git-multibranch, chess-best-move, and cron-broken-network, all also near-zero at official limits,
+  so not a 3x artifact; cron-broken-network in particular fails as an ungraded terminal-bench parse
+  error rather than a model loss, symmetric across every host) and one is solved by everyone
+  (fix-permissions), with a second missed only once (crack-7z-hash.easy, 38/39). That leaves ten
+  tasks doing the discriminating, so we ran every quality comparison twice, on the full corpus and
+  on the discriminating ten, and report only claims that agree in direction between them. With 42
+  episodes per cell, within-mode spreads between hosts are not
+  significant and we report them as ties: the widest on-mode gap, 61.9% to 57.1%, is p = 0.82. The
+  grid below unpools every one of the 588 episodes into a single square, so both the discrimination
+  and the amber wall of timeouts in the slow-decode reasoning-on Doubleword columns read at once.</p>
+
+  <div class="panel">
+    <div class="panel-head">trial outcomes: pass / timeout / error / fail, 14 tasks &times; 14 cells, tripled (3x) limits</div>
+    <div class="waffle-scroll" id="waffleBox"></div>
+    <div class="chart-note">
+      <span class="k"><span class="sw" style="background:#191817"></span> pass</span>
+      <span class="k"><span class="sw" style="background:#e8850c"></span> timeout (ran out the clock)</span>
+      <span class="k"><span class="sw" style="background:#d6336c"></span> error (ungraded)</span>
+      <span class="k"><span class="sw" style="background:#d8d3c6"></span> fail (wrong on merit)</span>
+    </div>
+  </div>
+  <p class="figcap">Fig 3. Every trial as its own square, four outcomes kept separate on purpose:
+  <b>pass</b>, <b>fail</b> (the model was served cleanly and got it wrong), <b>timeout</b> (it was
+  still working when the tripled clock expired), and <b>error</b> (ungraded: a harness parse failure
+  or a model output-token overflow, never a quality verdict). Tasks are ordered hardest first by pass
+  count; hover any square for its task, arm, trial, and outcome. This is the whole argument in one
+  picture: the amber in the reasoning-on Doubleword columns is <b>timeout, not fail</b>. The
+  same tasks the fast hosts pass in black, Doubleword would pass too if its ~20 tokens/s decode fit
+  the clock. Read the amber as latency, not as a dumber model.</p>
+
+  <h2>Anatomy of the failures: model, clock, or infra</h2>
+  <p>A resolve rate is only as honest as the failures behind it. We audited every one of the roughly
+  13,300 model calls in the matrix, reading each task's grader verdict against its per-call traces,
+  and sorted every non-resolve by cause: the model was served cleanly and got the task wrong, or the
+  model was still working when the tripled clock expired. No retained host produced a serving error.
+  Three real runs, one clean success and one of each failure cause, taken straight from the
+  traces:</p>
+
+  <div class="panel" style="padding:6px 20px 18px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-top:14px">
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#0d9373">Model solved it</div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--ink-2);margin:5px 0 6px">csv-to-parquet &middot; parasail (fp8) &middot; reasoning off</div>
+        <p style="margin:0;font-size:13px;line-height:1.5">Convert a CSV to Parquet. The agent read the file, wrote the Parquet, and both grader tests passed in 2m25s. Every call returned normally. This is what a clean success looks like. <strong>Verdict: resolved, 2/2 tests.</strong></p>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#b45309">Model missed on merit</div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--ink-2);margin:5px 0 6px">decommissioning-service &middot; deepinfra (fp4) &middot; reasoning off</div>
+        <p style="margin:0;font-size:13px;line-height:1.5">Wipe a service's sensitive data and hand back an encrypted archive. The agent deleted the data, cleared the PID, and built the archive, but the archive did not decrypt to the expected payload. The host served every call cleanly; the model got the last step wrong. Legitimate quality signal. <strong>Verdict: 5/6 tests, unresolved.</strong></p>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#d97706">The clock, not the model</div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--ink-2);margin:5px 0 6px">decommissioning-service &middot; doubleword flex &middot; reasoning on</div>
+        <p style="margin:0;font-size:13px;line-height:1.5">The same task, the same 5/6 partial progress, but reasoning-on flex decodes at single-digit tokens/s and the agent was still working when the tripled clock expired at 22 minutes. Not a wrong answer, a wall-clock cutoff. This is the mechanism behind finding 2. <strong>Verdict: agent_timeout, 5/6 tests.</strong></p>
+      </div>
+    </div>
+  </div>
+  <p class="figcap">Across the fleet the split was clean: every non-resolve on a retained host was
+  either a model-quality miss or a disclosed clock-bound timeout, and not one of the roughly 13,300
+  audited calls on the retained hosts returned a serving error. One task, cron-broken-network, fails
+  as an ungraded terminal-bench parse error on every host and is kept in the corpus but treated as
+  unscored, not as a model loss.</p>
+
+  <h2>See three runs, turn by turn</h2>
+  <p>The grid above is 588 squares. Here are three of them opened up: real terminal-bench runs
+  replayed one turn at a time, showing the terminal the agent saw, what it reasoned, and the command
+  it typed. One passes, one is wrong on merit, and one runs out the clock on the very same task a
+  faster host finishes. Pick a tab.</p>
+  <div class="tv-wrap">
+    <div class="tv-tabs" id="tvTabs"></div>
+    <div class="tv-head" id="tvHead"></div>
+    <div class="tv-body" id="tvBody"></div>
+  </div>
+  <p class="figcap">Real traces from the run, trimmed to the turns shown; the full per-episode logs
+  (prompt, model response, terminal recording) ship with every sweep. The fail and timeout tabs are
+  the identical task on a fast versus a ~20 tokens/s host: same 5-of-6 partial progress, but on the
+  slow host the clock expired mid-work, which the grid scores amber, not grey.</p>
+  <script>
+  (function(){
+    var TRACES=[{"cat":"pass","task":"csv-to-parquet","host":"parasail (fp8)","mode":"reasoning off","instruction":"Convert the file '/app/data.csv' into a Parquet file named '/app/data.parquet'. The CSV file contains sample data with headers.","resolved":true,"fm":"unset","tests":"2/2 tests passed","n_episodes":10,"turns":[{"term":"root@0fb379b376d4:/app#","reason":"The terminal is at /app and no commands have been run yet. Need to inspect the CSV file and determine available tools for converting to Parquet.","cmd":"ls -la /app/data.csv && head -5 /app/data.csv && python3 -c \"import pandas, pyarrow; print('pandas', pandas.__version__, 'pyarrow', pyarrow.__version__)\"","done":false},{"term":"root@0fb379b376d4:/app# ls -la /app/data.csv && head -5 /app/data.csv && python3 -c \"import pandas, pyarrow; print('pandas', pandas.__version__, 'pyarrow', pyar\nrow.__version__)\"; tmux wait -S done\n-rw-rw-r-- 1 root root 101 Aug 29 02:45 /app/data.csv\nname,age,city\nJohn,25,New York\nAlice,30,San Francisco\nBob,35,Chicago\nEmma,28,Boston\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nModuleNotFoundError: No module named 'pandas'\nroot@0fb379b376d4:/app#","reason":"CSV exists with headers. pandas is not installed, so the combined import failed before checking pyarrow. Need to check available Parquet-capable tools or install one.","cmd":"python3 -c \"import pyarrow; print('pyarrow', pyarrow.__version__)\" 2>&1; python3 -c \"import fastparquet; print('fastparquet ok')\" 2>&1; which duckdb parquet-tools spark-shell 2>&1; python3 -m pip --version 2>&1","done":false},{"term":"Emma,28,Boston\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nModuleNotFoundError: No module named 'pandas'\nroot@0fb379b376d4:/app# python3 -c \"import pyarrow; print('pyarrow', pyarrow.__version__)\" 2>&1; python3 -c \"import fastparquet; print('fastparquet ok')\" 2>&1;\nwhich duckdb parquet-tools spark-shell 2>&1; python3 -m pip --version 2>&1; tmux wait -S done\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nModuleNotFoundError: No module named 'pyarrow'\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nModuleNotFoundError: No module named 'fastparquet'\n/usr/bin/python3: No module named pip\nroot@0fb379b376d4:/app#","reason":"The CSV is present. Python has no pandas, pyarrow, fastparquet, or pip. No obvious parquet tools were found. Need inspect available package manager/tools and consider installing or using a minimal writer.","cmd":"cat /etc/os-release 2>&1; which apt-get apk yum dnf gcc g++ java node npm python3 2>&1; python3 --version 2>&1; ls /usr/lib/python3/dist-packages 2>/dev/null | head -50","done":false},{"term":"ID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n/usr/bin/apt-get\n/usr/bin/python3\nPython 3.12.3\nasciinema\nasciinema-2.4.0.dist-info\npkg_resources\nroot@0fb379b376d4:/app#","reason":"Ubuntu 24.04 container with apt-get and Python 3.12 but no pip. The required Python libraries are absent. Need install a Parquet-capable Python library via apt or use another method.","cmd":"apt-cache policy python3-pyarrow python3-pandas 2>&1 | head -60","done":false},{"term":"/usr/bin/apt-get\n/usr/bin/python3\nPython 3.12.3\nasciinema\nasciinema-2.4.0.dist-info\npkg_resources\nroot@0fb379b376d4:/app# apt-cache policy python3-pyarrow python3-pandas 2>&1 | head -60; tmux wait -S done\npython3-pandas:\n  Installed: (none)\n  Candidate: 2.1.4+dfsg-7\n  Version table:\n     2.1.4+dfsg-7 500\n        500 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages\nroot@0fb379b376d4:/app#","reason":"apt-cache policy showed python3-pandas is available, but did not show python3-pyarrow. Need confirm whether a pyarrow/parquet package is available or if installing pandas alone will suffice.","cmd":"apt-cache search pyarrow 2>&1; apt-cache search parquet 2>&1; apt-cache search duckdb 2>&1","done":false},{"term":"/usr/bin/python3\nPython 3.12.3\nasciinema\nasciinema-2.4.0.dist-info\npkg_resources\nroot@0fb379b376d4:/app# apt-cache policy python3-pyarrow python3-pandas 2>&1 | head -60; tmux wait -S done\npython3-pandas:\n  Installed: (none)\n  Candidate: 2.1.4+dfsg-7\n  Version table:\n     2.1.4+dfsg-7 500\n        500 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages\nroot@0fb379b376d4:/app# apt-cache search pyarrow 2>&1; apt-cache search parquet 2>&1; apt-cache search duckdb 2>&1; tmux wait -S done\nroot@0fb379b376d4:/app#","reason":"The apt search for pyarrow/parquet/duckdb returned nothing, but python3-pandas is available. Need inspect pandas package dependencies and search for fastparquet to determine if Parquet writing is available via apt.","cmd":"apt-cache depends python3-pandas 2>&1 | head -80; echo '---'; apt-cache search fastparquet 2>&1; echo '---'; apt-cache search python3-pandas 2>&1 | head -20","done":false},{"term":"Recommends: python3-openpyxl\n  Recommends: python3-bs4\n  Recommends: python3-html5lib\n  Recommends: python3-lxml\n  Recommends: python3-tables\n  Recommends: python3-jinja2\n  Suggests: python-pandas-doc\n  Suggests: python3-statsmodels\n---\n---\npython3-pandas - data structures for \"relational\" or \"labeled\" data\npython3-pandas-flavor - Easy way to write your own Pandas flavor.\npython3-pandas-lib - low-level implementations and bindings for pandas\nroot@0fb379b376d4:/app#","reason":"pandas is available in apt but its dependency list did not show a Parquet engine. No pyarrow/fastparquet packages were found in apt search. Need determine if pip/ensurepip/network is available to install pyarrow, or if another apt package can provide Parquet s","cmd":"python3 -m ensurepip --version 2>&1; echo '---'; apt-cache search arrow 2>&1 | head -40; echo '---'; timeout 10 python3 -c \"import urllib.request; print(urllib.request.urlopen('https://pypi.org/simple/pyarrow/', timeout=8).status)\" 2>&1","done":false},{"term":"asses and transformers for GHC\nlibghc-arrows-doc - Haskell arrow classes and transformers for GHC; documentation\nlibghc-arrows-prof - Haskell arrow classes and transformers for GHC; profiling libraries\nlibghc-netwire-dev - flexible wire arrows for FRP\nlibghc-netwire-doc - flexible wire arrows for FRP; documentation\nlibghc-netwire-prof - flexible wire arrows for FRP; profiling libraries\nminetest-mod-throwing-arrows - Minetest mod - Throwables\nnode-babel7 - Babel compiler for writing next generation JavaScript\nnode-debbundle-es-to-primitive - Pure javascript implementation of ToPrimitive algorithm\npython3-feather-format - Python interface to the Apache Arrow-based Feather File Format (Python 3)\nr-cran-nanoarrow - GNU R interface to the 'nanoarrow' 'C' Library\n---\n200\nroot@0fb379b376d4:/app#","reason":"Network access to PyPI works, but pip/ensurepip is missing. Need install pip via get-pip.py, then install pyarrow to write Parquet.","cmd":"python3 - <<'PY'\nimport urllib.request\nurl='https://bootstrap.pypa.io/get-pip.py'\nurllib.request.urlretrieve(url, '/tmp/get-pip.py')\nprint('downloaded')\nPY\npython3 /tmp/get-pip.py --break-system-packages\npython3 -m pip --version","done":false},{"term":"s\nCollecting pip\n  Downloading pip-26.2.1-py3-none-any.whl.metadata (4.6 kB)\nDownloading pip-26.2.1-py3-none-any.whl (1.8 MB)\n   \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 1.8/1.8 MB 9.2 MB/s  0:00:00\nInstalling collected packages: pip\nSuccessfully installed pip-26.2.1\nWARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your syst\nem unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you a\nre doing and want to suppress this warning.\nroot@0fb379b376d4:/app# python3 -m pip --version; tmux wait -S done\npip 26.2.1 from /usr/local/lib/python3.12/dist-packages/pip (python 3.12)\nroot@0fb379b376d4:/app#","reason":"pip was successfully installed. Python still lacks pyarrow, so the next step is to install pyarrow and use it to convert the CSV to Parquet.","cmd":"python3 -m pip install --break-system-packages pyarrow\npython3 - <<'PY'\nimport pyarrow.csv as pv\nimport pyarrow.parquet as pq\n\ntable = pv.read_csv('/app/data.csv')\npq.write_table(table, '/app/data.parquet')\n\nverify = pq.read_table('/app/data.parquet')\nprint('schema:', verify.schema)\nprint('rows:', verify.num_rows)\nprint('columns:', verify.column_names)\nPY\nls -l /app/data.parquet","done":false}]},{"cat":"fail","task":"decommissioning-service-with-sensitive-data","host":"deepinfra (fp4)","mode":"reasoning off","instruction":"You are tasked with securely decommissioning a legacy service.\nThe service has sensitive user data located in the directory '/opt/sensitive_service_data/'.\nIts configuration file is at '/etc/service_config.ini'.\nIts PID (Process ID) file is at '/tmp/service.pid'.\n\nYour objectives are, IN ORDER:\n1. Create a TAR GZ archive of the entire '/opt/sensitive_service_data/' directory.\n    Name this interme","resolved":false,"fm":"unset","tests":"5/6 tests passed","n_episodes":5,"turns":[{"term":"root@446f38927c52:/app#","reason":"At the /app prompt, no commands have been executed yet. Need to inspect the current directory and target data before performing the decommissioning steps.","cmd":"ls -la /app; echo '---'; ls -la /opt/sensitive_service_data; echo '---'; ls -l /etc/service_config.ini /tmp/service.pid 2>&1","done":false},{"term":"-S done\ntotal 8\ndrwxr-xr-x 2 root root 4096 Mar 28  2025 .\ndrwxr-xr-x 1 root root 4096 Aug 29 03:45 ..\n---\ntotal 16\ndrwxr-xr-x 2 root root 4096 Aug 29 03:45 .\ndrwxr-xr-x 1 root root 4096 Aug 29 03:45 ..\n-rw-r--r-- 1 root root   20 Aug 29 03:45 backup_codes.dat\n-rw-r--r-- 1 root root   40 Aug 29 03:45 user_secrets.txt\n---\n-rw-r--r-- 1 root root 67 Aug 29 03:45 /etc/service_config.ini\n-rw-r--r-- 1 root root  6 Aug 29 03:45 /tmp/service.pid\nroot@446f38927c52:/app#","reason":"Current directory /app is empty; target directory contains backup_codes.dat and user_secrets.txt. Config and PID files exist. The next step is to create and encrypt the archive before deleting anything.","cmd":"set -e; cd /app; tar -czf sensitive_files.tar.gz -C /opt sensitive_service_data; gpg --batch --yes --pinentry-mode loopback --passphrase 't-bench-passphrase' --symmetric --cipher-algo AES256 -o /app/service_archive.gpg sensitive_files.tar.gz; ls -l /app/sensitive_files.tar.gz /app/service_archive.gpg","done":false},{"term":"p_codes.dat\n-rw-r--r-- 1 root root   40 Aug 29 03:45 user_secrets.txt\n---\n-rw-r--r-- 1 root root 67 Aug 29 03:45 /etc/service_config.ini\n-rw-r--r-- 1 root root  6 Aug 29 03:45 /tmp/service.pid\nroot@446f38927c52:/app# set -e; cd /app; tar -czf sensitive_files.tar.gz -C /opt sensitive_service_data; gpg --batch --yes --pinentry-mode loopback --passphrase\n 't-bench-passphrase' --symmetric --cipher-algo AES256 -o /app/service_archive.gpg sensitive_files.tar.gz; ls -l /app/sensitive_files.tar.gz /app/service_archiv\ne.gpg; tmux wait -S done\ngpg: directory '/root/.gnupg' created\ngpg: keybox '/root/.gnupg/pubring.kbx' created\n-rw-r--r-- 1 root root 243 Aug 29 03:46 /app/sensitive_files.tar.gz\n-rw-r--r-- 1 root root 333 Aug 29 03:46 /app/service_archive.gpg\nroot@446f38927c52:/app#","reason":"Archive creation and encryption completed: /app/sensitive_files.tar.gz and /app/service_archive.gpg exist. Original sensitive files, config, and PID still exist. Next step is to securely delete originals, remove the unencrypted intermediate archive, and verify","cmd":"set -e\nfind /opt/sensitive_service_data -maxdepth 1 -type f -print0 | xargs -0 -r shred -n 3 -u\nrmdir /opt/sensitive_service_data\nshred -n 3 -u /etc/service_config.ini /tmp/service.pid 2>/dev/null || true\nrm -f /etc/service_config.ini /tmp/service.pid\nshred -n 3 -u /app/sensitive_files.tar.gz 2>/dev/null || true\nrm -f /app/sensitive_files.tar.gz\necho '--- /app ---'\nls -la /app\necho '--- /opt ---'\n","done":false},{"term":"--- /opt ---\nroot@446f38927c52:/app# ls -la /opt\ntotal 12\ndrwxr-xr-x 1 root root 4096 Aug 29 03:46 .\ndrwxr-xr-x 1 root root 4096 Aug 29 03:45 ..\nroot@446f38927c52:/app# echo '--- config/pid ---'\n--- config/pid ---\nroot@446f38927c52:/app# ls -l /etc/service_config.ini /tmp/service.pid 2>&1 || true\nls: cannot access '/etc/service_config.ini': No such file or directory\nls: cannot access '/tmp/service.pid': No such file or directory\nroot@446f38927c52:/app# echo '--- find unencrypted archive ---'\n--- find unencrypted archive ---\nroot@446f38927c52:/app# find /app /tmp /root /opt /var/tmp -name 'sensitive_files.tar.gz' 2>/dev/null || true; tmux wait -S done\nroot@446f38927c52:/app#","reason":"Archive creation, encryption, deletion of original data, config, PID, and intermediate archive have already been completed. The only remaining action is to verify the encrypted archive is valid and contains the expected files, and that no unencrypted sensitive","cmd":"set -e; set -o pipefail\necho '--- encrypted archive contents ---'\ngpg --batch --yes --pinentry-mode loopback --passphrase 't-bench-passphrase' -d /app/service_archive.gpg | tar -tzf -\necho '--- final filesystem checks ---'\nls -la /app\nls -la /opt\nls -l /etc/service_config.ini /tmp/service.pid 2>&1 || true\nfind / -xdev \\( -name 'backup_codes.dat' -o -name 'user_secrets.txt' -o -name 'sensitive_file","done":false},{"term":"total 12\ndrwxr-xr-x 1 root root 4096 Aug 29 03:46 .\ndrwxr-xr-x 1 root root 4096 Aug 29 03:45 ..\n-rw-r--r-- 1 root root  333 Aug 29 03:46 service_archive.gpg\nroot@446f38927c52:/app# ls -la /opt\ntotal 12\ndrwxr-xr-x 1 root root 4096 Aug 29 03:46 .\ndrwxr-xr-x 1 root root 4096 Aug 29 03:45 ..\nroot@446f38927c52:/app# ls -l /etc/service_config.ini /tmp/service.pid 2>&1 || true\nls: cannot access '/etc/service_config.ini': No such file or directory\nls: cannot access '/tmp/service.pid': No such file or directory\nroot@446f38927c52:/app# find / -xdev \\( -name 'backup_codes.dat' -o -name 'user_secrets.txt' -o -name 'sensitive_files.tar.gz' -o -name 'service_config.ini' -o\n-name 'service.pid' \\) 2>/dev/null || true; tmux wait -S done\nroot@446f38927c52:/app#","reason":"The encrypted archive /app/service_archive.gpg exists and was successfully decrypted/listed, showing it contains sensitive_service_data/user_secrets.txt and sensitive_service_data/backup_codes.dat. The original sensitive directory, config file, PID file, and i","cmd":"","done":true}]},{"cat":"timeout","task":"decommissioning-service-with-sensitive-data","host":"doubleword flex","mode":"reasoning on","instruction":"You are tasked with securely decommissioning a legacy service.\nThe service has sensitive user data located in the directory '/opt/sensitive_service_data/'.\nIts configuration file is at '/etc/service_config.ini'.\nIts PID (Process ID) file is at '/tmp/service.pid'.\n\nYour objectives are, IN ORDER:\n1. Create a TAR GZ archive of the entire '/opt/sensitive_service_data/' directory.\n    Name this interme","resolved":false,"fm":"agent_timeout","tests":"5/6 tests passed","n_episodes":3,"turns":[{"term":"root@7e1b836b57f3:/app#","reason":"Terminal is at a root shell in /app. No commands have run yet, so we need to inspect the environment.","cmd":"pwd; ls -la; echo '---'; find /opt/sensitive_service_data -type f -ls; echo '---'; ls -l /etc/service_config.ini /tmp/service.pid; gpg --version | head -1","done":false},{"term":"root@7e1b836b57f3:/app# pwd; ls -la; echo '---'; find /opt/sensitive_service_data -type f -ls; echo '---'; ls -l /etc/service_config.ini /tmp/service.pid; gpg -\n-version | head -1; tmux wait -S done\n/app\ntotal 8\ndrwxr-xr-x 2 root root 4096 Mar 28  2025 .\ndrwxr-xr-x 1 root root 4096 Aug 28 17:05 ..\n---\n  1610010      4 -rw-r--r--   1 root     root           40 Aug 28 17:05 /opt/sensitive_service_data/user_secrets.txt\n  1610008      4 -rw-r--r--   1 root     root           20 Aug 28 17:05 /opt/sensitive_service_data/backup_codes.dat\n---\n-rw-r--r-- 1 root root 67 Aug 28 17:05 /etc/service_config.ini\n-rw-r--r-- 1 root root  6 Aug 28 17:05 /tmp/service.pid\ngpg (GnuPG) 2.2.40\nroot@7e1b836b57f3:/app#","reason":"Current directory is /app, sensitive data directory contains two files, gpg is available. The next command performs the full decommissioning sequence and prints verification output.","cmd":"bash -c 'set -e; cd /app; tar -czf sensitive_files.tar.gz -C /opt sensitive_service_data; gpg --batch --yes --pinentry-mode loopback --passphrase \"t-bench-passphrase\" --symmetric --cipher-algo AES256 --output /app/service_archive.gpg sensitive_files.tar.gz; find /opt/sensitive_service_data -type f -exec shred -n 3 -u {} +; rmdir /opt/sensitive_service_data; rm -f /etc/service_config.ini /tmp/servi","done":false},{"term":"! -e /tmp/service.pid && echo \"config and pid removed\"; test ! -e /app/sensitive_files.tar.gz && echo \"intermediate tar removed\"; find / -xdev \\( -name sensitiv\ne_files.tar.gz -o -name user_secrets.txt -o -name backup_codes.dat \\) -print 2>/dev/null || true'; tmux wait -S done\ngpg: directory '/root/.gnupg' created\ngpg: keybox '/root/.gnupg/pubring.kbx' created\n---verification---\ntotal 12\ndrwxr-xr-x 1 root root 4096 Aug 28 17:27 .\ndrwxr-xr-x 1 root root 4096 Aug 28 17:05 ..\n-rw-r--r-- 1 root root  332 Aug 28 17:27 service_archive.gpg\n-rw-r--r-- 1 root root 332 Aug 28 17:27 /app/service_archive.gpg\nsensitive dir removed\nconfig and pid removed\nintermediate tar removed\nroot@7e1b836b57f3:/app#","reason":"Terminal is at /app. Verification output shows only /app/service_archive.gpg remains in the working directory, /opt/sensitive_service_data was removed, /etc/service_config.ini and /tmp/service.pid were removed, and the intermediate sensitive_files.tar.gz was r","cmd":"","done":true}]}];
+    var CATCOL={pass:'#191817',fail:'#c9c3b4',timeout:'#e8850c'};
+    var tabs=document.getElementById('tvTabs'),head=document.getElementById('tvHead'),body=document.getElementById('tvBody');
+    if(!tabs) return;
+    function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    TRACES.forEach(function(tr,i){
+      var b=document.createElement('button');b.className='tv-tab';b.setAttribute('aria-selected',i===0?'true':'false');
+      b.innerHTML='<span class="tv-dot" style="background:'+CATCOL[tr.cat]+'"></span>'+tr.cat;
+      b.addEventListener('click',function(){sel(i);});
+      tabs.appendChild(b);
+    });
+    function sel(i){
+      var kids=tabs.children;for(var j=0;j<kids.length;j++)kids[j].setAttribute('aria-selected',j===i?'true':'false');
+      var tr=TRACES[i];
+      var vcol=tr.resolved?'#0d9373':(tr.fm==='agent_timeout'?'#e8850c':'#d6336c');
+      var vlab=tr.resolved?'PASS':(tr.fm==='agent_timeout'?'TIMEOUT':'FAIL');
+      head.innerHTML='<div class="task">'+esc(tr.task)+' <span class="tv-badge" style="background:'+vcol+';color:#fff">'+vlab+'</span></div>'+
+        '<div class="meta">'+esc(tr.host)+' &middot; '+esc(tr.mode)+' &middot; '+tr.n_episodes+' turns &middot; '+esc(tr.tests)+'</div>'+
+        '<p class="tv-instr">'+esc(tr.instruction)+'&hellip;</p>';
+      body.innerHTML=tr.turns.map(function(t,n){
+        return '<div class="tv-turn"><div class="tv-n">turn '+(n+1)+'</div>'+
+          (t.term?'<div class="tv-term">'+esc(t.term)+'</div>':'')+
+          (t.reason?'<div class="tv-reason">'+esc(t.reason)+'&hellip;</div>':'')+
+          (t.cmd?'<div class="tv-cmd"><span class="p">$ </span>'+esc(t.cmd)+'</div>':'')+
+          '</div>';
+      }).join('')+(tr.turns.length<tr.n_episodes?'<div class="tv-turn"><div class="tv-n">&hellip; '+(tr.n_episodes-tr.turns.length)+' more turns, then the verdict above</div></div>':'');
+      body.scrollTop=0;
+    }
+    sel(0);
+  })();
+  </script>
+
+  <h2>Serving metrics: first token, decode, reliability</h2>
+  <p>Quality is one axis; how a host streams is another, and it is a separate experiment. A streamed
+  harness replayed three real agent payloads (2K, 8K, 25K prompt tokens) against the five original
+  hosts in both modes, every hour through a night (rounds 1 to 11, roughly 600 analysis calls plus
+  smoke), measuring time-to-first-token and decode speed from chunk timestamps with prompt caches
+  deliberately busted. The four realtime hosts tie at 0.9 to 1.3s median time-to-first-token, while
+  the flex queue tier answers in one flush (8s median without reasoning, 62s with). Decode speed is
+  the real spread: roughly 108 tokens/s on Fireworks, 95 on DeepInfra, 76 on Parasail, and 20 on
+  Doubleword realtime, and the pools differ in steadiness too, with the big shared pools holding
+  within about &plusmn;10% all night while Doubleword swung between 8 and 45 tokens/s. Reliability is
+  its own axis: Fireworks was the only host to error at all, 21% of its overnight calls hit
+  shared-pool 429s, and the daytime rounds we kept running erred at a similar rate. Congestion on a
+  shared pool is a lottery, and pinning buys attribution, not immunity. These serving numbers cover
+  the five original hosts only; the four hosts added for the fair matrix were not in the timing
+  harness.</p>
 
   <h2>What this says about picking a provider</h2>
-  <p>The questions that decided these five rows never appear on a pricing page: does the host shed
-  your traffic under load, how fast and how deterministically does it serve identical calls, and
-  what does it actually cost per token once you account for the quantization it serves. All of it is
+  <p>The questions that decided these rows never appear on a pricing page: what mode does the host
+  actually run your model in, how fast does it decode when the model thinks, does your agent's task
+  budget survive that speed, can the host even accept your schema-constrained calls, does the pool
+  shed your traffic under load, and does your prompt cache stay warm. Every one of them is
   measurable on your own workload before you commit, which is the point of Compound: fix the model,
-  sweep the hosts, and read one table of cost, latency, and quality per route, from the same cache
-  that makes re-deciding free.</p>
+  pin the hosts and the mode, sweep, and read one table of quality, latency, and cost per route.</p>
 
   <h2>Statistical notes</h2>
   <ul>
-    <li>Intervals are Wilson 95% binomial CIs on 42 episodes per host (14 tasks × 3 trials).</li>
-    <li>Pass/fail rates use all three trials (210 episodes). Latency, cost, and throughput are
-    per-call metrics from the API traces captured on two of the three trials (about 2,130 calls).</li>
-    <li>Fireworks vs the top host: p = 0.078. We report the audited rate-limit kill count
-    (15 of 42) rather than a quality inference.</li>
-    <li>All pairwise comparisons inside the healthy band (45 to 57%): p = 0.51 to 1.0. We claim
-    a tie, and the tie is the finding.</li>
-    <li>Episode-level pass/fail comes from each task's own test suite; there is no judge anywhere
-    in the loop.</li>
+    <li>Intervals are Wilson 95% binomial CIs on 42 episodes per cell (14 tasks &times; 3 trials).</li>
+    <li>Every quality comparison was run twice, on the full 14-task corpus and on the ten
+    discriminating tasks, and only direction-stable claims are reported. Parity: p = 0.87 full,
+    p = 0.82 discriminating. Reasoning value on fast hosts: p = 0.125 full, p = 0.056
+    discriminating, reported as directional rather than significant. Thinking-versus-slow-decode
+    split: Fisher exact p = 0.0073 full, p = 0.0001 discriminating.</li>
+    <li>Within-mode host spreads are not significant at this n and are reported as ties (widest
+    on-mode gap p = 0.82). We do not use winner language for any single-host quality gap.</li>
+    <li>The clock-exhaustion counts are per-episode joins of traced API time against each task's own
+    tripled <code>max_agent_timeout_sec</code>, not estimates. "Burned &ge;85% of the limit" counts
+    API time only and excludes container and tool time, so it understates true clock pressure.</li>
+    <li>OpenRouter costs and cache shares are provider-measured per call from the traces.
+    Doubleword returns no cost field and has no billing API, so its cost is derived from its own
+    reported token meters at its published rates; its cache share comes from measured
+    cache-token meters.</li>
+    <li>Serving metrics come from streamed responses on the five original hosts: time-to-first-token
+    and decode rate measured from chunk timestamps, prompt caches busted with a nonce, each host
+    called with the same 2-way concurrency the benchmark used.</li>
+    <li>Every cell was grepped for billing-error episodes before entering the matrix. Episode
+    pass/fail comes from each task's own test suite; there is no judge anywhere in the loop.</li>
   </ul>
 
-  <h2>Reproduce it</h2>
-  <p>Any model, your pick of hosts, dry run by default:</p>
+  <h2>Run it on your own numbers</h2>
+  <p>This report is one benchmark. The point of Compound is that the same measurement runs on
+  whatever you care about: a public benchmark like terminal-bench, or your own production traffic
+  imported from Langfuse and replayed against every provider from cache. Any model, your pick of
+  hosts, dry run by default:</p>
   <div class="code-box">
     <div class="code-head">
       <span class="lbl">shell</span>
@@ -352,9 +694,10 @@ compound-bench run terminal_bench --model deepseek/deepseek-v4-flash-0731 --prov
     --providers openrouter/deepinfra,doubleword/realtime,doubleword/flex \
     --tasks fix-permissions,create-bucket --trials 3 --go</pre>
   </div>
-  <p>Since this run, Compound's pinning proxy auto-retries 408/429/5xx with backoff and pins with
-  <code>require_parameters</code>, so both provider-failure classes above are absorbed or fail
-  fast at episode one.</p>
+  <p>Reasoning mode pins with <code>COMPOUND_REASONING=on|off</code>, which Compound's pinning proxy
+  translates into each host's own dialect. The proxy also pins with <code>require_parameters</code>
+  and verifies the served host on every call, so a capability gap or a silent reroute fails fast
+  instead of contaminating a run.</p>
 
   <div class="cta-row">
     <a class="btn btn-primary" href="https://github.com/aktasbatuhan/compound">Run it on your traffic</a>
@@ -368,56 +711,90 @@ compound-bench run terminal_bench --model deepseek/deepseek-v4-flash-0731 --prov
 (function () {
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  function wilson(k, n) {
+    var z = 1.96, p = k / n, d = 1 + z * z / n;
+    var c = (p + z * z / (2 * n)) / d;
+    var h = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d;
+    return [Math.max(0, c - h) * 100, Math.min(1, c + h) * 100];
+  }
+
+  // solid bar = reasoning on; light bar = reasoning off. CI is on-mode.
+  // Six fully-crossed clean hosts, fair matrix (3x limits, best-available cache).
+  // cfOn/cfOff = wall-clock-bound (agent_timeout) failures per cell, for the exclude toggle.
   var HOSTS = [
-    { key: 'dwrt', name: 'doubleword realtime', hex: '#1740e6',
-      pass: 23, n: 42, e2e: 54.8, excl: 54.8, ci: [40, 69], trials: '8 / 7 / 8',
-      note: '0 provider errors, fastest calls (4.1s median)' },
-    { key: 'para', name: 'parasail (fp8)', hex: '#7048e8',
-      pass: 20, n: 42, e2e: 47.6, excl: 57.1, ci: [33, 62], trials: '8 / 6 / 6',
-      note: 'clean episodes' },
-    { key: 'dinf', name: 'deepinfra (fp4)', hex: '#0d9373',
-      pass: 20, n: 42, e2e: 47.6, excl: 50.0, ci: [33, 62], trials: '7 / 7 / 6',
-      note: 'clean episodes, cheapest of the six' },
-    { key: 'dwfx', name: 'doubleword flex', hex: '#0e93c0',
-      pass: 19, n: 42, e2e: 45.2, excl: 45.2, ci: [31, 60], trials: '6 / 7 / 6',
-      note: 'async queue tier: same weights, slower first token' },
-    { key: 'fire', name: 'fireworks', hex: '#e8590c',
-      pass: 14, n: 42, e2e: 33.3, excl: 52.4, ci: [21, 48], trials: '6 / 5 / 3',
-      note: '15 of 42 episodes killed by shared-pool rate limits' }
+    { key: 'para', name: 'parasail (fp8)', hex: '#7048e8', on: 26, off: 18, non: 42, noff: 42, cfOn: 5, cfOff: 3,
+      note: 'reasoning off 18/42 (42.9%). highest on-mode cell in the matrix' },
+    { key: 'fire', name: 'fireworks', hex: '#e8590c', on: 25, off: 21, non: 42, noff: 42, cfOn: 5, cfOff: 2,
+      note: 'reasoning off 21/42 (50.0%). its 429s were retried by the proxy, 0 quality contamination' },
+    { key: 'dinf', name: 'deepinfra (fp4)', hex: '#0d9373', on: 24, off: 24, non: 42, noff: 42, cfOn: 9, cfOff: 1,
+      note: 'reasoning off 24/42 (57.1%). cheapest full-cross host and mode-insensitive' },
+    { key: 'cflr', name: 'cloudflare', hex: '#f59f00', on: 24, off: 21, non: 42, noff: 42, cfOn: 4, cfOff: 0,
+      note: 'reasoning off 21/42 (50.0%). zero trial variance both modes, 4 to 10x deepinfra price' },
+    { key: 'dwrt', name: 'doubleword realtime', hex: '#1740e6', on: 18, off: 22, non: 42, noff: 42, cfOn: 20, cfOff: 0,
+      note: 'reasoning off 22/42 (52.4%). thinking decodes ~20 tok/s: 20 of 24 on-mode failures burned the tripled clock' },
+    { key: 'dwfx', name: 'doubleword flex', hex: '#0e93c0', on: 16, off: 18, non: 42, noff: 42, cfOn: 25, cfOff: 1,
+      note: 'reasoning off 18/42 (42.9%). queue tier: 25 of 26 on-mode failures burned the tripled clock' }
   ];
 
   var chart = document.getElementById('barChart');
   var tip = document.getElementById('tip');
-  HOSTS.forEach(function (h) {
-    var row = document.createElement('div');
-    row.className = 'crow';
-    row.innerHTML =
-      '<span class="name"><span class="dot" style="background:' + h.hex + '"></span>' + h.name + '</span>' +
-      '<span class="track">' +
-        (h.excl !== null ? '<span class="bar2" data-w="' + h.excl + '" style="background:' + h.hex + '"></span>' : '') +
-        '<span class="bar" data-w="' + h.e2e + '" style="background:' + h.hex + '"></span>' +
-        '<span class="ci" style="left:' + h.ci[0] + '%;width:' + (h.ci[1] - h.ci[0]) + '%"></span>' +
-      '</span>' +
-      '<span class="val">' + h.e2e.toFixed(0) + '%<small>' + h.pass + '/' + h.n + '</small></span>';
-    row.addEventListener('mousemove', function (e) {
-      tip.innerHTML =
-        '<div class="th">' + h.name + '</div>' +
-        '<div class="td">pass ' + h.pass + '/' + h.n + ' (' + h.e2e.toFixed(1) + '%), trials ' + h.trials + '</div>' +
-        '<div class="td">Wilson 95% CI ' + h.ci[0] + '&ndash;' + h.ci[1] + '%' +
-        (h.excl !== null && h.excl !== h.e2e ? ', excl. provider kills ' + h.excl.toFixed(0) + '%' : '') + '</div>' +
-        '<div class="td">' + h.note + '</div>';
-      tip.classList.add('show');
-      var w = tip.offsetWidth, x = Math.min(e.clientX + 14, window.innerWidth - w - 12);
-      tip.style.left = x + 'px';
-      tip.style.top = (e.clientY + 16) + 'px';
+  var clockMode = 'all';  // 'all' or 'excl' (wall-clock failures excluded)
+  var denOn  = function (h) { return clockMode === 'excl' ? h.non  - h.cfOn  : h.non; };
+  var denOff = function (h) { return clockMode === 'excl' ? h.noff - h.cfOff : h.noff; };
+
+  function buildBars() {
+    chart.innerHTML = '';
+    HOSTS.forEach(function (h) {
+      var dOn = denOn(h), dOff = denOff(h);
+      var eOn = h.on / dOn * 100, eOff = h.off / dOff * 100, ci = wilson(h.on, dOn);
+      var row = document.createElement('div');
+      row.className = 'crow';
+      row.innerHTML =
+        '<span class="name"><span class="dot" style="background:' + h.hex + '"></span>' + h.name + '</span>' +
+        '<span class="track">' +
+          '<span class="bar2" data-w="' + eOff + '" style="background:' + h.hex + '"></span>' +
+          '<span class="bar" data-w="' + eOn + '" style="background:' + h.hex + '"></span>' +
+          '<span class="ci" style="left:' + ci[0] + '%;width:' + (ci[1] - ci[0]) + '%"></span>' +
+        '</span>' +
+        '<span class="val">' + eOn.toFixed(0) + '%<small>' + h.on + '/' + dOn + '</small></span>';
+      row.addEventListener('mousemove', function (e) {
+        tip.innerHTML =
+          '<div class="th">' + h.name + (clockMode === 'excl' ? ', clock-bound excluded' : '') + '</div>' +
+          '<div class="td">reasoning on ' + h.on + '/' + dOn + ' (' + eOn.toFixed(1) + '%)</div>' +
+          '<div class="td">Wilson 95% CI ' + ci[0].toFixed(0) + ' to ' + ci[1].toFixed(0) + '%, reasoning off ' + eOff.toFixed(1) + '%</div>' +
+          '<div class="td">' + h.note + '</div>';
+        tip.classList.add('show');
+        var w = tip.offsetWidth, x = Math.min(e.clientX + 14, window.innerWidth - w - 12);
+        tip.style.left = x + 'px';
+        tip.style.top = (e.clientY + 16) + 'px';
+      });
+      row.addEventListener('mouseleave', function () { tip.classList.remove('show'); });
+      chart.appendChild(row);
     });
-    row.addEventListener('mouseleave', function () { tip.classList.remove('show'); });
-    chart.appendChild(row);
-  });
+  }
   function fireBars() {
     chart.querySelectorAll('.bar, .bar2').forEach(function (b) { b.style.width = b.dataset.w + '%'; });
     chart.querySelectorAll('.ci').forEach(function (c) { c.style.opacity = '1'; });
   }
+  function updateTable() {
+    document.querySelectorAll('td.res').forEach(function (td) {
+      var r = +td.dataset.res, n = +td.dataset.n, cf = +td.dataset.cf;
+      var d = clockMode === 'excl' ? n - cf : n;
+      td.innerHTML = r + '/' + d + ' &middot; ' + (r / d * 100).toFixed(1) + '%';
+    });
+  }
+  function setClockMode(m) {
+    clockMode = m;
+    document.querySelectorAll('#clockToggle button').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.clock === m ? 'true' : 'false');
+    });
+    buildBars(); fireBars(); updateTable();
+  }
+  document.querySelectorAll('#clockToggle button').forEach(function (b) {
+    b.addEventListener('click', function () { setClockMode(b.dataset.clock); });
+  });
+
+  buildBars();
   if (reduce) { fireBars(); }
   else {
     var obs = new IntersectionObserver(function (es) {
@@ -425,116 +802,6 @@ compound-bench run terminal_bench --model deepseek/deepseek-v4-flash-0731 --prov
     }, { threshold: 0.3 });
     obs.observe(chart);
   }
-
-  var AXES = [
-    { k: 'quality' }, { k: 'reliability' }, { k: 'speed' },
-    { k: 'determinism' }, { k: 'cost' }, { k: 'TPS' }
-  ];
-  // all six axes from the same terminal-bench run (five hosts, 210 episodes)
-  var PROFILES = {
-    dwrt: [1.00, 1.00, 1.00, 0.64, 0.11, 0.34],
-    dwfx: [0.82, 1.00, 0.67, 0.71, 0.15, 0.23],
-    dinf: [0.87, 1.00, 0.20, 0.86, 1.00, 0.36],
-    para: [0.87, 1.00, 0.24, 0.50, 0.34, 0.51],
-    fire: [0.61, 0.64, 0.56, 0.64, 0.73, 1.00]
-  };
-  var RADAR_HOSTS = HOSTS.filter(function (h) { return h.key !== 'novi'; });
-  var active = { dwrt: true, dwfx: true, dinf: true, para: true, fire: true };
-  var NS = 'http://www.w3.org/2000/svg';
-  var W = 640, H = 430, CX = W / 2, CY = H / 2 + 8, R = 150;
-  function pt(i, v) {
-    var a = -Math.PI / 2 + i * Math.PI / 3;
-    return [CX + R * v * Math.cos(a), CY + R * v * Math.sin(a)];
-  }
-  var svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-  svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', 'Radar chart of six provider profiles across quality, reliability, speed, determinism, cost, and TPS');
-  [0.25, 0.5, 0.75, 1].forEach(function (g) {
-    var p = document.createElementNS(NS, 'polygon');
-    p.setAttribute('points', AXES.map(function (_, i) { return pt(i, g).join(','); }).join(' '));
-    p.setAttribute('fill', 'none');
-    p.setAttribute('stroke', g === 1 ? '#d5d0c2' : '#e6e2d8');
-    svg.appendChild(p);
-  });
-  AXES.forEach(function (ax, i) {
-    var l = document.createElementNS(NS, 'line');
-    var e = pt(i, 1);
-    l.setAttribute('x1', CX); l.setAttribute('y1', CY);
-    l.setAttribute('x2', e[0]); l.setAttribute('y2', e[1]);
-    l.setAttribute('stroke', '#e6e2d8');
-    svg.appendChild(l);
-    var t = document.createElementNS(NS, 'text');
-    var lp = pt(i, 1.16);
-    t.setAttribute('x', lp[0]); t.setAttribute('y', lp[1] + 3);
-    t.setAttribute('text-anchor', 'middle');
-    t.setAttribute('font-size', '12.5');
-    t.setAttribute('font-family', 'Spline Sans Mono, monospace');
-    t.setAttribute('fill', '#191817');
-    t.textContent = ax.k;
-    svg.appendChild(t);
-  });
-  var series = {};
-  var hover = null;
-  var legendBtns = {};
-  RADAR_HOSTS.forEach(function (h) {
-    var p = document.createElementNS(NS, 'polygon');
-    p.setAttribute('points', PROFILES[h.key].map(function (v, i) { return pt(i, Math.max(v, 0.02)).join(','); }).join(' '));
-    p.setAttribute('fill', h.hex);
-    p.setAttribute('fill-opacity', '0.10');
-    p.setAttribute('stroke', h.hex);
-    p.setAttribute('stroke-width', '2');
-    p.setAttribute('stroke-linejoin', 'round');
-    p.style.transition = 'opacity .2s, fill-opacity .2s, stroke-width .2s';
-    p.style.cursor = 'pointer';
-    p.addEventListener('mouseenter', function () { hover = h.key; render(); });
-    p.addEventListener('mouseleave', function () { hover = null; render(); });
-    svg.appendChild(p);
-    var dots = document.createElementNS(NS, 'g');
-    dots.style.pointerEvents = 'none';
-    PROFILES[h.key].forEach(function (v, i) {
-      var c = document.createElementNS(NS, 'circle');
-      var xy = pt(i, Math.max(v, 0.02));
-      c.setAttribute('cx', xy[0]); c.setAttribute('cy', xy[1]); c.setAttribute('r', '3.2');
-      c.setAttribute('fill', '#ffffff'); c.setAttribute('stroke', h.hex); c.setAttribute('stroke-width', '2');
-      dots.appendChild(c);
-    });
-    dots.style.transition = 'opacity .2s';
-    svg.appendChild(dots);
-    series[h.key] = [p, dots];
-  });
-  document.getElementById('radarBox').appendChild(svg);
-  var legend = document.getElementById('radarLegend');
-  function render() {
-    RADAR_HOSTS.forEach(function (h) {
-      var on = active[h.key];
-      var isHover = hover === h.key;
-      var dimmed = hover && !isHover;
-      var op = !on ? 0 : (dimmed ? 0.1 : 1);
-      series[h.key][0].style.opacity = op;
-      series[h.key][1].style.opacity = op;
-      series[h.key][0].setAttribute('fill-opacity', isHover ? '0.24' : '0.10');
-      series[h.key][0].setAttribute('stroke-width', isHover ? '2.6' : '2');
-      if (legendBtns[h.key]) legendBtns[h.key].style.fontWeight = isHover ? '600' : '400';
-    });
-    if (hover && active[hover]) { svg.appendChild(series[hover][0]); svg.appendChild(series[hover][1]); }
-  }
-  RADAR_HOSTS.forEach(function (h) {
-    var b = document.createElement('button');
-    b.className = 'lg';
-    b.setAttribute('aria-pressed', String(active[h.key]));
-    b.innerHTML = '<span class="sw" style="background:' + h.hex + '"></span>' + h.name.split(' (')[0];
-    b.addEventListener('click', function () {
-      active[h.key] = !active[h.key];
-      b.setAttribute('aria-pressed', String(active[h.key]));
-      render();
-    });
-    b.addEventListener('mouseenter', function () { hover = h.key; render(); });
-    b.addEventListener('mouseleave', function () { hover = null; render(); });
-    legendBtns[h.key] = b;
-    legend.appendChild(b);
-  });
-  render();
 
   document.querySelectorAll('.copy-btn').forEach(function (b) {
     b.addEventListener('click', function () {
@@ -548,5 +815,354 @@ compound-bench run terminal_bench --model deepseek/deepseek-v4-flash-0731 --prov
   });
 })();
 </script>
+<script>
+// Fig 2 (Pareto scatter) + Fig 3 (per-trial waffle), COMPLETE fair tier: all 14 arms
+// (3x limits, modes pinned per host, cache best-available per host, 588 episodes).
+(function () {
+  var tip = document.getElementById('tip');
+
+  var CELLS = {
+    'deepinfra-fp4|on':        { resolved: 24, n: 42, clockfail: 9,  cost_measured: 0.4277, cost_derived: 0.0,    cached_share: 0.816, wall_hours: 7.55,  tokens_m: 3.29 },
+    'deepinfra-fp4|off':       { resolved: 24, n: 42, clockfail: 1,  cost_measured: 0.3578, cost_derived: 0.0,    cached_share: 0.879, wall_hours: 4.23,  tokens_m: 10.16 },
+    'parasail-fp8|on':         { resolved: 26, n: 42, clockfail: 5,  cost_measured: 0.924,  cost_derived: 0.0,    cached_share: 0.798, wall_hours: 6.12,  tokens_m: 5.52 },
+    'parasail-fp8|off':        { resolved: 18, n: 42, clockfail: 3,  cost_measured: 1.02,   cost_derived: 0.0,    cached_share: 0.804, wall_hours: 4.76,  tokens_m: 10.33 },
+    'fireworks|on':            { resolved: 25, n: 42, clockfail: 5,  cost_measured: 0.9511, cost_derived: 0.0,    cached_share: 0.88,  wall_hours: 5.89,  tokens_m: 5.71 },
+    'fireworks|off':           { resolved: 21, n: 42, clockfail: 2,  cost_measured: 0.5719, cost_derived: 0.0,    cached_share: 0.904, wall_hours: 5.13,  tokens_m: 10.14 },
+    'cloudflare|on':           { resolved: 24, n: 42, clockfail: 4,  cost_measured: 4.1317, cost_derived: 0.0,    cached_share: 0.55,  wall_hours: 6.34,  tokens_m: 8.98 },
+    'cloudflare|off':          { resolved: 21, n: 42, clockfail: 0,  cost_measured: 2.5414, cost_derived: 0.0,    cached_share: 0.754, wall_hours: 3.54,  tokens_m: 18.81 },
+    'together|off':            { resolved: 20, n: 42, clockfail: 1,  cost_measured: 0.6724, cost_derived: 0.0,    cached_share: 0.885, wall_hours: 3.25,  tokens_m: 11.16 },
+    'openrouter-auto|on':      { resolved: 23, n: 42, clockfail: 10, cost_measured: 1.161,  cost_derived: 0.0,    cached_share: 0.615, wall_hours: 7.9,   tokens_m: 5.39 },
+    'doubleword-realtime|on':  { resolved: 18, n: 42, clockfail: 20, cost_measured: 0.0,    cost_derived: 0.2349, cached_share: 0.806, wall_hours: 12.06, tokens_m: 1.04 },
+    'doubleword-realtime|off': { resolved: 22, n: 42, clockfail: 0,  cost_measured: 0.0,    cost_derived: 0.517,  cached_share: 0.944, wall_hours: 3.1,   tokens_m: 20.52 },
+    'doubleword-flex|on':      { resolved: 16, n: 42, clockfail: 25, cost_measured: 0.0,    cost_derived: 0.216,  cached_share: 0.858, wall_hours: 14.0,  tokens_m: 1.37 },
+    'doubleword-flex|off':     { resolved: 18, n: 42, clockfail: 1,  cost_measured: 0.0,    cost_derived: 0.3121, cached_share: 0.945, wall_hours: 4.11,  tokens_m: 19.5 }
+  };
+
+  var TASKS = [
+    'chess-best-move', 'conda-env-conflict-resolution', 'configure-git-webserver',
+    'count-dataset-tokens', 'crack-7z-hash', 'crack-7z-hash.easy', 'crack-7z-hash.hard',
+    'create-bucket', 'cron-broken-network', 'csv-to-parquet',
+    'decommissioning-service-with-sensitive-data', 'extract-safely', 'fix-permissions',
+    'git-multibranch'
+  ];
+
+  var S = 'solved', F = 'failed', C = 'clockfail';
+  var WAFFLE = {
+    'deepinfra-fp4|on': {
+      'chess-best-move': [C,C,C], 'conda-env-conflict-resolution': [S,F,S], 'configure-git-webserver': [C,F,C],
+      'count-dataset-tokens': [C,S,S], 'crack-7z-hash': [S,S,S], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [S,S,C],
+      'create-bucket': [S,S,S], 'cron-broken-network': [F,F,F], 'csv-to-parquet': [S,S,S],
+      'decommissioning-service-with-sensitive-data': [F,F,C], 'extract-safely': [S,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,C]
+    },
+    'deepinfra-fp4|off': {
+      'chess-best-move': [F,F,F], 'conda-env-conflict-resolution': [S,S,S], 'configure-git-webserver': [F,F,F],
+      'count-dataset-tokens': [F,S,S], 'crack-7z-hash': [C,S,S], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [S,S,S],
+      'create-bucket': [S,S,S], 'cron-broken-network': [F,F,F], 'csv-to-parquet': [S,S,S],
+      'decommissioning-service-with-sensitive-data': [F,F,F], 'extract-safely': [F,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,F]
+    },
+    'parasail-fp8|on': {
+      'chess-best-move': [C,F,C], 'conda-env-conflict-resolution': [S,S,S], 'configure-git-webserver': [C,F,C],
+      'count-dataset-tokens': [S,S,S], 'crack-7z-hash': [S,S,S], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [S,C,S],
+      'create-bucket': [S,S,S], 'cron-broken-network': [F,F,F], 'csv-to-parquet': [S,S,S],
+      'decommissioning-service-with-sensitive-data': [F,F,F], 'extract-safely': [S,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,F]
+    },
+    'parasail-fp8|off': {
+      'chess-best-move': [F,F,C], 'conda-env-conflict-resolution': [F,F,F], 'configure-git-webserver': [F,F,F],
+      'count-dataset-tokens': [C,F,C], 'crack-7z-hash': [S,S,S], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [F,S,S],
+      'create-bucket': [S,S,S], 'cron-broken-network': [F,F,F], 'csv-to-parquet': [F,F,S],
+      'decommissioning-service-with-sensitive-data': [F,F,F], 'extract-safely': [S,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,F]
+    },
+    'fireworks|on': {
+      'chess-best-move': [C,C,C], 'conda-env-conflict-resolution': [F,S,S], 'configure-git-webserver': [F,C,C],
+      'count-dataset-tokens': [F,S,S], 'crack-7z-hash': [S,S,S], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [S,S,S],
+      'create-bucket': [S,S,S], 'cron-broken-network': [F,F,F], 'csv-to-parquet': [S,S,S],
+      'decommissioning-service-with-sensitive-data': [F,F,F], 'extract-safely': [S,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,F]
+    },
+    'fireworks|off': {
+      'chess-best-move': [F,F,F], 'conda-env-conflict-resolution': [S,S,S], 'configure-git-webserver': [F,F,F],
+      'count-dataset-tokens': [C,C,F], 'crack-7z-hash': [S,S,S], 'crack-7z-hash.easy': [F,S,S], 'crack-7z-hash.hard': [S,F,S],
+      'create-bucket': [S,S,F], 'cron-broken-network': [F,F,F], 'csv-to-parquet': [S,S,S],
+      'decommissioning-service-with-sensitive-data': [F,F,F], 'extract-safely': [S,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,F]
+    },
+    'cloudflare|on': {
+      'chess-best-move': [F,C,F], 'conda-env-conflict-resolution': [S,S,F], 'configure-git-webserver': [F,C,F],
+      'count-dataset-tokens': [F,S,S], 'crack-7z-hash': [S,S,S], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [S,C,C],
+      'create-bucket': [S,S,S], 'cron-broken-network': [F,F,F], 'csv-to-parquet': [S,S,S],
+      'decommissioning-service-with-sensitive-data': [F,F,S], 'extract-safely': [S,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,F]
+    },
+    'cloudflare|off': {
+      'chess-best-move': [F,F,F], 'conda-env-conflict-resolution': [F,S,F], 'configure-git-webserver': [F,F,S],
+      'count-dataset-tokens': [S,F,F], 'crack-7z-hash': [S,S,S], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [F,F,F],
+      'create-bucket': [S,S,S], 'cron-broken-network': [F,F,F], 'csv-to-parquet': [S,S,S],
+      'decommissioning-service-with-sensitive-data': [F,F,F], 'extract-safely': [S,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,F]
+    },
+    'together|off': {
+      'chess-best-move': [F,F,C], 'conda-env-conflict-resolution': [F,S,F], 'configure-git-webserver': [F,F,F],
+      'count-dataset-tokens': [F,F,S], 'crack-7z-hash': [S,S,S], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [F,S,F],
+      'create-bucket': [F,S,S], 'cron-broken-network': [F,F,F], 'csv-to-parquet': [S,S,S],
+      'decommissioning-service-with-sensitive-data': [F,F,F], 'extract-safely': [S,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,F]
+    },
+    'openrouter-auto|on': {
+      'chess-best-move': [C,F,F], 'conda-env-conflict-resolution': [S,F,S], 'configure-git-webserver': [C,C,C],
+      'count-dataset-tokens': [C,C,C], 'crack-7z-hash': [S,S,S], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [S,C,S],
+      'create-bucket': [S,S,S], 'cron-broken-network': [C,C,F], 'csv-to-parquet': [S,S,S],
+      'decommissioning-service-with-sensitive-data': [F,S,F], 'extract-safely': [S,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,F]
+    },
+    'doubleword-realtime|on': {
+      'chess-best-move': [C,C,C], 'conda-env-conflict-resolution': [S,C,S], 'configure-git-webserver': [C,C,C],
+      'count-dataset-tokens': [C,S,C], 'crack-7z-hash': [S,S,C], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [C,C,C],
+      'create-bucket': [S,C,S], 'cron-broken-network': [F,C,F], 'csv-to-parquet': [S,C,S],
+      'decommissioning-service-with-sensitive-data': [F,F,C], 'extract-safely': [S,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [C,C,C]
+    },
+    'doubleword-realtime|off': {
+      'chess-best-move': [F,F,F], 'conda-env-conflict-resolution': [S,S,S], 'configure-git-webserver': [S,F,S],
+      'count-dataset-tokens': [F,F,F], 'crack-7z-hash': [S,S,S], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [F,F,F],
+      'create-bucket': [S,S,S], 'cron-broken-network': [F,F,F], 'csv-to-parquet': [S,S,S],
+      'decommissioning-service-with-sensitive-data': [F,F,F], 'extract-safely': [F,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,F]
+    },
+    'doubleword-flex|on': {
+      'chess-best-move': [C,C,C], 'conda-env-conflict-resolution': [C,C,C], 'configure-git-webserver': [C,C,C],
+      'count-dataset-tokens': [C,C,C], 'crack-7z-hash': [C,F,C], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [C,C,S],
+      'create-bucket': [S,S,S], 'cron-broken-network': [C,C,C], 'csv-to-parquet': [S,S,S],
+      'decommissioning-service-with-sensitive-data': [C,C,C], 'extract-safely': [S,S,S], 'fix-permissions': [S,S,S], 'git-multibranch': [C,C,C]
+    },
+    'doubleword-flex|off': {
+      'chess-best-move': [F,F,F], 'conda-env-conflict-resolution': [F,S,S], 'configure-git-webserver': [F,F,F],
+      'count-dataset-tokens': [S,C,F], 'crack-7z-hash': [F,S,S], 'crack-7z-hash.easy': [S,S,S], 'crack-7z-hash.hard': [F,F,F],
+      'create-bucket': [S,S,S], 'cron-broken-network': [F,F,F], 'csv-to-parquet': [F,S,S],
+      'decommissioning-service-with-sensitive-data': [F,F,F], 'extract-safely': [S,S,F], 'fix-permissions': [S,S,S], 'git-multibranch': [F,F,F]
+    }
+  };
+
+  var ARM_META = {
+    'deepinfra-fp4':       { label: 'deepinfra',   tag: 'fp4', color: '#0d9373', derived: false },
+    'parasail-fp8':        { label: 'parasail',    tag: 'fp8', color: '#7048e8', derived: false },
+    'fireworks':           { label: 'fireworks',   tag: '',    color: '#e8590c', derived: false },
+    'cloudflare':          { label: 'cloudflare',  tag: '',    color: '#f59f00', derived: false },
+    'together':            { label: 'together',    tag: '',    color: '#ae3ec9', derived: false },
+    'openrouter-auto':     { label: 'auto',        tag: 'unpinned', color: '#868e96', derived: false },
+    'doubleword-realtime': { label: 'dw realtime', tag: '',    color: '#1740e6', derived: true },
+    'doubleword-flex':     { label: 'dw flex',     tag: '',    color: '#0e93c0', derived: true }
+  };
+  var HOST_ORDER = ['deepinfra-fp4', 'parasail-fp8', 'fireworks', 'cloudflare', 'together', 'openrouter-auto', 'doubleword-realtime', 'doubleword-flex'];
+  var MODE_ORDER = ['on', 'off'];
+
+  var NS = 'http://www.w3.org/2000/svg';
+  function el(n, a) { var e = document.createElementNS(NS, n); for (var k in a) e.setAttribute(k, a[k]); return e; }
+  function wilson(k, n) {
+    var z = 1.96, p = k / n, d = 1 + z * z / n;
+    var c = (p + z * z / (2 * n)) / d;
+    var h = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d;
+    return [Math.max(0, c - h) * 100, Math.min(1, c + h) * 100];
+  }
+  function showTip(html, e) {
+    tip.innerHTML = html; tip.classList.add('show');
+    var w = tip.offsetWidth, x = Math.min(e.clientX + 14, window.innerWidth - w - 12);
+    tip.style.left = x + 'px'; tip.style.top = (e.clientY + 16) + 'px';
+  }
+  function hideTip() { tip.classList.remove('show'); }
+
+  // ---------- Figure 2: Pareto scatter ----------
+  var arms = Object.keys(CELLS).map(function (key) {
+    var parts = key.split('|'), host = parts[0], mode = parts[1], c = CELLS[key], meta = ARM_META[host];
+    var cost = c.cost_measured > 0 ? c.cost_measured : c.cost_derived;
+    return {
+      key: key, mode: mode, meta: meta, derived: meta.derived,
+      cost: cost, tokens_m: c.tokens_m, wall_hours: c.wall_hours,
+      resolved: c.resolved, n: c.n, rate: c.resolved / c.n * 100, ci: wilson(c.resolved, c.n)
+    };
+  });
+  var AXES = {
+    cost:   { label: 'cost ($ per cell)',            get: function (a) { return a.cost; },       tick: function (v) { return '$' + v.toFixed(2); } },
+    tokens: { label: 'total tokens (millions)',      get: function (a) { return a.tokens_m; },   tick: function (v) { return v.toFixed(0) + 'M'; } },
+    time:   { label: 'wall-clock hours for the cell', get: function (a) { return a.wall_hours; }, tick: function (v) { return v.toFixed(0) + 'h'; } }
+  };
+  var curAxis = 'cost';
+  var box = document.getElementById('paretoBox');
+  var W = 680, H = 440, mL = 60, mR = 26, mT = 22, mB = 52, pw = W - mL - mR, ph = H - mT - mB, yMin = 20, yMax = 80;
+  function niceTicks(max) {
+    var raw = max / 4, mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
+    var s = (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag, out = [];
+    for (var v = 0; v <= max + 1e-9; v += s) out.push(v);
+    return out;
+  }
+  function renderPareto() {
+    var getX = AXES[curAxis].get;
+    var dataMax = 0; arms.forEach(function (a) { dataMax = Math.max(dataMax, getX(a)); });
+    var xt = niceTicks(dataMax * 1.08);
+    var xMax = Math.max(xt[xt.length - 1], dataMax * 1.04);
+    function xs(v) { return mL + v / xMax * pw; }
+    function ys(v) { return mT + (yMax - v) / (yMax - yMin) * ph; }
+    // frontier: minimise x, maximise resolve rate
+    var sorted = arms.slice().sort(function (a, b) { return getX(a) - getX(b) || b.rate - a.rate; });
+    var maxY = -Infinity, front = {};
+    sorted.forEach(function (a) { if (a.rate > maxY + 1e-9) { front[a.key] = true; maxY = a.rate; } });
+    var fpts = sorted.filter(function (a) { return front[a.key]; });
+
+    var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Resolve rate against ' + curAxis + ' for fourteen tripled-limit serving cells, with the Pareto frontier shaded' });
+
+    // shaded frontier region
+    if (fpts.length) {
+      var d = 'M ' + mL + ' ' + ys(fpts[0].rate) + ' L ' + xs(getX(fpts[0])) + ' ' + ys(fpts[0].rate);
+      for (var i = 1; i < fpts.length; i++) { d += ' L ' + xs(getX(fpts[i])) + ' ' + ys(fpts[i - 1].rate) + ' L ' + xs(getX(fpts[i])) + ' ' + ys(fpts[i].rate); }
+      d += ' L ' + xs(getX(fpts[fpts.length - 1])) + ' ' + ys(yMin) + ' L ' + mL + ' ' + ys(yMin) + ' Z';
+      svg.appendChild(el('path', { d: d, fill: '#1740e6', 'fill-opacity': '0.06', stroke: 'none' }));
+      var ld = 'M ' + xs(getX(fpts[0])) + ' ' + ys(fpts[0].rate);
+      for (var j = 1; j < fpts.length; j++) { ld += ' L ' + xs(getX(fpts[j])) + ' ' + ys(fpts[j - 1].rate) + ' L ' + xs(getX(fpts[j])) + ' ' + ys(fpts[j].rate); }
+      svg.appendChild(el('path', { d: ld, fill: 'none', stroke: '#1740e6', 'stroke-opacity': '0.4', 'stroke-width': '1', 'stroke-dasharray': '3 3' }));
+    }
+    // y grid + ticks
+    [20, 30, 40, 50, 60, 70, 80].forEach(function (v) {
+      svg.appendChild(el('line', { x1: mL, y1: ys(v), x2: mL + pw, y2: ys(v), stroke: '#e6e2d8', 'stroke-width': '1' }));
+      var t = el('text', { x: mL - 9, y: ys(v) + 3.5, 'text-anchor': 'end', 'font-size': '10.5', 'font-family': 'Spline Sans Mono, monospace', fill: '#98938a' });
+      t.textContent = v; svg.appendChild(t);
+    });
+    // x grid + ticks
+    xt.forEach(function (v) {
+      svg.appendChild(el('line', { x1: xs(v), y1: mT, x2: xs(v), y2: mT + ph, stroke: '#f0ede4', 'stroke-width': '1' }));
+      var t = el('text', { x: xs(v), y: mT + ph + 18, 'text-anchor': 'middle', 'font-size': '10.5', 'font-family': 'Spline Sans Mono, monospace', fill: '#98938a' });
+      t.textContent = AXES[curAxis].tick(v); svg.appendChild(t);
+    });
+    // axis frame + labels
+    svg.appendChild(el('line', { x1: mL, y1: mT, x2: mL, y2: mT + ph, stroke: '#d5d0c2', 'stroke-width': '1' }));
+    svg.appendChild(el('line', { x1: mL, y1: mT + ph, x2: mL + pw, y2: mT + ph, stroke: '#d5d0c2', 'stroke-width': '1' }));
+    var xl = el('text', { x: mL + pw / 2, y: H - 6, 'text-anchor': 'middle', 'font-size': '11', 'font-family': 'Spline Sans Mono, monospace', fill: '#57534a' });
+    xl.textContent = AXES[curAxis].label; svg.appendChild(xl);
+    var midY = mT + ph / 2;
+    var yl = el('text', { x: 15, y: midY, 'text-anchor': 'middle', 'font-size': '11', 'font-family': 'Spline Sans Mono, monospace', fill: '#57534a', transform: 'rotate(-90 15 ' + midY + ')' });
+    yl.textContent = 'resolve rate %'; svg.appendChild(yl);
+
+    // points, CI whiskers, labels
+    var slots = { left: [], right: [] };
+    arms.forEach(function (a) {
+      var px = xs(getX(a)), py = ys(a.rate), isF = front[a.key], op = isF ? 1 : 0.4, col = a.meta.color;
+      var g = el('g', { opacity: String(op) });
+      g.appendChild(el('line', { x1: px, y1: ys(a.ci[0]), x2: px, y2: ys(a.ci[1]), stroke: col, 'stroke-width': '1.4', 'stroke-opacity': '0.55' }));
+      g.appendChild(el('line', { x1: px - 3, y1: ys(a.ci[1]), x2: px + 3, y2: ys(a.ci[1]), stroke: col, 'stroke-width': '1.4', 'stroke-opacity': '0.55' }));
+      g.appendChild(el('line', { x1: px - 3, y1: ys(a.ci[0]), x2: px + 3, y2: ys(a.ci[0]), stroke: col, 'stroke-width': '1.4', 'stroke-opacity': '0.55' }));
+      if (a.derived) g.appendChild(el('rect', { x: px - 5, y: py - 5, width: 10, height: 10, fill: '#faf9f5', stroke: col, 'stroke-width': '2' }));
+      else g.appendChild(el('circle', { cx: px, cy: py, r: 5.5, fill: col, stroke: '#faf9f5', 'stroke-width': '1.5' }));
+      svg.appendChild(g);
+
+      var hit = a.derived
+        ? el('rect', { x: px - 10, y: py - 10, width: 20, height: 20, fill: 'transparent' })
+        : el('circle', { cx: px, cy: py, r: 11, fill: 'transparent' });
+      hit.style.cursor = 'pointer';
+      hit.addEventListener('mousemove', function (ev) {
+        showTip(
+          '<div class="th">' + a.meta.label + ' ' + a.mode + '</div>' +
+          '<div class="td">' + a.resolved + '/' + a.n + ' resolved (' + a.rate.toFixed(1) + '%)</div>' +
+          '<div class="td">cost $' + a.cost.toFixed(4) + ' (' + (a.derived ? 'derived' : 'measured') + ')</div>' +
+          '<div class="td">' + a.tokens_m.toFixed(2) + 'M tokens, ' + a.wall_hours.toFixed(2) + ' h</div>' +
+          '<div class="td">' + (isF ? 'Pareto frontier' : 'dominated') + '</div>', ev);
+      });
+      hit.addEventListener('mouseleave', hideTip);
+      svg.appendChild(hit);
+
+      slots[px > mL + pw * 0.58 ? 'left' : 'right'].push({ a: a, px: px, py: py, op: op });
+    });
+    // vertical declutter of labels, then draw
+    ['left', 'right'].forEach(function (side) {
+      var list = slots[side].sort(function (u, v) { return u.py - v.py; });
+      for (var i = 1; i < list.length; i++) { if (list[i].py - list[i - 1].py < 12) list[i].py = list[i - 1].py + 12; }
+      list.forEach(function (s) {
+        var dx = side === 'left' ? -12 : 12, anchor = side === 'left' ? 'end' : 'start', tx = s.px + dx, ty = s.py;
+        svg.appendChild(el('line', { x1: s.px + (side === 'left' ? -6 : 6), y1: s.py, x2: tx, y2: ty, stroke: s.a.meta.color, 'stroke-width': '0.8', 'stroke-opacity': String(0.5 * s.op) }));
+        var t = el('text', { x: tx, y: ty + 3, 'text-anchor': anchor, 'font-size': '10.5', 'font-family': 'Spline Sans Mono, monospace', fill: '#191817', opacity: String(s.op) });
+        t.textContent = s.a.meta.label;
+        var tg = el('tspan', { fill: '#98938a' }); tg.textContent = ' ' + s.a.mode; t.appendChild(tg);
+        svg.appendChild(t);
+      });
+    });
+    box.innerHTML = ''; box.appendChild(svg);
+  }
+  if (box) {
+    renderPareto();
+    var ctrl = document.getElementById('paretoCtrl');
+    ctrl.querySelectorAll('button[data-axis]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        curAxis = b.getAttribute('data-axis');
+        ctrl.querySelectorAll('button[data-axis]').forEach(function (x) { x.setAttribute('aria-pressed', String(x.getAttribute('data-axis') === curAxis)); });
+        renderPareto();
+      });
+    });
+  }
+
+  // ---------- Figure 3: per-trial waffle ----------
+  var grid = document.getElementById('waffleBox');
+  if (grid) {
+    // cron-broken-network never reaches a model verdict: it fails as an ungraded
+    // terminal-bench parse error (uv-bootstrap / grader-null) on every host, so
+    // it is an 'error', not a 'fail'. Reclassify every trial of it.
+    Object.keys(WAFFLE).forEach(function (k) {
+      var a = WAFFLE[k]['cron-broken-network'];
+      if (a) WAFFLE[k]['cron-broken-network'] = a.map(function () { return 'error'; });
+    });
+    var columns = [];
+    HOST_ORDER.forEach(function (host) {
+      var first = true;
+      MODE_ORDER.forEach(function (mode) {
+        var key = host + '|' + mode;
+        if (WAFFLE[key]) { columns.push({ key: key, mode: mode, meta: ARM_META[host], hostStart: first }); first = false; }
+      });
+    });
+    var COL = { solved: '#191817', failed: '#d8d3c6', clockfail: '#e8850c', error: '#d6336c' };
+    var LAB = { solved: 'pass', failed: 'fail (wrong on merit)', clockfail: 'timeout (ran out the tripled clock, not a quality failure)', error: 'error (ungraded: harness parse or model output-token overflow)' };
+    // variable trials per cell: total = sum of each column's trial count for a task
+    function colTrials(c, t) { return (WAFFLE[c.key][t] || []).length; }
+    var solveCount = {}, totalCount = {};
+    TASKS.forEach(function (t) {
+      var s = 0, tot = 0;
+      columns.forEach(function (c) {
+        (WAFFLE[c.key][t] || []).forEach(function (st) { tot++; if (st === 'solved') s++; });
+      });
+      solveCount[t] = s; totalCount[t] = tot;
+    });
+    var rows = TASKS.slice().sort(function (a, b) { return solveCount[a] - solveCount[b] || (a < b ? -1 : 1); });
+
+    var inner = document.createElement('div');
+    inner.className = 'waffle-grid';
+    inner.style.gridTemplateColumns = 'minmax(180px,auto) repeat(' + columns.length + ', auto)';
+
+    var corner = document.createElement('div');
+    corner.className = 'wtask';
+    corner.style.borderBottom = '1px solid var(--line-2)';
+    corner.innerHTML = '<span style="color:var(--ink-3)">task</span><small>solved / trials</small>';
+    inner.appendChild(corner);
+    columns.forEach(function (c) {
+      var h = document.createElement('div');
+      h.className = 'wh' + (c.hostStart ? ' hostsep' : '');
+      h.innerHTML = c.meta.label + '<small>' + (c.meta.tag ? c.meta.tag + ' · ' : '') + c.mode + '</small>';
+      inner.appendChild(h);
+    });
+    rows.forEach(function (t) {
+      var lab = document.createElement('div');
+      lab.className = 'wtask';
+      lab.innerHTML = '<span>' + t + '</span><small>' + solveCount[t] + '/' + totalCount[t] + '</small>';
+      inner.appendChild(lab);
+      columns.forEach(function (c) {
+        var cell = document.createElement('div');
+        cell.className = 'wcell' + (c.hostStart ? ' hostsep' : '');
+        (WAFFLE[c.key][t] || []).forEach(function (st, idx) {
+          var sq = document.createElement('span');
+          sq.className = 'waffle-sq';
+          sq.style.background = COL[st] || '#eee';
+          sq.addEventListener('mousemove', function (ev) {
+            showTip(
+              '<div class="th">' + t + '</div>' +
+              '<div class="td">' + c.meta.label + ' ' + c.mode + ', trial ' + (idx + 1) + '</div>' +
+              '<div class="td">' + LAB[st] + '</div>', ev);
+          });
+          sq.addEventListener('mouseleave', hideTip);
+          cell.appendChild(sq);
+        });
+        inner.appendChild(cell);
+      });
+    });
+    grid.appendChild(inner);
+  }
+})();
+</script>
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "ba3faea87c8742f181b2a1fdbaf8eccd"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
