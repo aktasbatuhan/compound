@@ -111,10 +111,12 @@
     display: inline-flex; align-items: center; gap: 6px;
     font-family: var(--mono); font-size: 11px; color: rgba(255,255,255,0.65);
     background: none; border: none; padding: 2px 0; cursor: pointer;
+    transition-property: color, scale; transition-duration: .12s, .15s; transition-timing-function: ease-out;
   }
   .copy-btn:hover { color: #fff; }
+  .copy-btn:active { scale: 0.96; }
   .copy-btn.done { color: #7be0a8; }
-  .copy-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+  .copy-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.5; }
   .code-box pre { margin: 0; padding: 16px 18px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.8; color: var(--ink-2); }
   .code-box .cm { color: var(--ink-3); }
   .code-box .kw { color: var(--ink); }
@@ -191,8 +193,9 @@
   .lg {
     font-family: var(--mono); font-size: 11.5px; display: inline-flex; align-items: center; gap: 8px;
     border: none; background: none; color: var(--ink-2);
-    padding: 5px 14px 5px 0; cursor: pointer; transition: opacity .12s;
+    padding: 5px 14px 5px 0; cursor: pointer; transition: opacity .12s, scale .15s ease-out;
   }
+  .lg:active { scale: 0.96; }
   .lg .sw { width: 14px; height: 3px; }
   .lg[aria-pressed="false"] { opacity: 0.35; }
   .lg[aria-pressed="false"] .sw { background: var(--ink-3) !important; }
@@ -202,9 +205,10 @@
   .axc {
     font-family: var(--mono); font-size: 11px; color: var(--ink-2);
     border: 1px solid var(--line-2); background: var(--panel); border-radius: 3px;
-    padding: 5px 11px; cursor: pointer; transition: background .12s, border-color .12s, color .12s;
+    padding: 5px 11px; cursor: pointer; transition: background .12s, border-color .12s, color .12s, scale .15s ease-out;
   }
   .axc:hover { border-color: var(--ink-3); }
+  .axc:active { scale: 0.96; }
   .axc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   .radar-callout { min-height: 18px; padding: 0 20px 16px; font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
   .radar-callout b { color: var(--ink); font-weight: 600; }
@@ -228,10 +232,15 @@
   .vtab {
     font-family: var(--mono); font-size: 12px; background: var(--panel); color: var(--ink-2);
     border: none; border-right: 1px solid var(--line); padding: 9px 16px; cursor: pointer;
+    transition-property: color, background, scale; transition-duration: .12s, .12s, .15s; transition-timing-function: ease-out;
   }
   .vtab:last-child { border-right: none; }
   .vtab:hover { color: var(--ink); }
+  .vtab:active { scale: 0.96; }
   .vtab[aria-selected="true"] { background: var(--ink); color: #fff; }
+  @media (prefers-reduced-motion: reduce) {
+    .copy-btn:active, .lg:active, .axc:active, .vtab:active { scale: 1; }
+  }
   .vpanel { padding: 24px 26px; }
   .vpanel .badge { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 11px; border-radius: 3px; display: inline-block; margin-bottom: 14px; }
   .vpanel h3 { font-family: var(--display); font-weight: 700; font-size: 23px; letter-spacing: -0.02em; margin-bottom: 8px; }
@@ -278,8 +287,9 @@
   <div class="wrap nav">
     <a class="logo" href="#"><span class="glyph"></span>compound</a>
     <nav class="nav-links">
-      <a href="#sweep">sweep</a>
-      <a href="#gate">gate</a>
+      <a href="#how">replay your traces</a>
+      <a href="#sweep">compare providers</a>
+      <a href="#gate">regression gate</a>
       <a href="#benchmarks">benchmarks</a>
       <a href="report/">example report</a>
       <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">
@@ -298,13 +308,18 @@
     <div class="wrap hero-grid">
       <div>
         <h1>Pick the right provider for <em>your own workload</em>.</h1>
-        <p class="sub">The same open model is not the same product on every serving host. Compound
-        runs one model across providers on your tasks, measures success, cost, latency, and cache
-        behavior per host, and gates the switch on a sealed decision set with confidence intervals.</p>
+        <p class="sub">The same open model is not the same product on every serving host. Point
+        Compound at your own workload two ways: import your production traces from Langfuse (or
+        portable JSON) to replay real traffic, or run a curated benchmark like terminal-bench. It
+        measures success, cost, latency, and cache behavior per host, and gates the switch on a
+        sealed decision set with confidence intervals.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="https://github.com/aktasbatuhan/compound">Get started on GitHub</a>
           <a class="btn btn-ghost" href="report/">Read an example report</a>
         </div>
+        <p class="hero-note">In our terminal-bench run, two hosts delivered the identical resolve rate
+        at 9.6x the cost, about $8,800/month apart at 100k task-runs. The wrong default is money you
+        cannot see on a pricing page.</p>
       </div>
       <div class="code-box" aria-label="Example compound gate run">
         <div class="code-head"><span class="lbl">$ compound gate</span></div>
@@ -337,21 +352,24 @@ doubleword/realtime,doubleword/flex \
           <div class="panel-head">end-to-end task success by serving host</div>
           <div class="chart" id="barChart"></div>
           <div class="chart-note">
-            <span class="k"><span class="sw"></span> end-to-end (provider failures count)</span>
-            <span class="k"><span class="sw lo"></span> excluding provider-killed episodes</span>
-            <span class="k"><span class="sw ci-k"></span> Wilson 95% CI</span>
+            <span class="k"><span class="sw"></span> reasoning on</span>
+            <span class="k"><span class="sw lo"></span> reasoning off</span>
+            <span class="k"><span class="sw ci-k"></span> Wilson 95% CI (on)</span>
           </div>
         </div>
       </div>
-      <p class="cap">Sample output: one open model on five pinned hosts, 210 episodes. Hover a row
-      for pass counts and confidence intervals, or <a href="report/">read the full report</a>.</p>
+      <p class="cap">Sample output: one open model on five pinned hosts, both reasoning modes
+      pinned at tripled clock. Hover a row for pass counts and confidence intervals, or
+      <a href="report/">read the full report</a>.</p>
       <div class="callout">
         <h3>Cache is a provider decision too.</h3>
-        <p>Send a model to OpenRouter without pinning and consecutive calls can land on different
-        upstreams, fragmenting your prompt cache. You pay full input price on every call, or eat the
-        latency of a cold host. Pin one provider and prompt-cache reuse stays stable. Compound
-        records the cache-hit rate per host, so the cost you compare is the cost you will actually
-        pay.</p>
+        <p>We measured it. Left on its own routing, OpenRouter's auto arm fragmented one agent's
+        prompt cache to a 62% hit share against 80 to 95% on the pinned hosts, and on our
+        schema-constrained traffic it billed $1.16 against DeepInfra's $0.43 for the same resolve
+        rate, 2.7x more, because the schema requirement excluded the cheap upstreams and auto then
+        routed premium. Meanwhile a Doubleword client that never sets its cache marker serves 0% of
+        prompt tokens from cache while the marked path reaches 82%. Compound records the cache-hit
+        rate per host, so the cost you compare is the cost you will actually pay.</p>
       </div>
     </div>
   </section>
@@ -361,9 +379,9 @@ doubleword/realtime,doubleword/flex \
     <div class="wrap">
       <div class="sec-head">
         <h2>Profile every host on six axes.</h2>
-        <p>Every sweep report ships per-host profiles: quality, reliability, speed, determinism,
-        cost, and throughput, from the same episodes and the same billed spend. No pricing-page
-        numbers, only what your workload actually observed.</p>
+        <p>Every sweep report ships per-host profiles: quality in each reasoning mode, first-token
+        latency, decode speed, reliability, and cost, from the same episodes and the same billed
+        spend. No pricing-page numbers, only what your workload actually observed.</p>
       </div>
       <div class="radar-grid">
         <div class="stack">
@@ -384,13 +402,15 @@ doubleword/realtime,doubleword/flex \
           </div>
         </div>
         <div class="radar-side">
-          <p><b>No host wins every axis, and that is the point.</b> In the sample run one host takes
-          speed and reliability but not cost, another takes cost and determinism at a quarter of the
-          speed, a third has the throughput but sheds episodes under rate limits.</p>
+          <p><b>No host wins every axis, and that is the point.</b> In the sample matrix the
+          fastest decoder is the only host that ever rate-limits, the steadiest first token belongs
+          to the slowest decoder, the cheapest cell is a queue tier, and the quality winner flips
+          with the reasoning mode.</p>
           <p>The profile you should care about is your workload's, not ours. The chart is a
           standard artifact of every sweep, so the comparison that matters runs on your tasks, your
           prompts, your budget caps.</p>
-          <p class="cap">Sample data: all six axes from one terminal-bench run (five hosts, 210 episodes).
+          <p class="cap" style="font-size:9.5px;line-height:1.5;opacity:.85">Sample data: all six axes from one benchmark matrix (five hosts, two
+          reasoning modes at tripled clock, plus a streamed timing harness).
           Pick an axis to see which host wins it, hover a host to focus it, or toggle the legend.
           The winner changes with the axis, which is the whole point: find yours.</p>
         </div>
@@ -402,9 +422,11 @@ doubleword/realtime,doubleword/flex \
   <section id="how">
     <div class="wrap">
       <div class="sec-head">
-        <h2>One compound.yaml. One content-addressed cache.</h2>
-        <p>Everything runs locally: SQLite storage, your keys in .env, your traces never leave your
-        machine. Each stage writes evidence the next one reads.</p>
+        <h2>Replay your production traces against any provider.</h2>
+        <p>Import the traces you already produce with Langfuse (or portable JSON) and Compound turns
+        them into graded eval cases you can replay against any model, provider, and quant, no eval
+        authoring. Everything runs locally: SQLite storage, your keys in .env, your traces never
+        leave your machine. Each stage writes evidence the next one reads.</p>
       </div>
       <div class="steps">
         <div class="step">
@@ -529,7 +551,7 @@ doubleword/realtime,doubleword/flex \
       </div>
       <p class="cap">Wiring a new one is a single registry entry backed by a partitioned manifest:
       keep it local for your own tasks, or contribute it upstream. See the
-      <a href="https://github.com/aktasbatuhan/compound/issues/33">adapter interface</a>, and the
+      <a href="https://github.com/aktasbatuhan/compound/tree/main/src/compound/adapters">adapter interface</a>, and the
       in-progress <a href="https://github.com/aktasbatuhan/compound/issues/40">Harbor / terminal-bench 2.0</a> adapter.</p>
     </div>
   </section>
@@ -596,22 +618,23 @@ bun run compound gate support --candidate kimi-k3 --reference opus-5 --reason &q
       }
     }).catch(function () {});
 
+  // solid bar = reasoning on, light bar = reasoning off; CI is on-mode
   var HOSTS = [
-    { key: 'dwrt', name: 'doubleword realtime', hex: '#1740e6',
-      pass: 23, n: 42, e2e: 54.8, excl: 54.8, ci: [40, 69], trials: '8 / 7 / 8',
-      note: '0 provider errors, fastest calls (4.1s median)' },
-    { key: 'para', name: 'parasail (fp8)', hex: '#7048e8',
-      pass: 20, n: 42, e2e: 47.6, excl: 57.1, ci: [33, 62], trials: '8 / 6 / 6',
-      note: 'clean episodes' },
     { key: 'dinf', name: 'deepinfra (fp4)', hex: '#0d9373',
-      pass: 20, n: 42, e2e: 47.6, excl: 50.0, ci: [33, 62], trials: '7 / 7 / 6',
-      note: 'clean episodes, cheapest of the five' },
-    { key: 'dwfx', name: 'doubleword flex', hex: '#0e93c0',
-      pass: 19, n: 42, e2e: 45.2, excl: 45.2, ci: [31, 60], trials: '6 / 7 / 6',
-      note: 'async queue tier: same weights, slower first token' },
+      pass: 24, n: 42, e2e: 57.1, excl: 57.1, ci: [42, 71], trials: '8 / 8 / 8',
+      note: 'reasoning off: 24/42. cheapest full-cross host, mode-insensitive' },
+    { key: 'para', name: 'parasail (fp8)', hex: '#7048e8',
+      pass: 26, n: 42, e2e: 61.9, excl: 42.9, ci: [47, 75], trials: '9 / 8 / 9',
+      note: 'reasoning off: 18/42. highest on-mode cell in the matrix' },
     { key: 'fire', name: 'fireworks', hex: '#e8590c',
-      pass: 14, n: 42, e2e: 33.3, excl: 52.4, ci: [21, 48], trials: '6 / 5 / 3',
-      note: '15 of 42 episodes killed by shared-pool rate limits' }
+      pass: 25, n: 42, e2e: 59.5, excl: 50.0, ci: [44, 73], trials: '7 / 9 / 9',
+      note: 'reasoning off: 21/42. fastest decode (~108 tok/s); the only host that ever 429s' },
+    { key: 'dwrt', name: 'doubleword realtime', hex: '#1740e6',
+      pass: 18, n: 42, e2e: 42.9, excl: 52.4, ci: [29, 58], trials: '7 / 5 / 6',
+      note: 'reasoning off: 22/42. thinking decodes ~20 tok/s: 20 of 24 on-mode failures burned the tripled clock' },
+    { key: 'dwfx', name: 'doubleword flex', hex: '#0e93c0',
+      pass: 16, n: 42, e2e: 38.1, excl: 42.9, ci: [25, 53], trials: '5 / 5 / 6',
+      note: 'reasoning off: 18/42. queue tier: 25 of 26 on-mode failures burned the tripled clock' }
   ];
 
   var chart = document.getElementById('barChart');
@@ -630,9 +653,8 @@ bun run compound gate support --candidate kimi-k3 --reference opus-5 --reason &q
     row.addEventListener('mousemove', function (e) {
       tip.innerHTML =
         '<div class="th">' + h.name + '</div>' +
-        '<div class="td">pass ' + h.pass + '/' + h.n + ' (' + h.e2e.toFixed(1) + '%), trials ' + h.trials + '</div>' +
-        '<div class="td">Wilson 95% CI ' + h.ci[0] + '&ndash;' + h.ci[1] + '%' +
-        (h.excl !== null && h.excl !== h.e2e ? ', excl. provider kills ' + h.excl.toFixed(0) + '%' : '') + '</div>' +
+        '<div class="td">reasoning on ' + h.pass + '/' + h.n + ' (' + h.e2e.toFixed(1) + '%), trials ' + h.trials + '</div>' +
+        '<div class="td">Wilson 95% CI ' + h.ci[0] + '&ndash;' + h.ci[1] + '%, reasoning off ' + h.excl.toFixed(1) + '%</div>' +
         '<div class="td">' + h.note + '</div>';
       tip.classList.add('show');
       var w = tip.offsetWidth, x = Math.min(e.clientX + 14, window.innerWidth - w - 12);
@@ -656,16 +678,17 @@ bun run compound gate support --candidate kimi-k3 --reference opus-5 --reason &q
   }
 
   var AXES = [
-    { k: 'quality' }, { k: 'reliability' }, { k: 'speed' },
-    { k: 'determinism' }, { k: 'cost' }, { k: 'TPS' }
+    { k: 'quality (on)' }, { k: 'quality (off)' }, { k: 'first token' },
+    { k: 'decode speed' }, { k: 'reliability' }, { k: 'cost' }
   ];
-  // all six axes from the same terminal-bench run (five hosts, 210 episodes)
+  // all six axes from the fair matrix (588 episodes, tripled clock) + streamed timing harness.
+  // quality (on/off) and cost normalized from the 16-cell fair tier; timing axes unchanged.
   var PROFILES = {
-    dwrt: [1.00, 1.00, 1.00, 0.64, 0.11, 0.34],
-    dwfx: [0.82, 1.00, 0.67, 0.71, 0.15, 0.23],
-    dinf: [0.87, 1.00, 0.20, 0.86, 1.00, 0.36],
-    para: [0.87, 1.00, 0.24, 0.50, 0.34, 0.51],
-    fire: [0.61, 0.64, 0.56, 0.64, 0.73, 1.00]
+    dinf: [0.92, 1.00, 0.91, 0.88, 1.00, 0.51],
+    para: [1.00, 0.75, 0.78, 0.71, 1.00, 0.23],
+    fire: [0.96, 0.88, 0.71, 1.00, 0.79, 0.23],
+    dwrt: [0.69, 0.92, 1.00, 0.18, 1.00, 0.92],
+    dwfx: [0.62, 0.75, 0.12, 0.16, 1.00, 1.00]
   };
   var RADAR_HOSTS = HOSTS.filter(function (h) { return h.key !== 'novi'; });
   var active = { dwrt: true, dwfx: true, dinf: true, para: true, fire: true };
@@ -747,9 +770,12 @@ bun run compound gate support --candidate kimi-k3 --reference opus-5 --reason &q
   // per-axis "best host" interaction (the move from the launch video)
   var axisSticky = null, axisFocus = null;
   var AXIS_META = {
-    quality: 'highest task success', reliability: 'zero provider errors',
-    speed: 'fastest calls', determinism: 'most repeatable runs',
-    cost: 'most cost-efficient', TPS: 'highest throughput'
+    'quality (on)': 'highest task success with reasoning on',
+    'quality (off)': 'highest task success with reasoning off',
+    'first token': 'fastest first token',
+    'decode speed': 'fastest decode',
+    reliability: 'zero provider errors',
+    cost: 'cheapest full run'
   };
   function winnersFor(i) {
     var max = 0;
@@ -961,5 +987,6 @@ bun run compound gate support --candidate kimi-k3 --reference opus-5 --reason &q
   });
 })();
 </script>
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "ba3faea87c8742f181b2a1fdbaf8eccd"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
