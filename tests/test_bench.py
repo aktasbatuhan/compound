@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 
 import pytest
 
@@ -9,7 +10,12 @@ from compound.tau_sweep import SweepConfig
 
 def _tb_args(**over):
     """A run-command namespace with the terminal_bench pinning flags."""
-    base = {"reasoning": None, "cache_optin": False, "tb_timeout_mult": None}
+    base = {
+        "reasoning": None,
+        "cache_optin": False,
+        "tb_timeout_mult": None,
+        "call_ledger": None,
+    }
     base.update(over)
     return argparse.Namespace(**base)
 
@@ -105,3 +111,15 @@ def test_sweep_config_custom_provider_key_env() -> None:
     )
     with pytest.raises(ValueError):
         SweepConfig("m", "up", "q", 1, 2, provider="myhost").required_key_env()
+
+
+def test_apply_tb_env_call_ledger_flag_sets_env(monkeypatch) -> None:
+    monkeypatch.delenv("COMPOUND_CALL_LEDGER", raising=False)
+    _apply_tb_env(_tb_args(call_ledger="artifacts/run/calls.jsonl"))
+    assert os.environ["COMPOUND_CALL_LEDGER"] == "artifacts/run/calls.jsonl"
+
+
+def test_apply_tb_env_without_the_flag_leaves_recording_off(monkeypatch) -> None:
+    monkeypatch.delenv("COMPOUND_CALL_LEDGER", raising=False)
+    _apply_tb_env(_tb_args())
+    assert "COMPOUND_CALL_LEDGER" not in os.environ

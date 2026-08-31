@@ -482,6 +482,29 @@ def cmd_serving(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ledger(args: argparse.Namespace) -> int:
+    """Per-route read of a call ledger: cache hits, routing spread, cost."""
+    from compound import call_ledger
+
+    path = Path(args.path)
+    if not path.exists():
+        raise SystemExit(f"error: no call ledger at {path}")
+    records = call_ledger.load_records(path)
+    if not records:
+        raise SystemExit(f"error: {path} has no readable rows")
+    rows = call_ledger.summarize(records)
+    print(f"call ledger: {len(records)} call(s) over {len(rows)} route(s) — {path}\n")
+    print(call_ledger.format_summary(rows))
+    if args.hosts:
+        print("\nupstreams that answered, per route:")
+        for row in rows:
+            spread = ", ".join(
+                f"{host} {n}" for host, n in sorted(row["upstreams"].items(), key=lambda kv: -kv[1])
+            )
+            print(f"  {row['route']}: {spread or '—'}")
+    return 0
+
+
 def _apply_tb_env(args: argparse.Namespace) -> None:
     """Thread the terminal_bench pinning flags into the env the proxy reads.
 
@@ -493,6 +516,8 @@ def _apply_tb_env(args: argparse.Namespace) -> None:
     * ``--reasoning`` wins over a pre-set ``COMPOUND_REASONING``; ``default``
       clears it so nothing is injected. Omitted, the env var is left untouched.
     * ``--cache-optin`` sets ``COMPOUND_DW_CACHE``; an existing value stays on.
+    * ``--call-ledger PATH`` sets ``COMPOUND_CALL_LEDGER``, turning on the
+      per-call record; unset, the proxy does no extra work.
     * ``--tb-timeout-mult`` sets ``COMPOUND_TB_TIMEOUT_MULT`` only when it is not
       already set, so a shell-exported multiplier wins over the flag.
     """
@@ -505,6 +530,8 @@ def _apply_tb_env(args: argparse.Namespace) -> None:
             os.environ["COMPOUND_REASONING"] = args.reasoning
     if args.cache_optin:
         os.environ["COMPOUND_DW_CACHE"] = "1"
+    if args.call_ledger:
+        os.environ["COMPOUND_CALL_LEDGER"] = args.call_ledger
     if args.tb_timeout_mult is not None and "COMPOUND_TB_TIMEOUT_MULT" not in os.environ:
         os.environ["COMPOUND_TB_TIMEOUT_MULT"] = str(args.tb_timeout_mult)
 
@@ -518,7 +545,11 @@ def _tb_pin_line() -> str:
     cache = os.getenv("COMPOUND_DW_CACHE", "").lower() in ("1", "true", "on")
     mult = os.getenv("COMPOUND_TB_TIMEOUT_MULT", "").strip() or "1"
     extended = " (extended limits, non-official)" if mult not in ("", "1", "1.0") else ""
-    return f"pinning: reasoning={reasoning} cache_optin={cache} timeout_mult={mult}{extended}"
+    ledger = os.getenv("COMPOUND_CALL_LEDGER", "").strip() or "off"
+    return (
+        f"pinning: reasoning={reasoning} cache_optin={cache} timeout_mult={mult}{extended}\n"
+        f"call ledger: {ledger}"
+    )
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -607,6 +638,16 @@ def main() -> int:
         help="output dir for results.jsonl",
     )
 
+    ledger = sub.add_parser(
+        "ledger", help="summarize a call ledger (cache hits, routing spread, cost)"
+    )
+    ledger.add_argument("path", help="path to a calls.jsonl written by --call-ledger")
+    ledger.add_argument(
+        "--hosts",
+        action="store_true",
+        help="also list which upstreams answered each route, with counts",
+    )
+
     run = sub.add_parser("run", help="run a task subset (dry run unless --go)")
     run.add_argument("benchmark", choices=sorted(BENCHMARKS))
     run.add_argument("--model", required=True, help="model id as the provider knows it")
@@ -653,6 +694,14 @@ def main() -> int:
         "forces it on at the harness level.",
     )
     run.add_argument(
+        "--call-ledger",
+        default=None,
+        metavar="PATH",
+        help="record one JSONL row per model call (route, provider echo, tokens, "
+        "cached tokens, cost, status, latency). The per-call record is what "
+        "supports cache-hit and routing claims; episode results cannot.",
+    )
+    run.add_argument(
         "--tb-timeout-mult",
         type=float,
         default=None,
@@ -672,6 +721,8 @@ def main() -> int:
         return cmd_tasks(args.benchmark, args.partition, args.contains)
     if args.command == "serving":
         return cmd_serving(args)
+    if args.command == "ledger":
+        return cmd_ledger(args)
     return cmd_run(args)
 
 
