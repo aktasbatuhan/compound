@@ -288,3 +288,95 @@ def test_proxy_end_to_end_retries_through_flaky_upstream(monkeypatch):
     finally:
         server.shutdown()
     assert got["id"] == "ok-after-retries"  # client never saw the 429s
+
+
+class _StreamingUpstream(BaseHTTPRequestHandler):
+    """Serves an SSE response whose usage lands only in the final chunk."""
+
+    def log_message(self, *a):  # noqa: D401
+        return
+
+    def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length") or 0)
+        self.rfile.read(length)
+        chunks = [
+            {"provider": "DeepInfra", "choices": [{"delta": {"content": "hel"}}]},
+            {"choices": [{"delta": {"content": "lo"}}]},
+            {
+                "choices": [{"finish_reason": "stop"}],
+                "usage": {
+                    "prompt_tokens": 120,
+                    "completion_tokens": 5,
+                    "cost": 0.00004,
+                    "prompt_tokens_details": {"cached_tokens": 96},
+                },
+            },
+        ]
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        for chunk in chunks:
+            self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
+            self.wfile.flush()
+        self.wfile.write(b"data: [DONE]\n\n")
+
+
+def test_proxy_records_a_call_ledger_row_without_altering_the_stream(monkeypatch, tmp_path):
+    """The ledger is a tee: the client sees the identical bytes either way."""
+    import compound.orproxy as orproxy
+
+    ledger_path = tmp_path / "calls.jsonl"
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sekret")
+    monkeypatch.setenv("COMPOUND_CALL_LEDGER", str(ledger_path))
+    monkeypatch.setenv("COMPOUND_RUN_LABEL", "auto-vs-pinned")
+    orproxy._LEDGERS.clear()  # the cache is keyed by path and outlives one test
+
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), _StreamingUpstream)
+    threading.Thread(target=upstream.serve_forever, daemon=True).start()
+    spec = ProviderSpec(
+        token="openrouter/deepinfra/fp4",
+        kind="openrouter",
+        base_url=f"http://127.0.0.1:{upstream.server_address[1]}/v1",
+        api_key_env="OPENROUTER_API_KEY",
+        upstream="deepinfra/fp4",
+    )
+    try:
+        with serve_provider(spec) as base:
+            req = urlrequest.Request(
+                base + "/chat/completions",
+                data=json.dumps(
+                    {"model": "m", "stream": True, "messages": [{"role": "user", "content": "yo"}]}
+                ).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlrequest.urlopen(req, timeout=5) as resp:
+                body = resp.read().decode()
+    finally:
+        upstream.shutdown()
+
+    # The stream reached the client intact.
+    assert body.count("data:") == 4
+    assert "[DONE]" in body
+
+    rows = [json.loads(line) for line in ledger_path.read_text().splitlines()]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["route"] == "deepinfra/fp4"   # spec.label keeps the quant tag
+    assert row["run_label"] == "auto-vs-pinned"
+    assert row["status"] == 200
+    assert row["provider_echo"] == "DeepInfra"
+    assert row["pin_honored"] is True          # slug vs display name folded
+    assert row["prompt_tokens"] == 120
+    assert row["cached_tokens"] == 96          # only the final chunk carried it
+    assert row["cost_usd"] == 0.00004
+    assert row["stream"] is True
+    assert row["latency_ms"] > 0
+
+
+def test_proxy_writes_no_ledger_when_disabled(monkeypatch, tmp_path):
+    import compound.orproxy as orproxy
+
+    monkeypatch.delenv("COMPOUND_CALL_LEDGER", raising=False)
+    orproxy._LEDGERS.clear()
+    assert orproxy.get_ledger() is None
