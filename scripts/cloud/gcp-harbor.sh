@@ -79,6 +79,9 @@ trap cleanup EXIT
 STARTUP='#!/bin/bash
 set -e
 export DEBIAN_FRONTEND=noninteractive
+# Created first, before the slow Docker install: the controller scps into this
+# directory, and a half-provisioned VM should not fail that step.
+mkdir -p /opt/compound && chmod 777 /opt/compound
 apt-get update -y
 apt-get install -y git curl ca-certificates tar rsync
 # Docker from the official repo, NOT the distro docker.io package: TB4 task
@@ -92,7 +95,6 @@ docker compose version >/tmp/compose-version.txt 2>&1 || echo "COMPOSE MISSING" 
 for i in $(seq 1 40); do docker info >/dev/null 2>&1 && break; sleep 3; done
 chmod 666 /var/run/docker.sock || true
 curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh || true
-mkdir -p /opt/compound && chmod 777 /opt/compound
 # Gate the ready marker on compose too, so a missing plugin fails here rather
 # than one trial at a time deep inside the sweep.
 docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 && touch /tmp/setup-done'
@@ -111,10 +113,20 @@ gcloud compute instances create "$VM" \
 rm -f "$STARTUP_FILE"
 
 echo "== waiting for setup (docker + uv) =="
-for i in $(seq 1 40); do
-  if gssh "test -f /tmp/setup-done" 2>/dev/null; then echo "setup ready"; break; fi
+# Docker from get.docker.com is slower to install than the distro package, so
+# this waits longer than the TB1 runner. Falling through silently is worse than
+# failing: the next scp would fail on a half-built VM and the real cause (still
+# provisioning, or a broken install) would never be printed.
+SETUP_OK=""
+for i in $(seq 1 60); do
+  if gssh "test -f /tmp/setup-done" 2>/dev/null; then SETUP_OK=1; echo "setup ready"; break; fi
   sleep 15
 done
+if [ -z "$SETUP_OK" ]; then
+  echo "FATAL: setup never completed. VM startup log follows:"
+  gssh "sudo journalctl -u google-startup-scripts --no-pager 2>/dev/null | tail -40; echo '--- compose ---'; cat /tmp/compose-version.txt 2>/dev/null" || true
+  exit 1
+fi
 
 echo "== shipping working tree (no push needed) =="
 tar czf "$SRC_TGZ" --exclude .git --exclude artifacts --exclude .venv \
