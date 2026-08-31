@@ -78,13 +78,22 @@ STARTUP='#!/bin/bash
 set -e
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y docker.io git curl ca-certificates tar rsync
+apt-get install -y git curl ca-certificates tar rsync
+# Docker from the official repo, NOT the distro docker.io package: TB4 task
+# environments are compose-based and docker.io ships no Compose v2 plugin, so
+# every trial dies with "Docker compose command failed". get.docker.com pulls
+# docker-ce plus the buildx and compose plugins.
+curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+sh /tmp/get-docker.sh
 systemctl enable --now docker
+docker compose version >/tmp/compose-version.txt 2>&1 || echo "COMPOSE MISSING" >/tmp/compose-version.txt
 for i in $(seq 1 40); do docker info >/dev/null 2>&1 && break; sleep 3; done
 chmod 666 /var/run/docker.sock || true
 curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh || true
 mkdir -p /opt/compound && chmod 777 /opt/compound
-docker info >/dev/null 2>&1 && touch /tmp/setup-done'
+# Gate the ready marker on compose too, so a missing plugin fails here rather
+# than one trial at a time deep inside the sweep.
+docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 && touch /tmp/setup-done'
 
 echo "== creating $VM ($MACHINE, $DISK, auto-delete after $MAX_DURATION) =="
 # Pass the startup script via a file: gcloud splits --metadata values on commas,
