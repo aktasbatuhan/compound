@@ -181,14 +181,25 @@ def sweep_harbor(
             env_type=env_type,
             proxied=True,
         )
-        with serve_provider(spec) as base_url:
-            extra_env = harbor.proxy_env(base_url)
-            if ledger_dir is not None:
-                extra_env["COMPOUND_CALL_LEDGER"] = str(
-                    Path(ledger_dir) / f"{spec.safe_label}.jsonl"
-                )
-            extra_env["COMPOUND_RUN_LABEL"] = spec.label
-            code = harbor.run_harbor(command, extra_env=extra_env)
+        # The proxy runs in THIS process, so its signals must be set here. Only
+        # the endpoint and key belong in the subprocess env, which is where the
+        # agent reads them. Putting the ledger path in the subprocess env would
+        # leave the proxy recording nothing at all.
+        previous = {k: os.environ.get(k) for k in ("COMPOUND_CALL_LEDGER", "COMPOUND_RUN_LABEL")}
+        if ledger_dir is not None:
+            os.environ["COMPOUND_CALL_LEDGER"] = str(
+                Path(ledger_dir) / f"{spec.safe_label}.jsonl"
+            )
+        os.environ["COMPOUND_RUN_LABEL"] = spec.label
+        try:
+            with serve_provider(spec) as base_url:
+                code = harbor.run_harbor(command, extra_env=harbor.proxy_env(base_url))
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
         if code != 0:
             print(f"harbor {spec.label} exited {code}")
             continue

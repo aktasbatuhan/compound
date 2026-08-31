@@ -111,7 +111,7 @@ def build_command(
         "--yes",
     ]
     for task in include_tasks or []:
-        command += ["--include-task-name", task]
+        command += ["--include-task-name", qualify_task(task)]
     if n_tasks is not None:
         command += ["--n-tasks", str(n_tasks)]
     if timeout_multiplier is not None and timeout_multiplier != 1.0:
@@ -120,6 +120,21 @@ def build_command(
         command += ["--allow-agent-host", host]
     command += extra_args or []
     return command
+
+
+def qualify_task(name: str) -> str:
+    """Match a bare task name against Harbor's namespaced task ids.
+
+    Harbor identifies a task by its dataset-qualified name
+    (``terminal-bench/data-anonymization``), and ``--include-task-name`` matches
+    that whole string, so a bare name silently matches nothing and the job dies
+    with "No tasks matched the filter(s)". A name with no separator is widened
+    to a ``*/`` glob so it matches under whichever dataset supplies it; a name
+    that already carries a namespace, or its own glob, is passed through.
+    """
+    if "/" in name or name.startswith("*"):
+        return name
+    return f"*/{name}"
 
 
 def proxy_env(base_url: str) -> dict[str, str]:

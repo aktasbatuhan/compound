@@ -9,6 +9,7 @@ reached the verifier out of the pass rate.
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -19,6 +20,7 @@ from compound.adapters.harbor import (
     job_result_path,
     load_job_summary,
     proxy_env,
+    qualify_task,
     summarize,
     trial_rows,
 )
@@ -56,7 +58,8 @@ class TestBuildCommand:
     def test_task_filters_repeat_the_flag(self):
         got = cmd(include_tasks=["cad-model", "coq-block-bound"], n_tasks=10)
         assert got.count("--include-task-name") == 2
-        assert "cad-model" in got and "coq-block-bound" in got
+        # Bare names are widened to match Harbor's namespaced task ids.
+        assert "*/cad-model" in got and "*/coq-block-bound" in got
         assert got[got.index("--n-tasks") + 1] == "10"
 
     def test_timeout_multiplier_is_delegated_to_harbor(self):
@@ -189,3 +192,88 @@ class TestLoadJobSummary:
     def test_job_result_path_layout(self, tmp_path):
         assert job_result_path(tmp_path, "j").name == "result.json"
         assert job_result_path(tmp_path, "j").parent.name == "j"
+
+
+class TestQualifyTask:
+    def test_bare_name_is_widened_to_match_harbors_namespaced_ids(self):
+        # Harbor task ids are 'terminal-bench/data-anonymization'; a bare name
+        # matches nothing and the job dies with "No tasks matched the filter(s)".
+        got = cmd(include_tasks=["data-anonymization"])
+        assert "*/data-anonymization" in got
+
+    def test_qualify_task_directly(self):
+        assert qualify_task("cad-model") == "*/cad-model"
+        assert qualify_task("terminal-bench/cad-model") == "terminal-bench/cad-model"
+        assert qualify_task("*-model") == "*-model"
+
+    def test_already_qualified_or_globbed_names_pass_through(self):
+        got = cmd(include_tasks=["terminal-bench/cad-model", "*-model"])
+        assert "terminal-bench/cad-model" in got
+        assert "*-model" in got
+
+
+class TestSweepHarborWiring:
+    """Where each signal has to be set for a pinned run to record anything."""
+
+    def _run(self, tmp_path, monkeypatch, ledger_dir=None):
+        import contextlib
+
+        from compound import provider_sweep
+        from compound.adapters import harbor as harbor_mod
+        from compound.providers_registry import ProviderSpec
+
+        seen: dict = {}
+
+        @contextlib.contextmanager
+        def fake_serve(spec, port=0):
+            # The proxy reads its signals from THIS process while it serves.
+            seen["ledger_env"] = os.environ.get("COMPOUND_CALL_LEDGER")
+            seen["label_env"] = os.environ.get("COMPOUND_RUN_LABEL")
+            yield "http://127.0.0.1:9999/v1"
+
+        def fake_run(command, extra_env=None, cwd=None):
+            seen["extra_env"] = extra_env
+            job_dir = tmp_path / "jobs" / command[command.index("--job-name") + 1]
+            job_dir.mkdir(parents=True)
+            (job_dir / "result.json").write_text(
+                json.dumps({"trial_results": [trial(reward=1)], "stats": {}})
+            )
+            return 0
+
+        monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+        monkeypatch.setattr(provider_sweep, "serve_provider", fake_serve)
+        monkeypatch.setattr(harbor_mod, "run_harbor", fake_run)
+        spec = ProviderSpec(
+            token="openrouter/auto", kind="openrouter",
+            base_url="https://openrouter.ai/api/v1", api_key_env="OPENROUTER_API_KEY",
+            upstream=None,
+        )
+        summaries = provider_sweep.sweep_harbor(
+            [spec], model="m", jobs_dir=tmp_path / "jobs",
+            dataset="d@1", agent="terminus-2", ledger_dir=ledger_dir,
+        )
+        return seen, summaries
+
+    def test_ledger_reaches_the_proxy_not_the_subprocess(self, tmp_path, monkeypatch):
+        # Regression: the proxy runs in-process, so a ledger path passed only to
+        # the subprocess env records nothing and the run yields no call data.
+        seen, _ = self._run(tmp_path, monkeypatch, ledger_dir=tmp_path / "led")
+        assert seen["ledger_env"] == str(tmp_path / "led" / "openrouter-auto.jsonl")
+        assert seen["label_env"] == "openrouter-auto"
+        assert "COMPOUND_CALL_LEDGER" not in seen["extra_env"]
+
+    def test_only_the_endpoint_and_key_go_to_the_agent(self, tmp_path, monkeypatch):
+        seen, _ = self._run(tmp_path, monkeypatch, ledger_dir=tmp_path / "led")
+        assert set(seen["extra_env"]) == {
+            "OPENAI_API_BASE", "OPENAI_BASE_URL", "OPENAI_API_KEY"
+        }
+
+    def test_process_env_is_restored_after_the_arm(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("COMPOUND_CALL_LEDGER", raising=False)
+        self._run(tmp_path, monkeypatch, ledger_dir=tmp_path / "led")
+        # A sweep must not leak one arm's ledger path into the next.
+        assert "COMPOUND_CALL_LEDGER" not in os.environ
+
+    def test_summary_is_returned_per_host(self, tmp_path, monkeypatch):
+        _, summaries = self._run(tmp_path, monkeypatch)
+        assert summaries["openrouter-auto"]["resolve_rate"] == 1.0

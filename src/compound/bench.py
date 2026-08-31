@@ -499,7 +499,12 @@ def cmd_harbor(args: argparse.Namespace) -> int:
     print(f"harbor: dataset {args.dataset}, agent {args.agent}, model {args.model}")
     for line in provider_sweep.plan(specs, args.model):
         print(line)
-    print(_tb_pin_line())
+    # Report the pinning this run will apply, not the ambient env: the flags are
+    # threaded into the proxy per host, and the ledger is per host under
+    # --ledger-dir rather than the single COMPOUND_CALL_LEDGER path.
+    _apply_tb_env(args)
+    print(_tb_pin_line().splitlines()[0])
+    print(f"call ledger: {args.ledger_dir or 'off'}")
     if tasks:
         print(f"tasks: {', '.join(tasks)}")
     if args.n_tasks:
@@ -528,7 +533,6 @@ def cmd_harbor(args: argparse.Namespace) -> int:
         print("\ncommand per host:\n  " + " ".join(example))
         print("\ndry run (no spend). Add --go to execute.")
         return 0
-    _apply_tb_env(args)
     summaries = provider_sweep.sweep_harbor(
         specs,
         model=args.model,
