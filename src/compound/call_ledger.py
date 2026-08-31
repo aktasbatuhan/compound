@@ -244,6 +244,18 @@ def build_record(
     }
     record.update(request_fields(request_body))
     record.update(usage_fields(payload))
+    # A 200 that never delivered a usage block is an abandoned call, not a free
+    # one. OpenRouter pads a long request with whitespace while the model
+    # generates and sends the JSON only at the end, so a client that times out
+    # and disconnects first leaves us holding padding. Those tokens were still
+    # generated and still billed; we simply cannot see them. Flagging the call
+    # keeps a run from quietly understating the cost of its slowest host, which
+    # is the one most likely to be abandoned.
+    record["abandoned"] = bool(
+        record["status"] == 200 and payload is None and record["prompt_tokens"] is None
+    )
+    if payload is None and response_raw:
+        record["unparsed_head"] = response_raw[:200].decode("utf-8", "replace")
     # The pin is checked, not trusted: a pinned route whose echo names a
     # different host means routing silently escaped the pin, which invalidates
     # every per-host number in that cell. Null on either side means unknown.
@@ -291,6 +303,7 @@ def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "route": route,
                 "calls": 0,
                 "errors": 0,
+                "abandoned": 0,
                 "pin_violations": 0,
                 "prompt_tokens": 0,
                 "cached_tokens": 0,
@@ -305,6 +318,8 @@ def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         row["calls"] += 1
         if record.get("error") or (record.get("status") not in (200, None)):
             row["errors"] += 1
+        if record.get("abandoned"):
+            row["abandoned"] += 1
         if record.get("pin_honored") is False:
             row["pin_violations"] += 1
         echo = record.get("provider_echo")
@@ -344,7 +359,7 @@ def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def format_summary(rows: list[dict[str, Any]]) -> str:
     """A fixed-width read of :func:`summarize`, one line per route."""
     header = (
-        f"{'route':<24s} {'calls':>6s} {'err':>5s} {'pin!':>5s} {'ptok':>9s} "
+        f"{'route':<24s} {'calls':>6s} {'err':>5s} {'aband':>6s} {'pin!':>5s} {'ptok':>9s} "
         f"{'cached':>9s} {'hit%':>6s} {'cost$':>10s} {'p50ms':>8s} {'hosts':>6s}"
     )
     lines = [header, "-" * len(header)]
@@ -354,7 +369,7 @@ def format_summary(rows: list[dict[str, Any]]) -> str:
         p50 = "—" if row["latency_p50_ms"] is None else f"{row['latency_p50_ms']:.0f}"
         lines.append(
             f"{row['route']:<24s} {row['calls']:>6d} {row['errors']:>5d} "
-            f"{row['pin_violations']:>5d} {row['prompt_tokens']:>9d} "
+            f"{row['abandoned']:>6d} {row['pin_violations']:>5d} {row['prompt_tokens']:>9d} "
             f"{row['cached_tokens']:>9d} {hit:>6s} {cost:>10s} {p50:>8s} "
             f"{row['distinct_upstreams']:>6d}"
         )
@@ -366,5 +381,11 @@ def format_summary(rows: list[dict[str, Any]]) -> str:
     lines.append(
         "pin! = calls answered by a host other than the pinned one. hosts = distinct "
         "upstreams that answered (1 is expected on a pinned route)."
+    )
+    lines.append(
+        "aband = 200s that never delivered a usage block, typically the client "
+        "timing out on a slow call. Those tokens were billed but are not in cost$, "
+        "so a route with abandoned calls is understated here; reconcile against "
+        "the provider's own billing before quoting its cost."
     )
     return "\n".join(lines)
