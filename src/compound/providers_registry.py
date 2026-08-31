@@ -28,6 +28,7 @@ the CLI, and every benchmark inherits it the same way.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -88,12 +89,30 @@ class ProviderSpec:
     service_tier: str | None = None
     #: Human/config name for direct hosts, used only for labelling.
     name: str | None = None
+    #: How this host serves its prompt cache, which decides whether the proxy
+    #: must inject anything to get a hit. One of:
+    #:   ``"implicit"``        host caches prompt prefixes on its own (OpenRouter
+    #:                         majors); the proxy adds nothing.
+    #:   ``"explicit_marker"`` host caches only when the request carries an
+    #:                         Anthropic-style ``cache_control`` marker
+    #:                         (Doubleword); the proxy injects one on opt-in.
+    #:   ``"none"``            no usable prompt cache (default for direct hosts).
+    #: Left ``None`` at construction, it is filled from :attr:`kind` in
+    #: ``__post_init__``; a direct host may override it in compound.yaml.
+    cache_strategy: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.cache_strategy is None:
+            default = {"openrouter": "implicit", "doubleword": "explicit_marker"}.get(
+                self.kind, "none"
+            )
+            object.__setattr__(self, "cache_strategy", default)
 
     @property
     def label(self) -> str:
         """Short, stable identity for tables and output directories."""
         if self.kind == "openrouter":
-            return self.upstream or "openrouter"
+            return self.upstream or "openrouter-auto"
         if self.kind == "doubleword":
             return f"doubleword-{self.service_tier or 'realtime'}"
         return self.name or self.token
@@ -116,12 +135,27 @@ class ProviderSpec:
 
         Mirrors exactly what :meth:`to_tau_model` injects in-process, so a run
         through the proxy is identical to an in-process run of the same token.
+
+        ``COMPOUND_REASONING=on|off`` additionally pins the model's reasoning
+        mode in each host's own dialect. Without it, each host applies its own
+        default — and hosts disagree: in the 2026-08 terminal-bench sweep the
+        Doubleword deployments defaulted reasoning off while every OpenRouter
+        upstream defaulted it on, which silently confounds any cross-host
+        latency or throughput comparison.
         """
         body: dict[str, Any] = {}
         if self.kind == "openrouter" and self.upstream:
             body["provider"] = openrouter_provider_block(self.upstream)
         if self.service_tier:
             body["service_tier"] = self.service_tier
+        pin = os.getenv("COMPOUND_REASONING", "").lower()
+        if pin in ("on", "off"):
+            if self.kind == "openrouter":
+                body["reasoning"] = {"enabled": pin == "on"}
+            else:
+                # Doubleword rejects the ``reasoning`` block; its dialect is
+                # OpenAI-style ``reasoning_effort``, where "none" disables.
+                body["reasoning_effort"] = "medium" if pin == "on" else "none"
         return body
 
     def to_tau_model(self, model: str, **kwargs: Any) -> TauModel:
@@ -174,8 +208,16 @@ def parse_provider(
 
     if kind == "openrouter":
         if not target:
-            raise ValueError("openrouter/<upstream> needs an upstream slug")
+            raise ValueError("openrouter/<upstream> needs an upstream slug, or 'auto'")
         base, key = _KNOWN["openrouter"]
+        if target.lower() == "auto":
+            # Deliberately unpinned: no provider block at all, fallbacks allowed.
+            # This is the control arm that measures what OpenRouter's default
+            # routing actually does to cost, cache hits, and quality; the served
+            # upstream still lands in every trace via the response's provider echo.
+            return ProviderSpec(
+                token=token, kind="openrouter", base_url=base, api_key_env=key, upstream=None
+            )
         return ProviderSpec(
             token=token, kind="openrouter", base_url=base, api_key_env=key, upstream=target
         )
@@ -207,6 +249,9 @@ def parse_provider(
             api_key_env=entry["api_key_env"],
             service_tier=entry.get("service_tier"),
             name=target,
+            # A direct host declares its own cache behavior; absent, it defaults
+            # to "none" (no assumed prompt cache) in __post_init__.
+            cache_strategy=entry.get("cache_strategy"),
         )
 
     raise ValueError(

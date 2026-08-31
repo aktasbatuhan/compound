@@ -40,6 +40,75 @@ def test_inject_noop_for_realtime():
     assert "service_tier" not in out and "provider" not in out
 
 
+def test_inject_marks_doubleword_cache_prefix_when_enabled(monkeypatch):
+    monkeypatch.setenv("COMPOUND_DW_CACHE", "1")
+    body = {"model": "x", "messages": [{"role": "system", "content": "s"}, {"role": "user", "content": "hi"}]}
+    out = inject(body, parse_provider("doubleword/realtime"))
+    last = out["messages"][-1]["content"]
+    assert last == [{"type": "text", "text": "hi", "cache_control": {"type": "ephemeral", "ttl": "5m"}}]
+    # earlier messages untouched, original body not mutated
+    assert out["messages"][0]["content"] == "s"
+    assert body["messages"][-1]["content"] == "hi"
+    # block-form content gets the marker on its final block
+    body2 = {"messages": [{"role": "user", "content": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]}]}
+    out2 = inject(body2, parse_provider("doubleword/flex"))
+    assert out2["messages"][-1]["content"][-1]["cache_control"]["type"] == "ephemeral"
+    assert "cache_control" not in out2["messages"][-1]["content"][0]
+
+
+def test_inject_cache_marker_never_touches_openrouter(monkeypatch):
+    # OpenRouter's strategy is "implicit": it caches on its own, so the proxy
+    # adds no marker even with the opt-in on.
+    monkeypatch.setenv("COMPOUND_DW_CACHE", "1")
+    body = {"messages": [{"role": "user", "content": "hi"}]}
+    out = inject(body, parse_provider("openrouter/deepinfra"))
+    assert out["messages"][-1]["content"] == "hi"
+
+
+def test_inject_no_cache_marker_without_env(monkeypatch):
+    monkeypatch.delenv("COMPOUND_DW_CACHE", raising=False)
+    body = {"messages": [{"role": "user", "content": "hi"}]}
+    out = inject(body, parse_provider("doubleword/realtime"))
+    assert out["messages"][-1]["content"] == "hi"
+
+
+def test_inject_cache_marker_is_strategy_driven_not_kind(monkeypatch):
+    # A non-doubleword host that declares explicit_marker gets the marker; a
+    # doubleword-kind spec overridden to implicit does not. Proves the injection
+    # follows cache_strategy, not a hardcoded host name (issue #43).
+    monkeypatch.setenv("COMPOUND_DW_CACHE", "1")
+    direct_marker = ProviderSpec(
+        token="direct/vllm",
+        kind="direct",
+        base_url="https://x/v1",
+        api_key_env="VLLM_KEY",
+        cache_strategy="explicit_marker",
+    )
+    out = inject({"messages": [{"role": "user", "content": "hi"}]}, direct_marker)
+    assert out["messages"][-1]["content"][-1]["cache_control"]["type"] == "ephemeral"
+
+    dw_implicit = ProviderSpec(
+        token="doubleword/realtime",
+        kind="doubleword",
+        base_url="https://api.doubleword.ai/v1",
+        api_key_env="DOUBLEWORD_API_KEY",
+        cache_strategy="implicit",
+    )
+    out2 = inject({"messages": [{"role": "user", "content": "hi"}]}, dw_implicit)
+    assert out2["messages"][-1]["content"] == "hi"
+
+
+def test_cache_optin_enabled_reads_env(monkeypatch):
+    from compound.orproxy import cache_optin_enabled
+
+    monkeypatch.setenv("COMPOUND_DW_CACHE", "on")
+    assert cache_optin_enabled() is True
+    monkeypatch.setenv("COMPOUND_DW_CACHE", "0")
+    assert cache_optin_enabled() is False
+    monkeypatch.delenv("COMPOUND_DW_CACHE", raising=False)
+    assert cache_optin_enabled() is False
+
+
 @pytest.mark.parametrize(
     "base,path,expected",
     [
