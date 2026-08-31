@@ -48,7 +48,9 @@ RESULTS_TGZ="/tmp/harbor-results-$VM.tgz"
 if [ -f .env ]; then set -a; . ./.env; set +a; fi
 : "${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}"
 
-gssh() { gcloud compute ssh "$VM" --zone="$ZONE" --project="$PROJECT" --command="$1" -- -o StrictHostKeyChecking=no -o ConnectTimeout=15; }
+# -n keeps ssh from holding stdin open, which is one way a remote background
+# job can wedge the local client.
+gssh() { gcloud compute ssh "$VM" --zone="$ZONE" --project="$PROJECT" --command="$1" -- -n -o StrictHostKeyChecking=no -o ConnectTimeout=15; }
 
 cleanup() {
   # Salvage before deleting: tar on the VM and pull one file, because a
@@ -143,7 +145,12 @@ RUNALL="$(mktemp)"
 } > "$RUNALL"
 gcloud compute scp "$RUNALL" "$VM":/opt/compound/runall.sh --zone="$ZONE" --project="$PROJECT"
 rm -f "$RUNALL"
-gssh "chmod +x /opt/compound/runall.sh && nohup setsid /opt/compound/runall.sh >/dev/null 2>&1 < /dev/null & sleep 2; echo started"
+# systemd-run, not `nohup ... &`: a backgrounded remote job keeps the SSH
+# channel open, so the client hangs forever even after the job is launched
+# (observed: an 18-minute hang while the sweep itself ran normally). A transient
+# unit detaches properly and the ssh call returns at once.
+gssh "chmod +x /opt/compound/runall.sh && sudo systemd-run --unit=harbor-sweep --collect \
+  --property=WorkingDirectory=/opt/compound /opt/compound/runall.sh && echo started"
 
 echo "== polling until the sweep finishes =="
 while true; do
