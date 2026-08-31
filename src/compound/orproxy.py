@@ -35,7 +35,31 @@ from typing import Any
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
+from compound.call_ledger import (
+    MAX_CAPTURE_BYTES,
+    CallLedger,
+    build_record,
+    ledger_path_from_env,
+)
 from compound.providers_registry import ProviderSpec, parse_provider
+
+#: One ledger per path, shared by every request thread. Cached because the
+#: writer owns a lock: two instances on one file would interleave lines.
+_LEDGERS: dict[str, CallLedger] = {}
+_LEDGERS_LOCK = threading.Lock()
+
+
+def get_ledger() -> CallLedger | None:
+    """The call ledger for this run, or ``None`` when recording is off."""
+    path = ledger_path_from_env()
+    if path is None:
+        return None
+    with _LEDGERS_LOCK:
+        ledger = _LEDGERS.get(path)
+        if ledger is None:
+            ledger = CallLedger(path)
+            _LEDGERS[path] = ledger
+        return ledger
 
 #: Transient upstream failures worth retrying. A shared-pool 429 aborted 25
 #: terminal-bench episodes in one sweep because the agent harness treats any
@@ -125,13 +149,40 @@ def inject(body: dict[str, Any], spec: ProviderSpec) -> dict[str, Any]:
         merged[key] = value
     if spec.cache_strategy == "explicit_marker" and cache_optin_enabled():
         merged["messages"] = _mark_cache_prefix(merged.get("messages"))
-    # DEFERRED (#43): the cache-hit-rate report column (cached prompt tokens /
-    # total prompt tokens, next to cost) is not added here — terminal-bench's
-    # results.json exposes only total input/output tokens per trial, not the
-    # cached-token split, so the tb_report path (out of scope for this change)
-    # has no source for it. The serving-metrics harness already records
-    # per-call ``cached_tokens`` from usage.prompt_tokens_details; wiring that
-    # into a sweep report column is the remaining work.
+    if spec.kind == "openrouter":
+        merged = _request_usage_accounting(merged)
+    # The cache-hit-rate source for #43 is the call ledger, not results.json:
+    # terminal-bench reports only total input/output tokens per trial, with no
+    # cached-token split. Every call through this proxy now records its own
+    # ``cached_tokens`` (see :mod:`compound.call_ledger`), so a run's cache-hit
+    # rate is computed from the calls that carried the marker.
+    return merged
+
+
+def _request_usage_accounting(body: dict[str, Any]) -> dict[str, Any]:
+    """Ask OpenRouter to return the usage block the ledger reads.
+
+    Cost and the cached-token split are opt-in on OpenRouter: without
+    ``usage: {include: true}`` the response carries neither, and a streamed
+    response carries no usage at all unless the request also sets
+    ``stream_options: {include_usage: true}``. An external harness sets neither,
+    so a run behind this proxy would record null cost and null cache hits on
+    every call, which is precisely the data the run exists to collect.
+
+    Both flags are additive accounting requests: they change what the response
+    reports, not what is served or billed. ``stream_options`` is only sent on a
+    streaming request, since the API rejects it otherwise.
+    """
+    merged = dict(body)
+    usage = merged.get("usage")
+    merged["usage"] = {**usage, "include": True} if isinstance(usage, dict) else {"include": True}
+    if merged.get("stream"):
+        options = merged.get("stream_options")
+        merged["stream_options"] = (
+            {**options, "include_usage": True}
+            if isinstance(options, dict)
+            else {"include_usage": True}
+        )
     return merged
 
 
@@ -219,8 +270,37 @@ class _Handler(BaseHTTPRequestHandler):
         def make_request() -> urlrequest.Request:
             return urlrequest.Request(url, data=data, headers=headers, method=method)
 
+        # Ledger state. The body is teed as it streams rather than buffered
+        # first, so recording never delays a byte reaching the harness.
+        ledger = get_ledger()
+        sent_body: dict[str, Any] | None = None
+        if ledger and data:
+            try:
+                parsed = json.loads(data)
+            except json.JSONDecodeError:
+                parsed = None  # an opaque body forwarded untouched
+            sent_body = parsed if isinstance(parsed, dict) else None
+        started = time.monotonic()
+        captured = bytearray()
+        truncated = False
+        status: int | None = None
+        ctype = ""
+        error: str | None = None
+
+        def capture(chunk: bytes) -> None:
+            nonlocal truncated
+            if len(captured) + len(chunk) <= MAX_CAPTURE_BYTES:
+                captured.extend(chunk)
+                return
+            # Past the cap keep a rolling tail: a streamed response carries its
+            # usage in the final chunks, so the end is the part worth holding.
+            truncated = True
+            captured.extend(chunk)
+            del captured[: len(captured) - MAX_CAPTURE_BYTES]
+
         try:
             with open_with_retries(make_request) as upstream:
+                status = upstream.status
                 self.send_response(upstream.status)
                 ctype = upstream.headers.get("Content-Type", "application/json")
                 self.send_header("Content-Type", ctype)
@@ -231,8 +311,13 @@ class _Handler(BaseHTTPRequestHandler):
                         break
                     self.wfile.write(chunk)
                     self.wfile.flush()
+                    if ledger:
+                        capture(chunk)
         except urlerror.HTTPError as exc:
             payload = exc.read()
+            status, error = exc.code, f"http_{exc.code}"
+            if ledger:
+                capture(payload)
             if debug_path:
                 with open(debug_path, "a") as dbg:
                     dbg.write(f"<<< {exc.code} {payload.decode('utf-8', 'replace')[:2000]}\n")
@@ -241,10 +326,33 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
         except Exception as exc:  # noqa: BLE001 — surface upstream failure as 502
+            status, error = 502, str(exc)
             self.send_response(502)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"error": {"message": str(exc)}}).encode())
+        finally:
+            # A failed call is a measurement too: a 429 that cost an episode is
+            # exactly the reliability data the run exists to collect, so the row
+            # is written on every path. Recording must never take the proxy
+            # down, so a ledger fault degrades to a warning.
+            if ledger is not None:
+                try:
+                    ledger.write(
+                        build_record(
+                            route=spec.label,
+                            upstream=spec.upstream,
+                            status=status,
+                            latency_ms=(time.monotonic() - started) * 1000,
+                            request_body=sent_body,
+                            response_raw=bytes(captured),
+                            content_type=ctype,
+                            error=error,
+                            truncated=truncated,
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001 — never fail a call over logging
+                    print(f"orproxy: call ledger write failed: {exc}", file=sys.stderr)
 
     def do_POST(self) -> None:  # noqa: N802 — stdlib naming
         self._forward("POST")
