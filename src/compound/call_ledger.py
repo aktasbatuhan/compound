@@ -224,6 +224,7 @@ def build_record(
     content_type: str = "",
     error: str | None = None,
     truncated: bool = False,
+    request_bytes: int | None = None,
 ) -> dict[str, Any]:
     """Assemble one ledger row from a completed (or failed) call.
 
@@ -241,6 +242,11 @@ def build_record(
         "latency_ms": round(latency_ms, 2),
         "error": error,
         "response_truncated": truncated,
+        # Wire sizes, kept even when the body never parsed. An abandoned call
+        # reports no tokens, so this is the only surviving evidence of how large
+        # the request that was lost actually was.
+        "request_bytes": request_bytes,
+        "response_bytes": len(response_raw),
     }
     record.update(request_fields(request_body))
     record.update(usage_fields(payload))

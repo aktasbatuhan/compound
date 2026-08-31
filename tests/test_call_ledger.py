@@ -372,3 +372,16 @@ class TestAbandonedCalls:
         assert row["calls"] == 3
         assert row["errors"] == 1
         assert row["abandoned"] == 1
+
+
+class TestWireSizes:
+    def test_sizes_survive_an_abandoned_call(self):
+        # An abandoned call reports no tokens, so the request size is the only
+        # surviving evidence of how large the lost call was.
+        record = build_record(
+            route="auto", upstream=None, status=200, latency_ms=212000.0,
+            request_body=None, response_raw=b"\n   \n", request_bytes=180000,
+        )
+        assert record["abandoned"] is True
+        assert record["request_bytes"] == 180000
+        assert record["response_bytes"] == 5

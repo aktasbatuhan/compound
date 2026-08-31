@@ -349,6 +349,7 @@ class _Handler(BaseHTTPRequestHandler):
                             content_type=ctype,
                             error=error,
                             truncated=truncated,
+                            request_bytes=len(data) if data else 0,
                         )
                     )
                 except Exception as exc:  # noqa: BLE001 — never fail a call over logging
