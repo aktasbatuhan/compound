@@ -80,6 +80,17 @@ def parse_response_payload(raw: bytes, content_type: str = "") -> dict[str, Any]
     if not raw:
         return None
     text = raw.decode("utf-8", "replace")
+    # Strip SSE comment lines before deciding how to parse. OpenRouter keeps a
+    # long non-streaming request alive by emitting ": OPENROUTER PROCESSING"
+    # lines ahead of the JSON body; leaving them in makes json.loads fail, and
+    # the call records null cost. That silently biases a run's cost downward on
+    # exactly the slow, expensive calls that emit them.
+    if ":" in text:
+        text = "\n".join(
+            line for line in text.splitlines() if not line.lstrip().startswith(":")
+        )
+    if not text.strip():
+        return None
     if "data:" in text:
         merged: dict[str, Any] = {}
         for line in text.splitlines():

@@ -277,3 +277,42 @@ class TestSweepHarborWiring:
     def test_summary_is_returned_per_host(self, tmp_path, monkeypatch):
         _, summaries = self._run(tmp_path, monkeypatch)
         assert summaries["openrouter-auto"]["resolve_rate"] == 1.0
+
+
+class TestAgentTimeoutMultiplier:
+    def test_agent_only_cap_is_a_separate_flag(self):
+        # --timeout-multiplier scales every phase including the environment
+        # build, so shrinking it to bound a run kills the container before it
+        # starts (observed live: EnvironmentStartTimeoutError).
+        got = cmd(agent_timeout_multiplier=0.02)
+        assert got[got.index("--agent-timeout-multiplier") + 1] == "0.02"
+        assert "--timeout-multiplier" not in got
+
+    def test_both_can_be_set_independently(self):
+        got = cmd(timeout_multiplier=3.0, agent_timeout_multiplier=0.5)
+        assert "--timeout-multiplier" in got and "--agent-timeout-multiplier" in got
+
+    def test_a_multiplier_of_one_is_omitted(self):
+        assert "--agent-timeout-multiplier" not in cmd(agent_timeout_multiplier=1.0)
+
+
+class TestErroredTrialsAreVisible:
+    def test_an_arm_where_every_trial_errored_is_not_reported_as_empty(self, tmp_path):
+        # Harbor counts a trial that died before producing a result, but writes
+        # no entry in trial_results. Reading only the rows made a fully failed
+        # arm look like an empty successful one.
+        job_dir = tmp_path / "job-1"
+        job_dir.mkdir()
+        (job_dir / "result.json").write_text(
+            json.dumps(
+                {
+                    "trial_results": [],
+                    "n_total_trials": 1,
+                    "stats": {"n_errored_trials": 1},
+                }
+            )
+        )
+        summary = load_job_summary(tmp_path, "job-1")
+        assert summary["trials"] == 0
+        assert summary["errored_trials"] == 1
+        assert summary["total_trials"] == 1

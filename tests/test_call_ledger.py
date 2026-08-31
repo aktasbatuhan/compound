@@ -287,3 +287,33 @@ class TestLoadRecords:
         path = tmp_path / "calls.jsonl"
         path.write_text('{"route": "a"}\n{"route": "b"}\n{"route": "trunc"')
         assert [r["route"] for r in load_records(path)] == ["a", "b"]
+
+
+class TestKeepAliveComments:
+    def test_openrouter_processing_comments_are_stripped(self):
+        # OpenRouter keeps a long non-streaming request alive with SSE comment
+        # lines before the JSON body. Observed live: a 78s call recorded status
+        # 200 with every usage field null because json.loads saw the comments.
+        raw = (
+            b": OPENROUTER PROCESSING\n\n: OPENROUTER PROCESSING\n\n"
+            b'{"provider": "Z.AI", "usage": {"prompt_tokens": 5000, "cost": 0.002}}'
+        )
+        payload = parse_response_payload(raw)
+        assert payload is not None
+        fields = usage_fields(payload)
+        assert fields["provider_echo"] == "Z.AI"
+        assert fields["prompt_tokens"] == 5000
+        assert fields["cost_usd"] == 0.002
+
+    def test_comments_before_a_streamed_body_still_parse(self):
+        raw = (
+            b": OPENROUTER PROCESSING\n\n"
+            b'data: {"provider": "Parasail"}\n\n'
+            b'data: {"usage": {"prompt_tokens": 9}}\n\ndata: [DONE]\n\n'
+        )
+        payload = parse_response_payload(raw)
+        assert payload["provider"] == "Parasail"
+        assert payload["usage"]["prompt_tokens"] == 9
+
+    def test_a_body_of_only_comments_is_none(self):
+        assert parse_response_payload(b": OPENROUTER PROCESSING\n\n") is None

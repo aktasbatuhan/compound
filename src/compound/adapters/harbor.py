@@ -10,6 +10,10 @@ rather than reimplements them:
 
 * ``--timeout-multiplier`` replaces our ``task.yaml`` patching. Harbor scales
   the limits itself, so nothing on disk is mutated and no base file is needed.
+  It scales *every* phase though, including the environment build, so shrinking
+  it to bound a run kills the container before it starts
+  (``EnvironmentStartTimeoutError``). Capping only how long the agent may work
+  is ``agent_timeout_multiplier``, which leaves build and verification alone.
 * ``-k`` runs repeated attempts per task, replacing our per-trial subdirectories.
 * ``-n`` plus a sandbox backend runs trials concurrently, which is what turns a
   full provider matrix from an overnight VM fan-out into a single job.
@@ -72,6 +76,7 @@ def build_command(
     attempts: int = 1,
     n_concurrent: int = 4,
     timeout_multiplier: float | None = None,
+    agent_timeout_multiplier: float | None = None,
     env_type: str = "docker",
     allow_agent_hosts: list[str] | None = None,
     proxied: bool = False,
@@ -116,6 +121,8 @@ def build_command(
         command += ["--n-tasks", str(n_tasks)]
     if timeout_multiplier is not None and timeout_multiplier != 1.0:
         command += ["--timeout-multiplier", str(timeout_multiplier)]
+    if agent_timeout_multiplier is not None and agent_timeout_multiplier != 1.0:
+        command += ["--agent-timeout-multiplier", str(agent_timeout_multiplier)]
     for host in allow_agent_hosts or []:
         command += ["--allow-agent-host", host]
     command += extra_args or []
@@ -263,6 +270,11 @@ def load_job_summary(jobs_dir: str | Path, job_name: str) -> dict[str, Any]:
     rows = trial_rows(job_result)
     stats = job_result.get("stats") or {}
     summary = summarize(rows)
+    # A trial that died before producing a result is counted by Harbor but has
+    # no entry in trial_results. Without this an arm where every trial errored
+    # reads as an empty arm rather than a failed one.
+    summary["errored_trials"] = stats.get("n_errored_trials") or 0
+    summary["total_trials"] = job_result.get("n_total_trials")
     summary["harbor_stats"] = {
         "n_input_tokens": stats.get("n_input_tokens"),
         "n_cache_tokens": stats.get("n_cache_tokens"),

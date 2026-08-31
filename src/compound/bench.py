@@ -527,6 +527,7 @@ def cmd_harbor(args: argparse.Namespace) -> int:
             attempts=args.attempts,
             n_concurrent=args.n_concurrent,
             timeout_multiplier=args.timeout_multiplier,
+            agent_timeout_multiplier=args.agent_timeout_multiplier,
             env_type=args.env,
             proxied=True,
         )
@@ -544,6 +545,7 @@ def cmd_harbor(args: argparse.Namespace) -> int:
         attempts=args.attempts,
         n_concurrent=args.n_concurrent,
         timeout_multiplier=args.timeout_multiplier,
+        agent_timeout_multiplier=args.agent_timeout_multiplier,
         env_type=args.env,
         ledger_dir=Path(args.ledger_dir) if args.ledger_dir else None,
     )
@@ -551,14 +553,14 @@ def cmd_harbor(args: argparse.Namespace) -> int:
         print("no host produced a job result")
         return 1
     print(f"\n{'host':<24s} {'trials':>7s} {'verdicts':>9s} {'resolved':>9s} "
-          f"{'rate':>7s} {'unverified':>11s}")
+          f"{'rate':>7s} {'unverified':>11s} {'errored':>8s}")
     for label, summary in summaries.items():
         rate = summary["resolve_rate"]
         print(
             f"{label:<24s} {summary['trials']:>7d} {summary['verdicts']:>9d} "
             f"{summary['resolved']:>9d} "
             f"{('—' if rate is None else f'{rate * 100:.1f}'):>7s} "
-            f"{summary['unverified']:>11d}"
+            f"{summary['unverified']:>11d} {summary.get('errored_trials', 0):>8d}"
         )
     print(
         "\nrate is over trials that returned a verdict; unverified trials "
@@ -749,7 +751,14 @@ def main() -> int:
     harbor_p.add_argument("--n-concurrent", type=int, default=4, help="concurrent trials")
     harbor_p.add_argument(
         "--timeout-multiplier", type=float, default=None,
-        help="scale task time limits (Harbor-native; runs are non-official when set)",
+        help="scale EVERY phase's time limit, environment build included "
+        "(Harbor-native; runs are non-official when set)",
+    )
+    harbor_p.add_argument(
+        "--agent-timeout-multiplier", type=float, default=None,
+        help="scale only how long the agent may work, leaving environment build "
+        "and verification alone. This is the flag for bounding a run: TB4 tasks "
+        "allow the agent 8 hours by default.",
     )
     harbor_p.add_argument("--env", default="docker", help="Harbor environment backend")
     harbor_p.add_argument("--jobs-dir", default="artifacts/harbor", help="where jobs land")
