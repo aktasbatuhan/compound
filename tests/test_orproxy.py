@@ -380,3 +380,36 @@ def test_proxy_writes_no_ledger_when_disabled(monkeypatch, tmp_path):
     monkeypatch.delenv("COMPOUND_CALL_LEDGER", raising=False)
     orproxy._LEDGERS.clear()
     assert orproxy.get_ledger() is None
+
+
+def test_inject_requests_usage_accounting_for_openrouter():
+    """Without these flags OpenRouter returns no cost and no cached-token split."""
+    body = {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
+    out = inject(body, ProviderSpec(
+        token="openrouter/deepinfra", kind="openrouter",
+        base_url="https://openrouter.ai/api/v1", api_key_env="OPENROUTER_API_KEY",
+        upstream="deepinfra",
+    ))
+    assert out["usage"] == {"include": True}
+    assert "stream_options" not in out  # not a streaming request
+
+
+def test_inject_adds_include_usage_only_on_streaming_requests():
+    body = {"model": "m", "stream": True, "messages": []}
+    out = inject(body, ProviderSpec(
+        token="openrouter/auto", kind="openrouter",
+        base_url="https://openrouter.ai/api/v1", api_key_env="OPENROUTER_API_KEY",
+        upstream=None,
+    ))
+    assert out["stream_options"] == {"include_usage": True}
+    assert "provider" not in out  # auto stays unpinned
+
+
+def test_inject_leaves_doubleword_usage_untouched():
+    """Doubleword's API does not take OpenRouter's usage accounting block."""
+    out = inject({"model": "m", "messages": []}, ProviderSpec(
+        token="doubleword/flex", kind="doubleword",
+        base_url="https://api.doubleword.ai/v1", api_key_env="DOUBLEWORD_API_KEY",
+        service_tier="flex",
+    ))
+    assert "usage" not in out
