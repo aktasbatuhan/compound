@@ -149,11 +149,40 @@ def inject(body: dict[str, Any], spec: ProviderSpec) -> dict[str, Any]:
         merged[key] = value
     if spec.cache_strategy == "explicit_marker" and cache_optin_enabled():
         merged["messages"] = _mark_cache_prefix(merged.get("messages"))
+    if spec.kind == "openrouter":
+        merged = _request_usage_accounting(merged)
     # The cache-hit-rate source for #43 is the call ledger, not results.json:
     # terminal-bench reports only total input/output tokens per trial, with no
     # cached-token split. Every call through this proxy now records its own
     # ``cached_tokens`` (see :mod:`compound.call_ledger`), so a run's cache-hit
     # rate is computed from the calls that carried the marker.
+    return merged
+
+
+def _request_usage_accounting(body: dict[str, Any]) -> dict[str, Any]:
+    """Ask OpenRouter to return the usage block the ledger reads.
+
+    Cost and the cached-token split are opt-in on OpenRouter: without
+    ``usage: {include: true}`` the response carries neither, and a streamed
+    response carries no usage at all unless the request also sets
+    ``stream_options: {include_usage: true}``. An external harness sets neither,
+    so a run behind this proxy would record null cost and null cache hits on
+    every call, which is precisely the data the run exists to collect.
+
+    Both flags are additive accounting requests: they change what the response
+    reports, not what is served or billed. ``stream_options`` is only sent on a
+    streaming request, since the API rejects it otherwise.
+    """
+    merged = dict(body)
+    usage = merged.get("usage")
+    merged["usage"] = {**usage, "include": True} if isinstance(usage, dict) else {"include": True}
+    if merged.get("stream"):
+        options = merged.get("stream_options")
+        merged["stream_options"] = (
+            {**options, "include_usage": True}
+            if isinstance(options, dict)
+            else {"include_usage": True}
+        )
     return merged
 
 
