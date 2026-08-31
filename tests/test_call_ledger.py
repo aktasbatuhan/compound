@@ -287,3 +287,88 @@ class TestLoadRecords:
         path = tmp_path / "calls.jsonl"
         path.write_text('{"route": "a"}\n{"route": "b"}\n{"route": "trunc"')
         assert [r["route"] for r in load_records(path)] == ["a", "b"]
+
+
+class TestKeepAliveComments:
+    def test_openrouter_processing_comments_are_stripped(self):
+        # OpenRouter keeps a long non-streaming request alive with SSE comment
+        # lines before the JSON body. Observed live: a 78s call recorded status
+        # 200 with every usage field null because json.loads saw the comments.
+        raw = (
+            b": OPENROUTER PROCESSING\n\n: OPENROUTER PROCESSING\n\n"
+            b'{"provider": "Z.AI", "usage": {"prompt_tokens": 5000, "cost": 0.002}}'
+        )
+        payload = parse_response_payload(raw)
+        assert payload is not None
+        fields = usage_fields(payload)
+        assert fields["provider_echo"] == "Z.AI"
+        assert fields["prompt_tokens"] == 5000
+        assert fields["cost_usd"] == 0.002
+
+    def test_comments_before_a_streamed_body_still_parse(self):
+        raw = (
+            b": OPENROUTER PROCESSING\n\n"
+            b'data: {"provider": "Parasail"}\n\n'
+            b'data: {"usage": {"prompt_tokens": 9}}\n\ndata: [DONE]\n\n'
+        )
+        payload = parse_response_payload(raw)
+        assert payload["provider"] == "Parasail"
+        assert payload["usage"]["prompt_tokens"] == 9
+
+    def test_a_body_of_only_comments_is_none(self):
+        assert parse_response_payload(b": OPENROUTER PROCESSING\n\n") is None
+
+
+class TestAbandonedCalls:
+    def test_a_200_with_no_usage_is_flagged_abandoned(self):
+        # Observed live: OpenRouter pads a slow request with whitespace and
+        # sends usage only at the end, so a client that times out first leaves
+        # a 200 with no usage. Those tokens were billed; we just cannot see them.
+        record = build_record(
+            route="auto", upstream=None, status=200, latency_ms=212000.0,
+            request_body={"messages": [{"role": "user", "content": "x"}]},
+            response_raw=b"\n         \n\n         \n",
+        )
+        assert record["abandoned"] is True
+        assert record["cost_usd"] is None
+
+    def test_a_complete_call_is_not_abandoned(self):
+        record = build_record(
+            route="auto", upstream=None, status=200, latency_ms=900.0,
+            request_body=None,
+            response_raw=b'{"provider": "Z.AI", "usage": {"prompt_tokens": 10}}',
+        )
+        assert record["abandoned"] is False
+
+    def test_an_http_error_is_an_error_not_an_abandonment(self):
+        record = build_record(
+            route="f", upstream="f", status=429, latency_ms=10.0,
+            request_body=None, response_raw=b'{"error": {}}', error="http_429",
+        )
+        assert record["abandoned"] is False
+
+    def test_whitespace_padding_before_real_json_still_parses(self):
+        # The same padding, but the client waited: this one must NOT be
+        # abandoned, or every slow-but-complete call would look lost.
+        record = build_record(
+            route="auto", upstream=None, status=200, latency_ms=7500.0,
+            request_body=None,
+            response_raw=(
+                b'\n     \n\n     \n{"provider": "Z.AI", '
+                b'"usage": {"prompt_tokens": 44021, "cost": 0.0033}}'
+            ),
+        )
+        assert record["abandoned"] is False
+        assert record["prompt_tokens"] == 44021
+        assert record["cost_usd"] == 0.0033
+
+    def test_summary_counts_abandoned_separately_from_errors(self):
+        rows = [
+            {"route": "a", "status": 200, "abandoned": True},
+            {"route": "a", "status": 200, "prompt_tokens": 10, "cost_usd": 0.1},
+            {"route": "a", "status": 429, "error": "http_429"},
+        ]
+        row = {r["route"]: r for r in summarize(rows)}["a"]
+        assert row["calls"] == 3
+        assert row["errors"] == 1
+        assert row["abandoned"] == 1
