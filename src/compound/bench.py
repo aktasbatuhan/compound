@@ -450,6 +450,12 @@ def _manifest_cases(args: argparse.Namespace, bench: Benchmark) -> list[dict]:
     return _load_cases(bench)
 
 
+#: Mirrored from :mod:`compound.adapters.harbor` so building the parser does not
+#: import the adapter (and its uvx assumptions) on every CLI invocation.
+_HARBOR_DEFAULT_DATASET = "terminal-bench/terminal-bench@4.0.0"
+_HARBOR_DEFAULT_AGENT = "terminus-2"
+
+
 def cmd_serving(args: argparse.Namespace) -> int:
     """Serving-metrics harness: TTFT / decode TPS / cost per host per reasoning mode."""
     from compound import serving_metrics as sm
@@ -479,6 +485,81 @@ def cmd_serving(args: argparse.Namespace) -> int:
         reps=args.reps,
     )
     print(f"results -> {out}")
+    return 0
+
+
+def cmd_harbor(args: argparse.Namespace) -> int:
+    """Terminal-Bench 4.0 (or any Harbor dataset) across hosts, each pinned."""
+    from compound import provider_sweep
+    from compound.adapters import harbor
+    from compound.providers_registry import parse_providers
+
+    specs = parse_providers(args.providers, providers_config=_load_providers_config())
+    tasks = args.tasks.split(",") if args.tasks else None
+    print(f"harbor: dataset {args.dataset}, agent {args.agent}, model {args.model}")
+    for line in provider_sweep.plan(specs, args.model):
+        print(line)
+    print(_tb_pin_line())
+    if tasks:
+        print(f"tasks: {', '.join(tasks)}")
+    if args.n_tasks:
+        print(f"task cap: {args.n_tasks}")
+    print(
+        f"grid: {len(specs)} host(s) x {args.n_tasks or len(tasks or []) or 'all'} task(s) "
+        f"x {args.attempts} attempt(s)"
+    )
+    if not args.go:
+        # Show the exact argv rather than describing it: a dry run should let a
+        # reviewer check the command that money would be spent on.
+        example = harbor.build_command(
+            dataset=args.dataset,
+            model=f"openai/{args.model}",
+            agent=args.agent,
+            jobs_dir=args.jobs_dir,
+            job_name="<host>-<ts>",
+            include_tasks=tasks,
+            n_tasks=args.n_tasks,
+            attempts=args.attempts,
+            n_concurrent=args.n_concurrent,
+            timeout_multiplier=args.timeout_multiplier,
+            env_type=args.env,
+            proxied=True,
+        )
+        print("\ncommand per host:\n  " + " ".join(example))
+        print("\ndry run (no spend). Add --go to execute.")
+        return 0
+    _apply_tb_env(args)
+    summaries = provider_sweep.sweep_harbor(
+        specs,
+        model=args.model,
+        jobs_dir=Path(args.jobs_dir),
+        dataset=args.dataset,
+        agent=args.agent,
+        include_tasks=tasks,
+        n_tasks=args.n_tasks,
+        attempts=args.attempts,
+        n_concurrent=args.n_concurrent,
+        timeout_multiplier=args.timeout_multiplier,
+        env_type=args.env,
+        ledger_dir=Path(args.ledger_dir) if args.ledger_dir else None,
+    )
+    if not summaries:
+        print("no host produced a job result")
+        return 1
+    print(f"\n{'host':<24s} {'trials':>7s} {'verdicts':>9s} {'resolved':>9s} "
+          f"{'rate':>7s} {'unverified':>11s}")
+    for label, summary in summaries.items():
+        rate = summary["resolve_rate"]
+        print(
+            f"{label:<24s} {summary['trials']:>7d} {summary['verdicts']:>9d} "
+            f"{summary['resolved']:>9d} "
+            f"{('—' if rate is None else f'{rate * 100:.1f}'):>7s} "
+            f"{summary['unverified']:>11d}"
+        )
+    print(
+        "\nrate is over trials that returned a verdict; unverified trials "
+        "(harness or infrastructure failures) are counted apart, never as model failures."
+    )
     return 0
 
 
@@ -638,6 +719,44 @@ def main() -> int:
         help="output dir for results.jsonl",
     )
 
+    harbor_p = sub.add_parser(
+        "harbor",
+        help="run Terminal-Bench 4.0 / any Harbor dataset across pinned hosts",
+    )
+    harbor_p.add_argument(
+        "--providers",
+        required=True,
+        help="comma-separated provider tokens, e.g. openrouter/auto,openrouter/deepinfra",
+    )
+    harbor_p.add_argument("--model", required=True, help="model id as the upstream knows it")
+    harbor_p.add_argument(
+        "--dataset", default=_HARBOR_DEFAULT_DATASET,
+        help="Harbor dataset name@version (pinned, not @latest, so the task set "
+        "cannot shift between arms of one experiment)",
+    )
+    harbor_p.add_argument(
+        "--agent", default=_HARBOR_DEFAULT_AGENT,
+        help="Harbor agent. Must be a terminus-family agent when pinning: an "
+        "in-sandbox agent cannot reach a localhost proxy.",
+    )
+    harbor_p.add_argument("--tasks", help="comma-separated task names (glob patterns allowed)")
+    harbor_p.add_argument("--n-tasks", type=int, default=None, help="cap tasks after filtering")
+    harbor_p.add_argument("--attempts", "-k", type=int, default=1, help="attempts per task")
+    harbor_p.add_argument("--n-concurrent", type=int, default=4, help="concurrent trials")
+    harbor_p.add_argument(
+        "--timeout-multiplier", type=float, default=None,
+        help="scale task time limits (Harbor-native; runs are non-official when set)",
+    )
+    harbor_p.add_argument("--env", default="docker", help="Harbor environment backend")
+    harbor_p.add_argument("--jobs-dir", default="artifacts/harbor", help="where jobs land")
+    harbor_p.add_argument("--ledger-dir", default=None, help="per-host call ledger directory")
+    harbor_p.add_argument("--reasoning", choices=("on", "off", "default"), default=None,
+                          help="pin the model's reasoning mode via the proxy")
+    harbor_p.add_argument("--cache-optin", action="store_true", help="enable prompt-cache markers")
+    harbor_p.add_argument("--call-ledger", default=None, help=argparse.SUPPRESS)
+    harbor_p.add_argument("--tb-timeout-mult", default=None, help=argparse.SUPPRESS)
+    harbor_p.add_argument("--go", action="store_true", help="execute (default is a dry run)")
+
     ledger = sub.add_parser(
         "ledger", help="summarize a call ledger (cache hits, routing spread, cost)"
     )
@@ -723,6 +842,8 @@ def main() -> int:
         return cmd_serving(args)
     if args.command == "ledger":
         return cmd_ledger(args)
+    if args.command == "harbor":
+        return cmd_harbor(args)
     return cmd_run(args)
 
 

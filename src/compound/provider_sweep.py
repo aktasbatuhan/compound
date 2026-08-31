@@ -123,3 +123,74 @@ def sweep_terminal_bench(
         else:
             print(f"terminal_bench {spec.label} exited {code}")
     return done
+
+
+def sweep_harbor(
+    specs: list[ProviderSpec],
+    *,
+    model: str,
+    jobs_dir: Path,
+    dataset: str,
+    agent: str,
+    include_tasks: list[str] | None = None,
+    n_tasks: int | None = None,
+    attempts: int = 1,
+    n_concurrent: int = 4,
+    timeout_multiplier: float | None = None,
+    env_type: str = "docker",
+    ledger_dir: Path | None = None,
+) -> dict[str, dict]:
+    """Run a Harbor dataset (Terminal-Bench 4.0) across hosts, each pinned.
+
+    One Harbor job per host, named for the host so results stay separable, with
+    each job's agent pointed at that host's proxy. The pinning, the reasoning
+    mode and the call ledger all live in the proxy, so they apply here exactly
+    as they do on the TB1 path without Harbor knowing anything about them.
+
+    When ``ledger_dir`` is given each host also gets its own ledger file, since
+    a shared one would still be correct (every row names its route) but is far
+    less convenient to hand to a reviewer per arm.
+
+    Returns the per-host summary keyed by label, so a caller can decide the next
+    arm from the previous one, which is how the unpinned control run's routing
+    distribution selects the hosts worth pinning.
+    """
+    import time
+
+    from compound.adapters import harbor
+
+    summaries: dict[str, dict] = {}
+    for spec in specs:
+        key_env = spec.required_key_env()
+        if not os.getenv(key_env):
+            print(f"skip {spec.label}: {key_env} not set")
+            continue
+        job_name = f"{spec.safe_label}-{int(time.time())}"
+        print(f"[harbor] {spec.label}: pin -> {spec.forward_base_url} (job {job_name})")
+        command = harbor.build_command(
+            dataset=dataset,
+            model=f"openai/{model}",
+            agent=agent,
+            jobs_dir=jobs_dir,
+            job_name=job_name,
+            include_tasks=include_tasks,
+            n_tasks=n_tasks,
+            attempts=attempts,
+            n_concurrent=n_concurrent,
+            timeout_multiplier=timeout_multiplier,
+            env_type=env_type,
+            proxied=True,
+        )
+        with serve_provider(spec) as base_url:
+            extra_env = harbor.proxy_env(base_url)
+            if ledger_dir is not None:
+                extra_env["COMPOUND_CALL_LEDGER"] = str(
+                    Path(ledger_dir) / f"{spec.safe_label}.jsonl"
+                )
+            extra_env["COMPOUND_RUN_LABEL"] = spec.label
+            code = harbor.run_harbor(command, extra_env=extra_env)
+        if code != 0:
+            print(f"harbor {spec.label} exited {code}")
+            continue
+        summaries[spec.label] = harbor.load_job_summary(jobs_dir, job_name)
+    return summaries
