@@ -40,6 +40,7 @@ import {
   parsePriority,
   rankRows,
 } from "./rank";
+import { parseMonthlyVolumeFlag, writeGateCostProjection } from "./savings";
 
 function stringFlag(flags: ParsedArgs["flags"], name: string): string | undefined {
   const value = flags[name];
@@ -178,6 +179,7 @@ function gateDetail(
   env: CommandEnvironment,
   id: string,
   full: boolean,
+  monthlyVolume: number | undefined,
 ): CommandResult {
   const resolved = resolvePrefix(
     id,
@@ -216,6 +218,14 @@ function gateDetail(
     env.write(`  n:           ${result.n}`);
   }
   env.write(`  decided:     ${when(result.decidedAt)}`);
+  if (result.outcome === "meets_gate" && spec !== null) {
+    writeGateCostProjection(db, env, {
+      taskKey: spec.taskKey,
+      candidateExperimentId: result.candidateExperimentId,
+      referenceExperimentId: result.referenceExperimentId,
+      ...(monthlyVolume !== undefined ? { monthlyVolume } : {}),
+    });
+  }
 
   // Reconstruct disagreements by pairing the two experiments' per-case grades.
   const candByCase = new Map(
@@ -627,6 +637,7 @@ function compareView(
   taskKey: string | undefined,
   config: CompoundConfig | undefined,
   priorityFlag: string | boolean | undefined,
+  monthlyVolume: number | undefined,
 ): CommandResult {
   // Resolve the priority vector up front so a malformed flag fails before any
   // query output. Flag wins; a per-task default in compound.yaml
@@ -733,9 +744,45 @@ function compareView(
     "* = list price (no cached_input rate configured, or cached tokens unreported). " +
     "hit% = provider cache hit rate; — = provider did not report cached tokens.";
 
+  const renderGateProjections = (onlyTask: string | undefined): void => {
+    const latestByTask = new Map<string, ReturnType<typeof listGateResults>[number]>();
+    for (const gate of listGateResults(db, 5000)) {
+      if (gate.result.outcome !== "meets_gate") continue;
+      if (onlyTask !== undefined && gate.spec.taskKey !== onlyTask) continue;
+      if (!latestByTask.has(gate.spec.taskKey)) latestByTask.set(gate.spec.taskKey, gate);
+    }
+
+    const rendered: string[] = [];
+    for (const gate of [...latestByTask.values()].sort((a, b) =>
+      a.spec.taskKey.localeCompare(b.spec.taskKey),
+    )) {
+      const lines: string[] = [];
+      const wrote = writeGateCostProjection(
+        db,
+        { write: (line) => lines.push(line) },
+        {
+          taskKey: gate.spec.taskKey,
+          candidateExperimentId: gate.result.candidateExperimentId,
+          referenceExperimentId: gate.result.referenceExperimentId,
+          ...(monthlyVolume !== undefined ? { monthlyVolume } : {}),
+        },
+      );
+      if (!wrote) continue;
+      rendered.push(
+        `  ${gate.spec.taskKey}: ${gate.spec.candidateModel} vs ${gate.spec.referenceModel} ` +
+          `(latest MEETS GATE ${short(gate.result.id)})`,
+        ...lines.map((line) => `  ${line}`),
+      );
+    }
+    if (rendered.length === 0) return;
+    env.write("\nprojected cost impact from latest MEETS GATE decisions:");
+    for (const line of rendered) env.write(line);
+  };
+
   if (taskKey !== undefined) {
     env.write(`cost / score — ${taskKey}\n`);
     renderTable(env, perTaskHeaders, [...rows].sort(byQualityThenCost).map(perTaskRow));
+    renderGateProjections(taskKey);
     if (priority !== undefined) {
       renderPriorityRanking(env, rows, config, priority, prioritySource, true);
     }
@@ -805,6 +852,7 @@ function compareView(
     ]);
   env.write("cost / score — aggregated (per model, across all tasks)\n");
   renderTable(env, aggHeaders, aggRows);
+  renderGateProjections(undefined);
   if (priority !== undefined) {
     renderPriorityRanking(env, [...agg.values()], config, priority, prioritySource, false);
   }
@@ -847,13 +895,29 @@ export function runViewCommand(args: ParsedArgs, env: CommandEnvironment): Comma
   const subject = args.positional[0];
   const id = args.positional[1];
   const full = args.flags.full === true;
+  let monthlyVolume: number | undefined;
+  if (subject === "gate" || subject === "compare") {
+    try {
+      monthlyVolume = parseMonthlyVolumeFlag(args.flags["monthly-volume"]);
+    } catch (error) {
+      env.write(`error: ${error instanceof Error ? error.message : error}`);
+      return { exitCode: 2 };
+    }
+  }
+  if (subject === "compare" && id === undefined && monthlyVolume !== undefined) {
+    env.write(
+      "error: --monthly-volume with view compare requires one task_key; " +
+        "an all-task view cannot apply one volume assumption to every task",
+    );
+    return { exitCode: 2 };
+  }
   const db = env.openDatabase(stringFlag(args.flags, "db") ?? DEFAULT_DATABASE_PATH);
   try {
     switch (subject) {
       case undefined:
         return overview(db, env);
       case "gate":
-        return id === undefined ? gateList(db, env) : gateDetail(db, env, id, full);
+        return id === undefined ? gateList(db, env) : gateDetail(db, env, id, full, monthlyVolume);
       case "case":
         if (id === undefined) {
           env.write("error: usage: compound view case <case_id>");
@@ -879,7 +943,7 @@ export function runViewCommand(args: ParsedArgs, env: CommandEnvironment): Comma
         } catch {
           config = undefined;
         }
-        return compareView(db, env, id, config, args.flags.priority);
+        return compareView(db, env, id, config, args.flags.priority, monthlyVolume);
       }
       default:
         env.write(

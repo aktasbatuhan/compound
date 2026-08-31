@@ -110,14 +110,14 @@ Usage:
   compound curate <task_key> [--split train:val:cal:dec] [--db PATH]
   compound suggest-assertions <task_key> [--db PATH] [--config PATH]
   compound experiment <task_key> <model> [--partition P] [--paid --cap USD]
-  compound gate <task_key> --candidate M --reference M --reason "..." [--margin 0.05] [--paid --cap USD]
+  compound gate <task_key> --candidate M --reference M --reason "..." [--margin 0.05] [--monthly-volume N] [--paid --cap USD]
   compound eval <task_key> --candidate M --reference M [--reason "..."]   (CI gate: exit 0 meets / 1 regresses / 2 undecidable)
   compound judge calibrate <task_key> [--paid --cap USD]
   compound judge grade <task_key> <experiment_id> [--paid --cap USD]
   compound optimize <task_key> --candidate M [--reflection M] [--max-calls N] [--force]
   compound telemetry [task_key] [--json] [--db PATH]
   compound view [gate|case|trace|experiment] [id] [--full] [--db PATH]   (read-only browser; overview if no args)
-  compound view compare [task_key] [--priority quality=0.5,cost=0.3,latency=0.2] [--db PATH]
+  compound view compare [task_key] [--priority quality=0.5,cost=0.3,latency=0.2] [--monthly-volume N] [--db PATH]
                                                                          (cost vs score per model; --priority adds a weighted
                                                                           ranking + Pareto frontier; axes: quality, cost,
                                                                           latency, throughput; per-task default via

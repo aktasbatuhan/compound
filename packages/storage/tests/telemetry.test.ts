@@ -5,10 +5,13 @@ import {
   createDatabase,
   createExperiment,
   getCachedCompletion,
+  insertTraces,
   migrate,
   recordCaseResults,
+  taskTrafficVolume,
   telemetryRollup,
 } from "../src/index";
+import { newBatch, recordFromFixture } from "./helpers";
 
 let db: CompoundDatabase;
 
@@ -35,6 +38,56 @@ interface SeedCall {
   /** Provider-reported cached prompt tokens; omit to model an UNREPORTING provider (#34). */
   cachedTokens?: number;
 }
+
+describe("taskTrafficVolume", () => {
+  test("returns null when a task has no ingested traffic basis", () => {
+    expect(taskTrafficVolume(db, "support")).toBeNull();
+  });
+
+  test("derives a monthly trace rate from the task's observed timestamp window", () => {
+    const batch = newBatch(db);
+    insertTraces(db, batch.id, [
+      recordFromFixture("eval-ready-full.json", (trace) => {
+        trace.trace_id = "traffic-1";
+        trace.task_key = "support";
+        trace.started_at = "2026-07-01T00:00:00.000Z";
+      }),
+      recordFromFixture("eval-ready-minimal.json", (trace) => {
+        trace.trace_id = "traffic-2";
+        trace.task_key = "support";
+        trace.started_at = "2026-07-11T00:00:00.000Z";
+      }),
+      recordFromFixture("diagnostic-missing-focal.json", (trace) => {
+        trace.trace_id = "other-task";
+        trace.task_key = "billing";
+        trace.started_at = "2026-07-05T00:00:00.000Z";
+      }),
+    ]);
+
+    const traffic = taskTrafficVolume(db, "support");
+    expect(traffic?.traceCount).toBe(2);
+    expect(traffic?.observedSpanDays).toBe(10);
+    expect(traffic?.rateWindowDays).toBe(10);
+    expect(traffic?.tracesPerDay).toBeCloseTo(0.2, 10);
+    expect(traffic?.projectedMonthlyTraces).toBeCloseTo(6.0875, 10);
+  });
+
+  test("uses a labelled one-day minimum for a sub-day sample", () => {
+    const batch = newBatch(db);
+    insertTraces(db, batch.id, [
+      recordFromFixture("eval-ready-full.json", (trace) => {
+        trace.trace_id = "one-trace";
+        trace.task_key = "support";
+        trace.started_at = "2026-07-01T12:00:00.000Z";
+      }),
+    ]);
+
+    const traffic = taskTrafficVolume(db, "support");
+    expect(traffic?.observedSpanDays).toBe(0);
+    expect(traffic?.rateWindowDays).toBe(1);
+    expect(traffic?.projectedMonthlyTraces).toBeCloseTo(30.4375, 10);
+  });
+});
 
 /** One experiment whose graded cases each point at a cached completion. */
 function seedExperiment(taskKey: string, model: string, provider: string, calls: SeedCall[]): void {

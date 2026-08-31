@@ -14,6 +14,7 @@ import {
   recordDecisionCohort,
   recordGateResult,
   recordOptimizationRun,
+  recordSpend,
   totalSpendUsd,
 } from "@compound/storage";
 import { type CommandEnvironment, parseArgs, runCommand } from "../src/commands";
@@ -510,6 +511,24 @@ describe("gate", () => {
     );
     expect(result.exitCode).toBe(2);
     expect(output()).toContain("--reason is required");
+  });
+
+  test("rejects a missing or non-positive monthly volume", async () => {
+    const { env, output } = testEnvironment();
+    const base = [
+      "gate",
+      "support",
+      "--candidate",
+      "zai-org/GLM-5.2-FP8",
+      "--reference",
+      "anthropic/claude-opus-4.8",
+      "--reason",
+      "checking projected savings",
+    ];
+    expect((await runCommand([...base, "--monthly-volume"], env)).exitCode).toBe(2);
+    expect((await runCommand([...base, "--monthly-volume", "0"], env)).exitCode).toBe(2);
+    expect(output()).toContain("--monthly-volume");
+    expect(output()).toContain("positive number");
   });
 
   test("refuses --max on a paid gate — a decision must cover the whole sealed set", async () => {
@@ -1166,7 +1185,11 @@ describe("view", () => {
    * reference that PASSES it (each with a stored completion), plus a gate that
    * decided between them — enough to exercise every subview.
    */
-  function seedScenario(db: ReturnType<typeof createDatabase>) {
+  function seedScenario(
+    db: ReturnType<typeof createDatabase>,
+    outcome: "meets_gate" | "insufficient_data" = "insufficient_data",
+  ) {
+    const candidatePassed = outcome === "meets_gate";
     insertCases(db, [
       {
         caseId: "case:abc123def456",
@@ -1189,6 +1212,7 @@ describe("view", () => {
       model: "cand-model",
       params: {},
       output: { role: "assistant", content: "Could you give me the transaction ID?" },
+      usage: { input_tokens: 100, output_tokens: 10 },
       costUsd: 0.001,
     });
     cacheCompletion(db, {
@@ -1201,6 +1225,7 @@ describe("view", () => {
         content: null,
         tool_calls: [{ id: "c", name: "dispute_charge", arguments: {} }],
       },
+      usage: { input_tokens: 100, output_tokens: 10 },
       costUsd: 0.01,
     });
     const cand = createExperiment(db, {
@@ -1221,7 +1246,7 @@ describe("view", () => {
       {
         caseId: "case:abc123def456",
         status: "graded",
-        passed: false,
+        passed: candidatePassed,
         completionFingerprint: "fp-cand",
       },
     ]);
@@ -1233,6 +1258,8 @@ describe("view", () => {
         completionFingerprint: "fp-ref",
       },
     ]);
+    recordSpend(db, { fingerprint: "fp-cand", costUsd: 0.001, experimentId: cand.id });
+    recordSpend(db, { fingerprint: "fp-ref", costUsd: 0.01, experimentId: ref.id });
     const spec = createGateSpec(db, {
       specHash: "spec-1",
       taskKey: "finance.dispute_charge",
@@ -1252,12 +1279,12 @@ describe("view", () => {
       gateSpecId: spec.id,
       candidateExperimentId: cand.id,
       referenceExperimentId: ref.id,
-      outcome: "insufficient_data",
-      delta: -0.08,
-      ciLo: -0.2,
-      ciHi: 0,
+      outcome,
+      delta: outcome === "meets_gate" ? 0 : -0.08,
+      ciLo: outcome === "meets_gate" ? -0.01 : -0.2,
+      ciHi: outcome === "meets_gate" ? 0.01 : 0,
       n: 25,
-      candidateRate: 0.92,
+      candidateRate: outcome === "meets_gate" ? 1 : 0.92,
       referenceRate: 1,
       judgeAbstainedFraction: 0,
     });
@@ -1286,6 +1313,54 @@ describe("view", () => {
     expect(output()).toContain("candidate FAIL / reference PASS");
   });
 
+  test("a MEETS GATE detail projects measured savings from an explicit monthly volume", async () => {
+    const { env, output, db } = testEnvironment();
+    const { gateId } = seedScenario(db, "meets_gate");
+    const result = await runCommand(
+      ["view", "gate", gateId.slice(0, 8), "--monthly-volume", "1000"],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("cost basis:   reference $0.01000 - candidate $0.00100");
+    expect(output()).toContain("projected savings: $9.00/month, $108.00/year");
+    expect(output()).toContain("1,000 traces/month from --monthly-volume");
+    expect(output()).toContain(
+      "measured spend: $0.00100 candidate + $0.01000 reference = $0.01100 in spend_records",
+    );
+  });
+
+  test("a MEETS GATE detail does not project dollars without a traffic basis", async () => {
+    const { env, output, db } = testEnvironment();
+    const { gateId } = seedScenario(db, "meets_gate");
+    const result = await runCommand(["view", "gate", gateId.slice(0, 8)], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).not.toContain("projected savings:");
+    expect(output()).toContain("no ingested traces for this task");
+  });
+
+  test("a MEETS GATE detail derives traffic from ingested trace timestamps", async () => {
+    const { env, output, db } = testEnvironment();
+    const traffic = JSON.parse(EXPORT_JSON) as Array<Record<string, unknown>>;
+    const record = traffic[0] as {
+      id: string;
+      metadata: { task_key: string };
+      observations: Array<{ traceId: string }>;
+    };
+    record.id = "traffic-finance-1";
+    record.metadata.task_key = "finance.dispute_charge";
+    (record.observations[0] as { traceId: string }).traceId = record.id;
+    await withTempFile(JSON.stringify(traffic), async (path) => {
+      await runCommand(["import", path, "--config", "compound.yaml"], env);
+    });
+    const { gateId } = seedScenario(db, "meets_gate");
+
+    const result = await runCommand(["view", "gate", gateId.slice(0, 8)], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("projected savings: $0.27/month, $3.29/year");
+    expect(output()).toContain("1 ingested trace");
+    expect(output()).toContain("one-day minimum");
+  });
+
   test("case detail shows the input and each model's output side by side", async () => {
     const { env, output, db } = testEnvironment();
     seedScenario(db);
@@ -1311,7 +1386,7 @@ describe("view", () => {
 describe("view compare", () => {
   // Reuses the same shape as the `view` scenario: a candidate that fails and a
   // reference that passes, each graded with a priced completion.
-  function seedTwoModels(db: ReturnType<typeof createDatabase>) {
+  function seedTwoModels(db: ReturnType<typeof createDatabase>, withMeetingGate = false) {
     insertCases(db, [
       {
         caseId: "case:cmp1",
@@ -1330,6 +1405,7 @@ describe("view compare", () => {
       model: "cand",
       params: {},
       output: { role: "assistant", content: "hedge" },
+      usage: { input_tokens: 100, output_tokens: 10 },
       costUsd: 0.001,
     });
     cacheCompletion(db, {
@@ -1374,6 +1450,38 @@ describe("view compare", () => {
         completionFingerprint: "fp-r",
       },
     ]);
+    if (withMeetingGate) {
+      recordSpend(db, { fingerprint: "fp-c", costUsd: 0.001, experimentId: cand.id });
+      recordSpend(db, { fingerprint: "fp-r", costUsd: 0.01, experimentId: ref.id });
+      const spec = createGateSpec(db, {
+        specHash: "compare-savings-spec",
+        taskKey: "finance.dispute_charge",
+        candidateModel: "cand",
+        referenceModel: "ref",
+        metric: "pass_rate",
+        mode: "non_inferiority",
+        margin: 0.05,
+        confidence: 0.95,
+        minCases: 1,
+        judgeAbstainMax: 0,
+        candidateProvider: "doubleword",
+        referenceProvider: "openrouter",
+        firewallReason: "compare savings test",
+      });
+      recordGateResult(db, {
+        gateSpecId: spec.id,
+        candidateExperimentId: cand.id,
+        referenceExperimentId: ref.id,
+        outcome: "meets_gate",
+        delta: 0,
+        ciLo: -0.01,
+        ciHi: 0.01,
+        n: 1,
+        candidateRate: 1,
+        referenceRate: 1,
+        judgeAbstainedFraction: 0,
+      });
+    }
   }
 
   test("aggregated ranks best-first with pass% and per-case cost", async () => {
@@ -1402,6 +1510,36 @@ describe("view compare", () => {
     expect(result.exitCode).toBe(0);
     expect(output()).toContain("cost / score — finance.dispute_charge");
     expect(output()).toContain("decision_test");
+  });
+
+  test("per-task compare surfaces the latest MEETS GATE savings projection", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoModels(db, true);
+    const result = await runCommand(
+      ["view", "compare", "finance.dispute_charge", "--monthly-volume", "2000"],
+      env,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(output()).toContain("projected cost impact from latest MEETS GATE decisions");
+    expect(output()).toContain("cand vs ref");
+    expect(output()).toContain("projected savings: $18.00/month, $216.00/year");
+  });
+
+  test("per-task compare omits a projection when no traffic volume exists", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoModels(db, true);
+    const result = await runCommand(["view", "compare", "finance.dispute_charge"], env);
+    expect(result.exitCode).toBe(0);
+    expect(output()).not.toContain("projected savings:");
+    expect(output()).not.toContain("projected cost impact from latest MEETS GATE decisions");
+  });
+
+  test("all-task compare refuses one manual volume for unrelated tasks", async () => {
+    const { env, output, db } = testEnvironment();
+    seedTwoModels(db);
+    const result = await runCommand(["view", "compare", "--monthly-volume", "2000"], env);
+    expect(result.exitCode).toBe(2);
+    expect(output()).toContain("requires one task_key");
   });
 
   test("reports cleanly when a task has no graded experiments", async () => {
