@@ -39,6 +39,7 @@ from compound.call_ledger import (
     MAX_CAPTURE_BYTES,
     CallLedger,
     build_record,
+    call_timeout_s,
     ledger_path_from_env,
 )
 from compound.providers_registry import ProviderSpec, parse_provider
@@ -281,6 +282,7 @@ class _Handler(BaseHTTPRequestHandler):
                 parsed = None  # an opaque body forwarded untouched
             sent_body = parsed if isinstance(parsed, dict) else None
         started = time.monotonic()
+        hang_after = call_timeout_s()
         captured = bytearray()
         truncated = False
         status: int | None = None
@@ -305,6 +307,7 @@ class _Handler(BaseHTTPRequestHandler):
                 ctype = upstream.headers.get("Content-Type", "application/json")
                 self.send_header("Content-Type", ctype)
                 self.end_headers()
+                deadline = None if hang_after is None else started + hang_after
                 while True:
                     chunk = upstream.read(8192)
                     if not chunk:
@@ -313,6 +316,13 @@ class _Handler(BaseHTTPRequestHandler):
                     self.wfile.flush()
                     if ledger:
                         capture(chunk)
+                    if deadline is not None and time.monotonic() > deadline:
+                        # A host that streams keep-alive padding indefinitely
+                        # without ever completing will otherwise stall the whole
+                        # run. Stop reading and record it as a hang rather than
+                        # waiting on a response that is not coming.
+                        error = "hang_timeout"
+                        break
         except urlerror.HTTPError as exc:
             payload = exc.read()
             status, error = exc.code, f"http_{exc.code}"

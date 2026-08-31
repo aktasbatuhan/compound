@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib import error as urlerror
 from urllib import request as urlrequest
@@ -10,7 +11,6 @@ import pytest
 
 from compound.orproxy import inject, serve_provider, target_url
 from compound.providers_registry import ProviderSpec, parse_provider
-
 
 PIN = {"only": ["deepinfra"], "allow_fallbacks": False, "require_parameters": True}
 
@@ -413,3 +413,61 @@ def test_inject_leaves_doubleword_usage_untouched():
         service_tier="flex",
     ))
     assert "usage" not in out
+
+
+class _HangingUpstream(BaseHTTPRequestHandler):
+    """Streams keep-alive padding forever and never completes, as observed live."""
+
+    def log_message(self, *a):  # noqa: D401
+        return
+
+    def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length") or 0)
+        self.rfile.read(length)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        try:
+            for _ in range(2000):
+                self.wfile.write(b"\n         \n")
+                self.wfile.flush()
+                time.sleep(0.01)
+        except Exception:  # noqa: BLE001 — client hung up, which is the point
+            pass
+
+
+def test_proxy_gives_up_on_a_call_that_never_completes(monkeypatch, tmp_path):
+    """A host streaming padding forever must not stall the whole run."""
+    import compound.orproxy as orproxy
+
+    ledger_path = tmp_path / "calls.jsonl"
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sekret")
+    monkeypatch.setenv("COMPOUND_CALL_LEDGER", str(ledger_path))
+    monkeypatch.setenv("COMPOUND_CALL_TIMEOUT", "1")  # 1s ceiling for the test
+    orproxy._LEDGERS.clear()
+
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), _HangingUpstream)
+    threading.Thread(target=upstream.serve_forever, daemon=True).start()
+    spec = ProviderSpec(
+        token="openrouter/deepinfra", kind="openrouter",
+        base_url=f"http://127.0.0.1:{upstream.server_address[1]}/v1",
+        api_key_env="OPENROUTER_API_KEY", upstream="deepinfra",
+    )
+    try:
+        with serve_provider(spec) as base:
+            req = urlrequest.Request(
+                base + "/chat/completions",
+                data=json.dumps({"model": "m", "messages": []}).encode(),
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            started = time.monotonic()
+            with urlrequest.urlopen(req, timeout=30) as resp:
+                resp.read()
+            elapsed = time.monotonic() - started
+    finally:
+        upstream.shutdown()
+
+    assert elapsed < 20  # cut off, not waited out
+    row = json.loads(ledger_path.read_text().splitlines()[0])
+    assert row["error"] == "hang_timeout"
+    assert row["abandoned"] is True

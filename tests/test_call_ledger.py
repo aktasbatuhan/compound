@@ -14,8 +14,10 @@ import threading
 import pytest
 
 from compound.call_ledger import (
+    DEFAULT_CALL_TIMEOUT_S,
     CallLedger,
     build_record,
+    call_timeout_s,
     format_summary,
     load_records,
     normalize_host,
@@ -385,3 +387,22 @@ class TestWireSizes:
         assert record["abandoned"] is True
         assert record["request_bytes"] == 180000
         assert record["response_bytes"] == 5
+
+
+class TestCallTimeout:
+    def test_default_ceiling(self, monkeypatch):
+        monkeypatch.delenv("COMPOUND_CALL_TIMEOUT", raising=False)
+        assert call_timeout_s() == DEFAULT_CALL_TIMEOUT_S
+
+    def test_override(self, monkeypatch):
+        monkeypatch.setenv("COMPOUND_CALL_TIMEOUT", "45")
+        assert call_timeout_s() == 45.0
+
+    def test_zero_disables_the_ceiling(self, monkeypatch):
+        # Some runs would rather wait than lose a slow but genuine completion.
+        monkeypatch.setenv("COMPOUND_CALL_TIMEOUT", "0")
+        assert call_timeout_s() is None
+
+    def test_garbage_falls_back_to_the_default(self, monkeypatch):
+        monkeypatch.setenv("COMPOUND_CALL_TIMEOUT", "soon")
+        assert call_timeout_s() == DEFAULT_CALL_TIMEOUT_S
