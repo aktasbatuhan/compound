@@ -347,3 +347,18 @@ class TestPerTrialResults:
     def test_load_trial_results_reads_each_trial_directory(self, tmp_path):
         results = load_trial_results(self._job(tmp_path, []), "job-1")
         assert sorted(r["task_name"] for r in results) == ["a", "b"]
+
+
+class TestAgentKwargs:
+    def test_max_turns_reaches_the_agent_constructor(self):
+        # Equal turns, not equal wall clock: a clock cap hands the faster host
+        # more turns and records a slow host's truncation as a failure.
+        got = cmd(agent_kwargs={"max_turns": "30"})
+        assert got[got.index("--agent-kwarg") + 1] == "max_turns=30"
+
+    def test_multiple_kwargs_repeat_the_flag(self):
+        got = cmd(agent_kwargs={"max_turns": "30", "max_thinking_tokens": "2048"})
+        assert got.count("--agent-kwarg") == 2
+
+    def test_no_kwargs_adds_nothing(self):
+        assert "--agent-kwarg" not in cmd()

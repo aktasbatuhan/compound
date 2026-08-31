@@ -138,6 +138,7 @@ def sweep_harbor(
     n_concurrent: int = 4,
     timeout_multiplier: float | None = None,
     agent_timeout_multiplier: float | None = None,
+    agent_kwargs: dict[str, str] | None = None,
     env_type: str = "docker",
     ledger_dir: Path | None = None,
 ) -> dict[str, dict]:
@@ -180,6 +181,7 @@ def sweep_harbor(
             n_concurrent=n_concurrent,
             timeout_multiplier=timeout_multiplier,
             agent_timeout_multiplier=agent_timeout_multiplier,
+            agent_kwargs=agent_kwargs,
             env_type=env_type,
             proxied=True,
         )

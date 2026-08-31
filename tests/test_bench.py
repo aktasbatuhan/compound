@@ -123,3 +123,20 @@ def test_apply_tb_env_without_the_flag_leaves_recording_off(monkeypatch) -> None
     monkeypatch.delenv("COMPOUND_CALL_LEDGER", raising=False)
     _apply_tb_env(_tb_args())
     assert "COMPOUND_CALL_LEDGER" not in os.environ
+
+
+def test_parse_agent_kwargs_splits_pairs() -> None:
+    from compound.bench import _parse_agent_kwargs
+
+    assert _parse_agent_kwargs(["max_turns=30", "foo=a=b"]) == {
+        "max_turns": "30",
+        "foo": "a=b",  # only the first '=' separates
+    }
+    assert _parse_agent_kwargs(None) == {}
+
+
+def test_parse_agent_kwargs_rejects_a_malformed_pair() -> None:
+    from compound.bench import _parse_agent_kwargs
+
+    with pytest.raises(SystemExit, match="KEY=VALUE"):
+        _parse_agent_kwargs(["max_turns"])

@@ -15,6 +15,11 @@ rather than reimplements them:
   (``EnvironmentStartTimeoutError``). Capping only how long the agent may work
   is ``agent_timeout_multiplier``, which leaves build and verification alone.
 * ``-k`` runs repeated attempts per task, replacing our per-trial subdirectories.
+* ``--agent-kwarg`` reaches the agent's own constructor, which is how a run caps
+  terminus by ``max_turns``. For a cross-host comparison that is the control
+  worth having: an equal wall clock hands the faster host more turns and turns a
+  slow host into a failure it never earned, whereas an equal turn budget gives
+  every host the same work and lets duration be measured instead of truncated.
 * ``-n`` plus a sandbox backend runs trials concurrently, which is what turns a
   full provider matrix from an overnight VM fan-out into a single job.
 
@@ -79,6 +84,7 @@ def build_command(
     agent_timeout_multiplier: float | None = None,
     env_type: str = "docker",
     allow_agent_hosts: list[str] | None = None,
+    agent_kwargs: dict[str, str] | None = None,
     proxied: bool = False,
     extra_args: list[str] | None = None,
 ) -> list[str]:
@@ -123,6 +129,8 @@ def build_command(
         command += ["--timeout-multiplier", str(timeout_multiplier)]
     if agent_timeout_multiplier is not None and agent_timeout_multiplier != 1.0:
         command += ["--agent-timeout-multiplier", str(agent_timeout_multiplier)]
+    for key, value in (agent_kwargs or {}).items():
+        command += ["--agent-kwarg", f"{key}={value}"]
     for host in allow_agent_hosts or []:
         command += ["--allow-agent-host", host]
     command += extra_args or []
