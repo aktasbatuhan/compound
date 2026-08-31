@@ -255,6 +255,26 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def load_trial_results(jobs_dir: str | Path, job_name: str) -> list[dict[str, Any]]:
+    """Every trial's own ``result.json`` under a job directory.
+
+    Harbor writes each trial's result into its own subdirectory and does not
+    always aggregate them into the job-level ``trial_results``: a finished job
+    can carry an empty list there while every trial's outcome sits on disk.
+    Reading only the job level therefore reported a completed arm as having run
+    nothing, so the trial files are the source of truth and the job level is
+    used only as a fallback.
+    """
+    root = Path(jobs_dir) / job_name
+    results: list[dict[str, Any]] = []
+    for path in sorted(root.glob("*/result.json")):
+        try:
+            results.append(json.loads(path.read_text()))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return results
+
+
 def load_job_summary(jobs_dir: str | Path, job_name: str) -> dict[str, Any]:
     """Read a finished job and summarize it, keeping Harbor's own totals.
 
@@ -267,7 +287,8 @@ def load_job_summary(jobs_dir: str | Path, job_name: str) -> dict[str, Any]:
     if not path.exists():
         raise SystemExit(f"error: no Harbor job result at {path}")
     job_result = json.loads(path.read_text())
-    rows = trial_rows(job_result)
+    trials = job_result.get("trial_results") or load_trial_results(jobs_dir, job_name)
+    rows = trial_rows({"trial_results": trials})
     stats = job_result.get("stats") or {}
     summary = summarize(rows)
     # A trial that died before producing a result is counted by Harbor but has
