@@ -28,6 +28,7 @@ import {
 import type { CommandEnvironment, CommandResult, ParsedArgs } from "./commands";
 import { DEFAULT_CONFIG_PATH, DEFAULT_DATABASE_PATH, decisionPowerLines } from "./commands";
 import { replayPolicyFromConfig } from "./experiment";
+import { parseMonthlyVolumeFlag, writeGateCostProjection } from "./savings";
 
 function stringFlag(flags: ParsedArgs["flags"], name: string): string | undefined {
   const value = flags[name];
@@ -105,8 +106,17 @@ export async function runGateCommand(
       `error: usage: compound ${command} <task_key> --candidate M --reference M --reason "..." ` +
         "[--margin 0.05] [--confidence 0.95] [--min-cases 20] [--metric pass_rate|mean_score] " +
         "[--mode non_inferiority|superiority] [--prompt-artifact <optimization_run_id>] " +
-        "[--provider P | --candidate-provider P --reference-provider P] [--force] [--paid --cap USD]",
+        "[--provider P | --candidate-provider P --reference-provider P] [--monthly-volume N] " +
+        "[--force] [--paid --cap USD]",
     );
+    return { exitCode: 2 };
+  }
+
+  let monthlyVolume: number | undefined;
+  try {
+    monthlyVolume = parseMonthlyVolumeFlag(args.flags["monthly-volume"]);
+  } catch (error) {
+    env.write(`error: ${error instanceof Error ? error.message : error}`);
     return { exitCode: 2 };
   }
 
@@ -420,6 +430,14 @@ export async function runGateCommand(
       env.write(
         `  margin:      ${(-margin * 100).toFixed(1)}pp (candidate may be this much worse)`,
       );
+    }
+    if (result.outcome === "meets_gate") {
+      writeGateCostProjection(db, env, {
+        taskKey,
+        candidateExperimentId: candidateRun.experimentId,
+        referenceExperimentId: referenceRun.experimentId,
+        ...(monthlyVolume !== undefined ? { monthlyVolume } : {}),
+      });
     }
     // Pre-spend power read (#24): on a preview, size what a paid decision on
     // this sealed set could actually detect at the declared confidence and

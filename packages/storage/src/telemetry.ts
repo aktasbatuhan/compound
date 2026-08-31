@@ -10,9 +10,69 @@
  * re-runs is still one measurement of the provider, so rows are deduplicated by
  * fingerprint within a group before aggregating.
  */
-import { eq } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import type { CompoundDatabase } from "./db";
-import { completions, experimentResults, experiments } from "./schema";
+import { completions, experimentResults, experiments, traces } from "./schema";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DAYS_PER_MONTH = 365.25 / 12;
+
+export interface TaskTrafficVolume {
+  /** Task traces persisted from production telemetry. */
+  traceCount: number;
+  firstStartedAt: Date;
+  lastStartedAt: Date;
+  /** Actual distance between the first and last trace timestamps. */
+  observedSpanDays: number;
+  /** Denominator used for the rate. Never shorter than one day. */
+  rateWindowDays: number;
+  tracesPerDay: number;
+  projectedMonthlyTraces: number;
+}
+
+/**
+ * Observed traffic for one task, extrapolated from the timestamps of every
+ * ingested trace assigned to it. A sub-day sample uses a one-day denominator:
+ * sparse or bursty imports must not become an enormous hourly run-rate. The
+ * caller is responsible for labelling that assumption next to any projection.
+ */
+export function taskTrafficVolume(
+  handle: CompoundDatabase,
+  taskKey: string,
+): TaskTrafficVolume | null {
+  const [row] = handle.db
+    .select({
+      traceCount: count(),
+      firstStartedAt: sql<number | null>`min(${traces.startedAt})`,
+      lastStartedAt: sql<number | null>`max(${traces.startedAt})`,
+    })
+    .from(traces)
+    .where(eq(traces.taskKey, taskKey))
+    .all();
+  if (
+    row === undefined ||
+    row.traceCount === 0 ||
+    row.firstStartedAt === null ||
+    row.lastStartedAt === null
+  ) {
+    return null;
+  }
+
+  const firstStartedAt = new Date(row.firstStartedAt);
+  const lastStartedAt = new Date(row.lastStartedAt);
+  const observedSpanDays = Math.max(0, (row.lastStartedAt - row.firstStartedAt) / DAY_MS);
+  const rateWindowDays = Math.max(1, observedSpanDays);
+  const tracesPerDay = row.traceCount / rateWindowDays;
+  return {
+    traceCount: row.traceCount,
+    firstStartedAt,
+    lastStartedAt,
+    observedSpanDays,
+    rateWindowDays,
+    tracesPerDay,
+    projectedMonthlyTraces: tracesPerDay * DAYS_PER_MONTH,
+  };
+}
 
 export interface TelemetryGroup {
   taskKey: string;

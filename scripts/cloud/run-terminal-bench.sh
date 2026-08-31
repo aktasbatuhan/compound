@@ -55,6 +55,17 @@ if [ ! -d .compound/sources/terminal-bench-core ]; then
 fi
 uv run python -m compound.bench prepare terminal_bench >/dev/null 2>&1 || true
 
+# Optional: multiply every task's agent time limit (COMPOUND_TB_TIMEOUT_MULT=3).
+# This deliberately deviates from official terminal-bench limits; runs made this
+# way measure capability-without-deadline and must be labeled as such, never
+# compared against official-limit numbers as if they were the same benchmark.
+# The CLI now owns the patch: `bench run terminal_bench` reads
+# COMPOUND_TB_TIMEOUT_MULT (exported below), scales each task.yaml idempotently,
+# and labels run_metadata.json. We only surface the setting here.
+if [ -n "${COMPOUND_TB_TIMEOUT_MULT:-}" ]; then
+  echo "== extended task agent time limits x$COMPOUND_TB_TIMEOUT_MULT (applied by the CLI, labeled non-official) =="
+fi
+
 echo "== running sweep: model=$MODEL providers=$PROVIDERS trials=${TB_TRIALS:-1} =="
 # Each behind its own pinning proxy. TB_TRIALS repeats the whole sweep into a
 # per-trial subdir (terminal-bench is high-variance, so multiple trials give a

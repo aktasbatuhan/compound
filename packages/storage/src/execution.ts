@@ -378,10 +378,15 @@ export interface ExperimentScoreCost {
   graded: number;
   passed: number;
   meanScore: number | null;
-  /** Sum of the cost of every case's completion (cached completions count at $0). */
+  /**
+   * Sum of each completion's stored unit cost. Cache reuse keeps the original
+   * measured unit cost here; actual spend for a rerun lives in spend_records.
+   */
   totalCostUsd: number;
   /** Cost averaged over the cases that have a completion. */
   meanCostUsd: number | null;
+  /** Completions whose provider reported no usage, so their stored cost is estimated. */
+  estimatedCostCount: number;
   /** Mean full-request latency (ms) over completions that recorded one; flex queue included. */
   meanLatencyMs: number | null;
   /** Completions that contributed a latency sample (for aggregating the mean). */
@@ -442,6 +447,7 @@ export function experimentScoreCost(
   let scoreN = 0;
   let totalCostUsd = 0;
   let costN = 0;
+  let estimatedCostCount = 0;
   let latencySum = 0;
   let latencyCount = 0;
   let tpsSum = 0;
@@ -465,6 +471,7 @@ export function experimentScoreCost(
     if (r.costUsd !== null) {
       totalCostUsd += r.costUsd;
       costN += 1;
+      if (r.usageJson === null) estimatedCostCount += 1;
     }
     const tokens = usageTokens(r.usageJson);
     totalInputTokens += tokens.input;
@@ -496,6 +503,7 @@ export function experimentScoreCost(
     meanScore: scoreN > 0 ? scoreSum / scoreN : null,
     totalCostUsd,
     meanCostUsd: costN > 0 ? totalCostUsd / costN : null,
+    estimatedCostCount,
     meanLatencyMs: latencyCount > 0 ? latencySum / latencyCount : null,
     latencyCount,
     meanTps: tpsCount > 0 ? tpsSum / tpsCount : null,

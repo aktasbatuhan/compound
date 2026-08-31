@@ -22,12 +22,18 @@ MACHINE="${GCP_MACHINE:-e2-standard-4}"
 MAX_DURATION="${GCP_MAX_DURATION:-14400s}"
 MODEL="${TB_MODEL:-deepseek/deepseek-v4-flash-0731}"
 DW_MODEL="${TB_DW_MODEL:-deepseek-ai/DeepSeek-V4-Flash-0731}"
-OR_PROVIDERS="${TB_OR_PROVIDERS:-openrouter/deepinfra/fp4,openrouter/ionstream/fp4,openrouter/deepseek/fp8,openrouter/digitalocean}"
+# No colon (like DW below): an explicit empty TB_OR_PROVIDERS skips the OR half,
+# so the two halves can run on two VMs in parallel.
+OR_PROVIDERS="${TB_OR_PROVIDERS-openrouter/deepinfra/fp4,openrouter/ionstream/fp4,openrouter/deepseek/fp8,openrouter/digitalocean}"
 # No colon: an explicit empty TB_DW_PROVIDERS skips the DW half; unset uses the
 # default. (With :- an empty value would fall through to the default.)
 DW_PROVIDERS="${TB_DW_PROVIDERS-doubleword/realtime,doubleword/flex}"
 TASKS="${TB_TASKS:-count-dataset-tokens,create-bucket,csv-to-parquet,extract-safely,fix-permissions,chess-best-move,conda-env-conflict-resolution,crack-7z-hash,crack-7z-hash.easy,crack-7z-hash.hard,cron-broken-network,decommissioning-service-with-sensitive-data,configure-git-webserver,git-multibranch}"
 LOCAL_OUT="${TB_LOCAL_OUT:-artifacts/tb-dsflash-cloud}"
+# VM-scoped scratch paths so two controllers (OR half + DW half) never clobber
+# each other's tarballs.
+SRC_TGZ="/tmp/compound-src-$VM.tgz"
+RESULTS_TGZ="/tmp/tb-results-$VM.tgz"
 
 # Pull keys from .env if not already in the environment.
 if [ -f .env ]; then set -a; . ./.env; set +a; fi
@@ -42,11 +48,11 @@ cleanup() {
   # and leaves silent partial data). The happy path already pulled and verified
   # the tarball; this is only for early/failed exits.
   echo "== copy-back on exit (best effort) =="
-  if [ ! -f /tmp/tb-results.tgz ]; then
+  if [ ! -f "$RESULTS_TGZ" ]; then
     gssh "cd /opt/compound && tar czf tb-results.tgz '$LOCAL_OUT' 2>/dev/null" 2>/dev/null || true
-    gcloud compute scp "$VM":/opt/compound/tb-results.tgz /tmp/tb-results.tgz \
+    gcloud compute scp "$VM":/opt/compound/tb-results.tgz "$RESULTS_TGZ" \
       --zone="$ZONE" --project="$PROJECT" 2>/dev/null \
-      && tar xzf /tmp/tb-results.tgz -C . 2>/dev/null || true
+      && tar xzf "$RESULTS_TGZ" -C . 2>/dev/null || true
   fi
   # If the detached sweep is still mid-run, this exit is the CONTROLLER dying,
   # not the run finishing. Leave the VM alone: it holds the only copy of the
@@ -98,10 +104,10 @@ for i in $(seq 1 40); do
 done
 
 echo "== shipping working tree (no push needed) =="
-tar czf /tmp/compound-src.tgz --exclude .git --exclude artifacts --exclude .venv \
+tar czf "$SRC_TGZ" --exclude .git --exclude artifacts --exclude .venv \
   --exclude .compound --exclude '__pycache__' --exclude node_modules \
   src scripts benchmarks tests pyproject.toml uv.lock compound.yaml README.md
-gcloud compute scp /tmp/compound-src.tgz "$VM":/opt/compound/ --zone="$ZONE" --project="$PROJECT"
+gcloud compute scp "$SRC_TGZ" "$VM":/opt/compound/compound-src.tgz --zone="$ZONE" --project="$PROJECT"
 gssh "cd /opt/compound && tar xzf compound-src.tgz && uv sync --extra dev >/tmp/uvsync.log 2>&1 || true"
 
 TB_CONCURRENT="${TB_CONCURRENT:-2}"
@@ -112,18 +118,33 @@ TB_TRIALS="${TB_TRIALS:-1}"
 # connection (network change, sleep), taking the whole run down via set -e +
 # the cleanup trap. Detached, the VM works autonomously; each poll is a fresh
 # short SSH, so any number of connection drops cost nothing.
+# COMPOUND_REASONING may be a comma list ("on,off"): the VM then runs the sweep
+# once per mode, each into $LOCAL_OUT/reasoning-<mode>, so one VM covers a full
+# mode pair for its provider/trial slice.
 RUNALL="$(mktemp)"
 {
   echo '#!/bin/bash'
   echo 'cd /opt/compound'
   echo 'rm -f RUN_DONE RUN_FAIL'
   echo '{'
-  echo "  OPENROUTER_API_KEY='$OPENROUTER_API_KEY' TB_CONCURRENT='$TB_CONCURRENT' TB_TRIALS='$TB_TRIALS' \\"
-  echo "    bash scripts/cloud/run-terminal-bench.sh '$MODEL' '$OR_PROVIDERS' '$TASKS' '$LOCAL_OUT' || touch RUN_FAIL"
-  if [ -n "$DW_PROVIDERS" ]; then
-    echo "  DOUBLEWORD_API_KEY='$DOUBLEWORD_API_KEY' TB_CONCURRENT='$TB_CONCURRENT' TB_TRIALS='$TB_TRIALS' \\"
-    echo "    bash scripts/cloud/run-terminal-bench.sh '$DW_MODEL' '$DW_PROVIDERS' '$TASKS' '$LOCAL_OUT' || touch RUN_FAIL"
+  MODES_RAW="${COMPOUND_REASONING:-}"
+  if [ "${MODES_RAW#*,}" != "$MODES_RAW" ]; then
+    MODE_LIST="${MODES_RAW//,/ }"; PER_MODE_DIR=1
+  else
+    MODE_LIST="${MODES_RAW:-_default_}"; PER_MODE_DIR=0
   fi
+  for RMODE in $MODE_LIST; do
+    [ "$RMODE" = "_default_" ] && RMODE=""
+    if [ "$PER_MODE_DIR" = "1" ]; then OUT_M="$LOCAL_OUT/reasoning-$RMODE"; else OUT_M="$LOCAL_OUT"; fi
+    if [ -n "$OR_PROVIDERS" ]; then
+      echo "  OPENROUTER_API_KEY='$OPENROUTER_API_KEY' TB_CONCURRENT='$TB_CONCURRENT' TB_TRIALS='$TB_TRIALS' COMPOUND_REASONING='$RMODE' COMPOUND_TB_TIMEOUT_MULT='${COMPOUND_TB_TIMEOUT_MULT:-}' COMPOUND_DW_CACHE='${COMPOUND_DW_CACHE:-}' \\"
+      echo "    bash scripts/cloud/run-terminal-bench.sh '$MODEL' '$OR_PROVIDERS' '$TASKS' '$OUT_M' || touch RUN_FAIL"
+    fi
+    if [ -n "$DW_PROVIDERS" ]; then
+      echo "  DOUBLEWORD_API_KEY='$DOUBLEWORD_API_KEY' TB_CONCURRENT='$TB_CONCURRENT' TB_TRIALS='$TB_TRIALS' COMPOUND_REASONING='$RMODE' COMPOUND_TB_TIMEOUT_MULT='${COMPOUND_TB_TIMEOUT_MULT:-}' COMPOUND_DW_CACHE='${COMPOUND_DW_CACHE:-}' \\"
+      echo "    bash scripts/cloud/run-terminal-bench.sh '$DW_MODEL' '$DW_PROVIDERS' '$TASKS' '$OUT_M' || touch RUN_FAIL"
+    fi
+  done
   echo '} > /opt/compound/run.log 2>&1'
   echo "tar czf /opt/compound/tb-results.tgz -C /opt/compound '$LOCAL_OUT' >> /opt/compound/run.log 2>&1"
   echo 'touch RUN_DONE'
@@ -156,7 +177,7 @@ echo "== pulling results tarball back =="
 mkdir -p "$(dirname "$LOCAL_OUT")"
 PULLED=""
 for i in $(seq 1 10); do
-  if gcloud compute scp "$VM":/opt/compound/tb-results.tgz /tmp/tb-results.tgz \
+  if gcloud compute scp "$VM":/opt/compound/tb-results.tgz "$RESULTS_TGZ" \
       --zone="$ZONE" --project="$PROJECT"; then PULLED=1; break; fi
   echo "scp attempt $i/10 failed; retrying in 30s"; sleep 30
 done
@@ -166,14 +187,14 @@ if [ -z "$PULLED" ]; then
   trap - EXIT   # do NOT delete the VM: it still holds the only copy
   exit 1
 fi
-GOT=$(tar tzf /tmp/tb-results.tgz | grep -c 'results\.json$' || true)
+GOT=$(tar tzf "$RESULTS_TGZ" | grep -c 'results\.json$' || true)
 echo "== tarball verified: $GOT results.json inside =="
 if [ "$GOT" -lt 1 ]; then
   echo "FATAL: tarball has no results; VM left alive for manual inspection."
   trap - EXIT
   exit 1
 fi
-tar xzf /tmp/tb-results.tgz -C .   # tarball paths already start with $LOCAL_OUT
+tar xzf "$RESULTS_TGZ" -C .   # tarball paths already start with $LOCAL_OUT
 
 echo "== done; cleanup trap will delete the VM =="
 echo "then report: uv run python -m compound.tb_report $LOCAL_OUT --prices deepinfra-fp4=0.14,0.28"

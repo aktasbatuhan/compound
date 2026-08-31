@@ -310,6 +310,7 @@ def _run_terminal_bench(args: argparse.Namespace, case_ids: list[str]) -> int:
 
     print(f"terminal_bench: {len(case_ids)} task(s), model {args.model}")
     print("harness: official terminal-bench via uvx (Docker required)")
+    print(_tb_pin_line())
     if not args.go:
         print("\ndry run (no spend). Add --go to execute; agentic episodes bill per step.")
         return 0
@@ -371,6 +372,8 @@ def _run_sweep(args: argparse.Namespace, case_ids: list[str]) -> int:
     )
     for line in provider_sweep.plan(specs, args.model):
         print(line)
+    if args.benchmark == "terminal_bench":
+        print(_tb_pin_line())
     if not args.go:
         print("\ndry run (no spend). Add --go to execute; each host bills at its own rate.")
         return 0
@@ -447,6 +450,77 @@ def _manifest_cases(args: argparse.Namespace, bench: Benchmark) -> list[dict]:
     return _load_cases(bench)
 
 
+def cmd_serving(args: argparse.Namespace) -> int:
+    """Serving-metrics harness: TTFT / decode TPS / cost per host per reasoning mode."""
+    from compound import serving_metrics as sm
+    from compound.providers_registry import parse_providers
+
+    specs = parse_providers(args.providers, providers_config=_load_providers_config())
+    shapes = sm.load_shapes(Path(args.shapes))
+    try:
+        for spec in specs:
+            sm.model_for(spec, args.model_or, args.model)  # fail fast on a missing model
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    _require_keys({s.required_key_env() for s in specs})
+    cells = len(specs) * len(shapes) * len(sm.MODES) * args.reps * args.rounds
+    print(
+        f"serving: {len(specs)} route(s) x {len(shapes)} shape(s) x {len(sm.MODES)} mode(s) "
+        f"x {args.reps} rep(s) x {args.rounds} round(s) = {cells} calls"
+    )
+    out = sm.run_serving(
+        specs,
+        args.model_or,
+        args.model,
+        shapes,
+        out_dir=Path(args.out),
+        rounds=args.rounds,
+        interval=args.interval,
+        reps=args.reps,
+    )
+    print(f"results -> {out}")
+    return 0
+
+
+def _apply_tb_env(args: argparse.Namespace) -> None:
+    """Thread the terminal_bench pinning flags into the env the proxy reads.
+
+    The pinning proxy and adapter read ``COMPOUND_REASONING`` /
+    ``COMPOUND_DW_CACHE`` / ``COMPOUND_TB_TIMEOUT_MULT`` at request time, so a
+    flag takes effect by setting its env var in this process before either the
+    single-host or the sweep path is dispatched. Precedence per issue:
+
+    * ``--reasoning`` wins over a pre-set ``COMPOUND_REASONING``; ``default``
+      clears it so nothing is injected. Omitted, the env var is left untouched.
+    * ``--cache-optin`` sets ``COMPOUND_DW_CACHE``; an existing value stays on.
+    * ``--tb-timeout-mult`` sets ``COMPOUND_TB_TIMEOUT_MULT`` only when it is not
+      already set, so a shell-exported multiplier wins over the flag.
+    """
+    import os
+
+    if args.reasoning is not None:
+        if args.reasoning == "default":
+            os.environ.pop("COMPOUND_REASONING", None)
+        else:
+            os.environ["COMPOUND_REASONING"] = args.reasoning
+    if args.cache_optin:
+        os.environ["COMPOUND_DW_CACHE"] = "1"
+    if args.tb_timeout_mult is not None and "COMPOUND_TB_TIMEOUT_MULT" not in os.environ:
+        os.environ["COMPOUND_TB_TIMEOUT_MULT"] = str(args.tb_timeout_mult)
+
+
+def _tb_pin_line() -> str:
+    """One line naming the effective reasoning / cache / timeout pinning."""
+    import os
+
+    reasoning = os.getenv("COMPOUND_REASONING", "").lower()
+    reasoning = reasoning if reasoning in ("on", "off") else "default"
+    cache = os.getenv("COMPOUND_DW_CACHE", "").lower() in ("1", "true", "on")
+    mult = os.getenv("COMPOUND_TB_TIMEOUT_MULT", "").strip() or "1"
+    extended = " (extended limits, non-official)" if mult not in ("", "1", "1.0") else ""
+    return f"pinning: reasoning={reasoning} cache_optin={cache} timeout_mult={mult}{extended}"
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     bench = BENCHMARKS[args.benchmark]
     explicit = args.tasks.split(",") if args.tasks else None
@@ -458,6 +532,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     if not case_ids:
         raise SystemExit("error: selection matches no cases")
+    if args.benchmark == "terminal_bench":
+        # Set before dispatch so both the single-host path and the provider
+        # sweep (both proxied in-process) see the same pinning.
+        _apply_tb_env(args)
     if args.providers:
         return _run_sweep(args, case_ids)
     if args.benchmark == "tau2":
@@ -495,6 +573,40 @@ def main() -> int:
     tasks.add_argument("--partition", help="filter to one partition")
     tasks.add_argument("--contains", help="case-insensitive substring filter")
 
+    serving = sub.add_parser(
+        "serving",
+        help="serving-metrics harness: TTFT/decode/cost per host per reasoning mode",
+    )
+    serving.add_argument(
+        "--providers",
+        required=True,
+        help="comma-separated provider tokens, e.g. "
+        "openrouter/deepinfra,doubleword/flex,openrouter/auto",
+    )
+    serving.add_argument(
+        "--shapes",
+        required=True,
+        help="JSON file mapping name -> {messages, response_format}",
+    )
+    serving.add_argument(
+        "--model-or", dest="model_or", help="model slug for OpenRouter routes"
+    )
+    serving.add_argument("--model", help="model slug for Doubleword/direct routes")
+    serving.add_argument(
+        "--rounds", type=int, default=1, help="scheduled rounds (time-of-day variance)"
+    )
+    serving.add_argument(
+        "--interval", type=float, default=3600.0, help="seconds between rounds"
+    )
+    serving.add_argument(
+        "--reps", type=int, default=2, help="repetitions per (route, mode, shape) cell"
+    )
+    serving.add_argument(
+        "--out",
+        default="artifacts/bench/serving-metrics",
+        help="output dir for results.jsonl",
+    )
+
     run = sub.add_parser("run", help="run a task subset (dry run unless --go)")
     run.add_argument("benchmark", choices=sorted(BENCHMARKS))
     run.add_argument("--model", required=True, help="model id as the provider knows it")
@@ -525,6 +637,29 @@ def main() -> int:
     # terminal_bench delegation
     run.add_argument("--tb-agent", help="terminal_bench: harness agent (default terminus)")
     run.add_argument("--tb-concurrent", type=int, default=2, help="terminal_bench: tasks per host")
+    run.add_argument(
+        "--reasoning",
+        choices=("on", "off", "default"),
+        default=None,
+        help="terminal_bench: pin the model's reasoning mode via the proxy "
+        "(on/off), or 'default' to inject nothing. Given, the flag wins over a "
+        "pre-set COMPOUND_REASONING; omitted, that env var is honored.",
+    )
+    run.add_argument(
+        "--cache-optin",
+        action="store_true",
+        help="terminal_bench: inject explicit prompt-cache markers for "
+        "explicit_marker providers (e.g. doubleword). COMPOUND_DW_CACHE still "
+        "forces it on at the harness level.",
+    )
+    run.add_argument(
+        "--tb-timeout-mult",
+        type=float,
+        default=None,
+        help="terminal_bench: multiply every task's max_agent_timeout_sec by N "
+        "(extended-limits mode; results are labeled non-official). A pre-set "
+        "COMPOUND_TB_TIMEOUT_MULT wins over this flag.",
+    )
 
     args = parser.parse_args()
     if args.command == "list":
@@ -535,6 +670,8 @@ def main() -> int:
         return cmd_providers(args.model, args.as_json)
     if args.command == "tasks":
         return cmd_tasks(args.benchmark, args.partition, args.contains)
+    if args.command == "serving":
+        return cmd_serving(args)
     return cmd_run(args)
 
 

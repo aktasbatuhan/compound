@@ -107,11 +107,64 @@ def inject(body: dict[str, Any], spec: ProviderSpec) -> dict[str, Any]:
     OpenRouter ``provider`` and ``service_tier`` are set to the spec's values;
     an existing ``provider`` block from the caller is overridden so pinning is
     never silently defeated by a harness that sets its own routing.
+
+    On cache opt-in, a host whose :attr:`ProviderSpec.cache_strategy` is
+    ``"explicit_marker"`` (Doubleword by default) has the final message of every
+    request marked with an Anthropic-style ``cache_control`` block. That host's
+    prompt cache is explicit opt-in, so a stock OpenAI client re-bills the full
+    growing transcript every agent turn; the OpenRouter majors (``"implicit"``)
+    cache the same prefixes on their own and need no marker. Marking the last
+    message caches the whole conversation prefix, which the next turn reads.
+
+    The opt-in signal is :func:`cache_optin_enabled` (the ``--cache-optin`` CLI
+    flag threads through the ``COMPOUND_DW_CACHE`` env var), so the injection is
+    driven by the provider's declared strategy, never by a hardcoded host name.
     """
     merged = dict(body)
     for key, value in spec.proxy_injection().items():
         merged[key] = value
+    if spec.cache_strategy == "explicit_marker" and cache_optin_enabled():
+        merged["messages"] = _mark_cache_prefix(merged.get("messages"))
+    # DEFERRED (#43): the cache-hit-rate report column (cached prompt tokens /
+    # total prompt tokens, next to cost) is not added here — terminal-bench's
+    # results.json exposes only total input/output tokens per trial, not the
+    # cached-token split, so the tb_report path (out of scope for this change)
+    # has no source for it. The serving-metrics harness already records
+    # per-call ``cached_tokens`` from usage.prompt_tokens_details; wiring that
+    # into a sweep report column is the remaining work.
     return merged
+
+
+def cache_optin_enabled() -> bool:
+    """Whether explicit prompt-cache markers are turned on for this run.
+
+    Enabled by ``COMPOUND_DW_CACHE`` (1/true/on), which the ``--cache-optin`` run
+    flag also sets so the signal reaches the in-process proxy. Kept as an env var
+    so a harness-level run can force it on without the CLI.
+    """
+    return os.getenv("COMPOUND_DW_CACHE", "").lower() in ("1", "true", "on")
+
+
+def _mark_cache_prefix(messages: Any) -> Any:
+    """Attach ``cache_control`` to the last content block of the last message."""
+    if not isinstance(messages, list) or not messages:
+        return messages
+    marker = {"type": "ephemeral", "ttl": "5m"}
+    msgs = list(messages)
+    last = dict(msgs[-1])
+    content = last.get("content")
+    if isinstance(content, str):
+        last["content"] = [{"type": "text", "text": content, "cache_control": marker}]
+    elif isinstance(content, list) and content:
+        blocks = list(content)
+        final = dict(blocks[-1])
+        final["cache_control"] = marker
+        blocks[-1] = final
+        last["content"] = blocks
+    else:
+        return messages
+    msgs[-1] = last
+    return msgs
 
 
 def target_url(base_url: str, path: str) -> str:
