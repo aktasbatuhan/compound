@@ -162,12 +162,25 @@ def main() -> int:
 
     base = next((a for a in arms if "auto" in a["arm"]), None)
     if base:
-        print(f"\nHang rate vs {base['arm']} (two-proportion z-test):")
+        # Every pinned arm is tested against the same baseline, so the family of
+        # tests inflates the chance of one crossing 0.05 by luck. Holm-Bonferroni
+        # controls that while being less brutal than plain Bonferroni. Reporting
+        # the raw p alone would manufacture a finding out of five coin flips.
+        tests = []
         for a in arms:
             if a is base:
                 continue
             z, p = two_proportion_z(a["hangs"], a["calls"], base["hangs"], base["calls"])
-            verdict = "significant" if p < 0.05 else "not significant"
+            tests.append([a, z, p, False])
+        m = len(tests)
+        for rank, t in enumerate(sorted(tests, key=lambda t: t[2])):
+            # Holm: compare the k-th smallest p against alpha / (m - k).
+            t[3] = t[2] < 0.05 / (m - rank)
+            if not t[3]:
+                break  # once one fails, all larger p-values fail too
+        print(f"\nHang rate vs {base['arm']} (two-proportion z, Holm-corrected over {m} tests):")
+        for a, z, p, sig in tests:
+            verdict = "SIGNIFICANT" if sig else "not significant"
             print(
                 f"  {a['arm']:<16s} {a['hang_rate'] * 100:5.1f}% vs {base['hang_rate'] * 100:5.1f}%"
                 f"   z={z:+6.2f}  p={p:.4f}  {verdict}"
