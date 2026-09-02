@@ -4,7 +4,7 @@
 
 **Which host should serve your open model? Measure it on your workload.**
 
-[compound-1js.pages.dev](https://compound-1js.pages.dev) · [report: same model, 8 hosts, 9.6x the cost](https://compound-1js.pages.dev/report/) · [report: pinned vs auto routing](https://compound-1js.pages.dev/report/tb4/)
+[docs](https://compound-1js.pages.dev/docs/) · [examples](https://compound-1js.pages.dev/examples/)
 
 <br>
 
@@ -14,7 +14,7 @@
 
 ---
 
-## The problem in one paragraph
+## The problem
 
 An open model like DeepSeek V4 Flash or GLM 5.3 Flash is served by ten or more hosts
 within weeks of release. Same weights, but each host picks its own quantization, price,
@@ -24,42 +24,6 @@ question that decides your bill goes unanswered: **for my traffic, which host is
 the quality and speed I need?** Compound answers it by running your workload against each
 host with the host pinned and verified, and reporting success, cost, latency, and cache-hit
 rate per host with confidence intervals.
-
-## What we measured so far
-
-Two published runs, every number traceable to a per-call trace.
-
-**Same model, eight hosts: identical quality, up to 9.6x the cost.**
-`deepseek-v4-flash` on terminal-bench, 588 scored episodes, two pinned reasoning modes,
-time limits tripled so no host fails only for being slow.
-With reasoning off the hosts tie on quality (52.4% vs 49.5%, Fisher p = 0.87).
-DeepInfra and Cloudflare resolve the identical 57.1% of tasks at $0.43 vs $4.13 per cell.
-Fast hosts gain about 9 to 13 points with reasoning on (directional, p = 0.056); a
-~20 tok/s host loses ground because thinking exhausts even tripled limits.
-Measured cache-hit ratios span 82% down to 0% on a host whose caching is opt-in.
-[Full report](https://compound-1js.pages.dev/report/).
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/tb-results-dark.svg">
-  <img alt="Terminal-bench: same model on six pinned hosts in both reasoning modes at tripled time limits" src="assets/tb-results-light.svg">
-</picture>
-
-**Pinning a host beat letting the router choose.**
-`glm-5.3-flash` on Terminal-Bench 4.0, five OpenRouter routes run concurrently on separate
-VMs in the same hour so congestion is shared, 1,801 traced calls. The share of calls that
-never completed within 300 seconds:
-
-| route | calls | did not complete | 95% CI | $ per 1M prompt tokens |
-|---|---|---|---|---|
-| pinned DeepInfra | 492 | 24.0% | 20.4 to 27.9 | 0.038 |
-| pinned Parasail | 324 | 39.8% | 34.6 to 45.2 | 0.126 |
-| auto routing | 299 | 41.5% | 36.0 to 47.1 | 0.067 |
-| pinned Z.AI | 376 | 42.0% | 37.1 to 47.1 | 0.038 |
-| pinned Novita | 310 | 51.9% | 46.4 to 57.4 | 0.044 |
-
-DeepInfra vs auto: p < 0.0001 after Holm correction. Auto spread its calls over seven
-upstreams and sent 26 of 150 to the host that was both cheapest and most reliable.
-Of the 814 pinned calls that returned a provider echo, none was served by the wrong host. [Full report](https://compound-1js.pages.dev/report/tb4/).
 
 ## Run it on your model
 
@@ -119,6 +83,18 @@ prints paste-ready tokens.
 `compound-bench prepare <name>` does any one-time setup. Adding a benchmark is one
 registry entry backed by a partitioned manifest; see
 [`src/compound/adapters/`](src/compound/adapters).
+
+## Examples
+
+Two runs made with Compound, published with every per-call record. They are small
+(one model each, a handful of hosts) and most within-mode host differences do not reach
+significance, so read them as worked examples of a report, not a leaderboard.
+
+- [Same model, eight hosts](https://compound-1js.pages.dev/report/): `deepseek-v4-flash` on
+  terminal-bench, 588 episodes. Quality tied across hosts; cost per resolved task did not.
+- [Pinned host vs router](https://compound-1js.pages.dev/report/tb4/): `glm-5.3-flash` on
+  Terminal-Bench 4.0, five routes run concurrently, 1,801 traced calls. Stall rate and cost
+  per prompt token by route, and where the router actually sent traffic.
 
 ## Backtest on your own traces (TypeScript, earlier stage)
 
