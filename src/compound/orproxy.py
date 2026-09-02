@@ -148,6 +148,8 @@ def inject(body: dict[str, Any], spec: ProviderSpec) -> dict[str, Any]:
     merged = dict(body)
     for key, value in spec.proxy_injection().items():
         merged[key] = value
+    if spec.wire_model:
+        merged["model"] = spec.wire_model
     if spec.cache_strategy == "explicit_marker" and cache_optin_enabled():
         merged["messages"] = _mark_cache_prefix(merged.get("messages"))
     if spec.kind == "openrouter":

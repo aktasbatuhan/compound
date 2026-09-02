@@ -503,9 +503,16 @@ def cmd_harbor(args: argparse.Namespace) -> int:
     """Terminal-Bench 4.0 (or any Harbor dataset) across hosts, each pinned."""
     from compound import provider_sweep
     from compound.adapters import harbor
-    from compound.providers_registry import parse_providers
+    from compound.providers_registry import apply_host_models, parse_providers
 
     specs = parse_providers(args.providers, providers_config=_load_providers_config())
+    host_models: dict[str, str] = {}
+    for item in args.host_model:
+        if "=" not in item:
+            raise SystemExit(f"--host-model expects HOST=MODEL, got {item!r}")
+        key, value = item.split("=", 1)
+        host_models[key.strip()] = value.strip()
+    specs = apply_host_models(specs, host_models)
     tasks = args.tasks.split(",") if args.tasks else None
     agent_kwargs = _parse_agent_kwargs(args.agent_kwargs)
     print(f"harbor: dataset {args.dataset}, agent {args.agent}, model {args.model}")
@@ -749,6 +756,12 @@ def main() -> int:
         help="comma-separated provider tokens, e.g. openrouter/auto,openrouter/deepinfra",
     )
     harbor_p.add_argument("--model", required=True, help="model id as the upstream knows it")
+    harbor_p.add_argument(
+        "--host-model", action="append", default=[], metavar="HOST=MODEL",
+        help="model id to send to one host when it names the weights differently, "
+             "repeatable; HOST is a provider token, label, or kind "
+             "(e.g. doubleword=zai-org/GLM-5.3-Flash)",
+    )
     harbor_p.add_argument(
         "--dataset", default=_HARBOR_DEFAULT_DATASET,
         help="Harbor dataset name@version (pinned, not @latest, so the task set "

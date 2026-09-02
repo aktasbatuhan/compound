@@ -38,6 +38,12 @@ AGENT="${HB_AGENT:-terminus-2}"
 # more turns and records a slower host's truncation as a failure it never
 # earned. Duration is measured instead of being the thing that stops the run.
 MAX_TURNS="${HB_MAX_TURNS:-100}"
+# Per-host model ids for hosts that name the weights differently, as
+# --host-model KEY=MODEL pairs separated by spaces, e.g.
+#   HB_HOST_MODELS="doubleword=zai-org/GLM-5.3-Flash"
+HOST_MODELS="${HB_HOST_MODELS:-}"
+# Pin the reasoning mode on every arm (on|off); empty leaves each host's default.
+REASONING="${HB_REASONING:-}"
 ATTEMPTS="${HB_ATTEMPTS:-1}"
 CONCURRENT="${HB_CONCURRENT:-5}"
 LOCAL_OUT="${HB_LOCAL_OUT:-artifacts/tb4-cloud}"
@@ -143,9 +149,11 @@ RUNALL="$(mktemp)"
   echo 'cd /opt/compound'
   echo 'rm -f RUN_DONE RUN_FAIL'
   echo '{'
-  echo "  OPENROUTER_API_KEY='$OPENROUTER_API_KEY' \\"
+  echo "  OPENROUTER_API_KEY='$OPENROUTER_API_KEY' DOUBLEWORD_API_KEY='${DOUBLEWORD_API_KEY:-}' \\"
   echo "    uv run python -m compound.bench harbor \\"
   echo "      --providers '$PROVIDERS' --model '$MODEL' \\"
+  for pair in $HOST_MODELS; do echo "      --host-model '$pair' \\"; done
+  [ -n "$REASONING" ] && echo "      --reasoning '$REASONING' \\"
   echo "      --dataset '$DATASET' --agent '$AGENT' \\"
   echo "      --tasks '$TASKS' --attempts '$ATTEMPTS' \\"
   echo "      --n-concurrent '$CONCURRENT' --ak max_turns='$MAX_TURNS' \\"

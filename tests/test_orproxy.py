@@ -471,3 +471,17 @@ def test_proxy_gives_up_on_a_call_that_never_completes(monkeypatch, tmp_path):
     row = json.loads(ledger_path.read_text().splitlines()[0])
     assert row["error"] == "hang_timeout"
     assert row["abandoned"] is True
+
+
+def test_inject_rewrites_model_when_wire_model_set():
+    from dataclasses import replace
+
+    spec = replace(parse_provider("doubleword/flex"), wire_model="zai-org/GLM-5.3-Flash")
+    out = inject({"model": "z-ai/glm-5.3-flash"}, spec)
+    assert out["model"] == "zai-org/GLM-5.3-Flash"
+    assert out["service_tier"] == "flex"
+
+
+def test_inject_leaves_model_alone_without_wire_model():
+    out = inject({"model": "z-ai/glm-5.3-flash"}, parse_provider("doubleword/flex"))
+    assert out["model"] == "z-ai/glm-5.3-flash"

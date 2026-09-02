@@ -145,3 +145,22 @@ def test_malformed_tokens_raise(bad):
 def test_direct_without_config_block_raises():
     with pytest.raises(ValueError):
         parse_provider("direct/nope", providers_config={})
+
+
+def test_apply_host_models_matches_kind_label_and_token():
+    from compound.providers_registry import apply_host_models, parse_providers
+
+    specs = parse_providers("openrouter/deepinfra,doubleword/realtime,doubleword/flex")
+    out = apply_host_models(specs, {"doubleword": "zai-org/GLM-5.3-Flash", "doubleword/flex": "other"})
+    assert out[0].wire_model is None
+    assert out[1].wire_model == "zai-org/GLM-5.3-Flash"
+    assert out[2].wire_model == "other"
+
+
+def test_apply_host_models_rejects_unknown_key():
+    import pytest
+
+    from compound.providers_registry import apply_host_models, parse_providers
+
+    with pytest.raises(ValueError):
+        apply_host_models(parse_providers("openrouter/auto"), {"fireworks": "x"})
