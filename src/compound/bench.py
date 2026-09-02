@@ -488,6 +488,17 @@ def cmd_serving(args: argparse.Namespace) -> int:
     return 0
 
 
+def _parse_agent_kwargs(pairs: list[str] | None) -> dict[str, str]:
+    """``KEY=VALUE`` strings into a dict, failing loudly on a malformed pair."""
+    out: dict[str, str] = {}
+    for pair in pairs or []:
+        if "=" not in pair:
+            raise SystemExit(f"error: --ak expects KEY=VALUE, got {pair!r}")
+        key, value = pair.split("=", 1)
+        out[key.strip()] = value.strip()
+    return out
+
+
 def cmd_harbor(args: argparse.Namespace) -> int:
     """Terminal-Bench 4.0 (or any Harbor dataset) across hosts, each pinned."""
     from compound import provider_sweep
@@ -496,6 +507,7 @@ def cmd_harbor(args: argparse.Namespace) -> int:
 
     specs = parse_providers(args.providers, providers_config=_load_providers_config())
     tasks = args.tasks.split(",") if args.tasks else None
+    agent_kwargs = _parse_agent_kwargs(args.agent_kwargs)
     print(f"harbor: dataset {args.dataset}, agent {args.agent}, model {args.model}")
     for line in provider_sweep.plan(specs, args.model):
         print(line)
@@ -528,6 +540,7 @@ def cmd_harbor(args: argparse.Namespace) -> int:
             n_concurrent=args.n_concurrent,
             timeout_multiplier=args.timeout_multiplier,
             agent_timeout_multiplier=args.agent_timeout_multiplier,
+            agent_kwargs=agent_kwargs,
             env_type=args.env,
             proxied=True,
         )
@@ -546,6 +559,7 @@ def cmd_harbor(args: argparse.Namespace) -> int:
         n_concurrent=args.n_concurrent,
         timeout_multiplier=args.timeout_multiplier,
         agent_timeout_multiplier=args.agent_timeout_multiplier,
+        agent_kwargs=agent_kwargs,
         env_type=args.env,
         ledger_dir=Path(args.ledger_dir) if args.ledger_dir else None,
     )
@@ -759,6 +773,12 @@ def main() -> int:
         help="scale only how long the agent may work, leaving environment build "
         "and verification alone. This is the flag for bounding a run: TB4 tasks "
         "allow the agent 8 hours by default.",
+    )
+    harbor_p.add_argument(
+        "--ak", "--agent-kwarg", dest="agent_kwargs", action="append", default=None,
+        metavar="KEY=VALUE",
+        help="agent constructor kwarg, repeatable. Use max_turns=N to give every "
+        "host the same work: an equal wall clock hands a faster host more turns.",
     )
     harbor_p.add_argument("--env", default="docker", help="Harbor environment backend")
     harbor_p.add_argument("--jobs-dir", default="artifacts/harbor", help="where jobs land")

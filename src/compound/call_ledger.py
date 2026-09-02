@@ -58,6 +58,30 @@ def normalize_host(name: str | None) -> str | None:
     return folded or None
 
 
+#: Seconds a single call may stream before the proxy gives up on it. Observed on
+#: a live run: a pinned host that had been answering in 9-24s streamed 159KB of
+#: keep-alive padding for 1,044 seconds and never returned a completion, hanging
+#: the agent. Without a ceiling one such call stalls a whole arm, and the tokens
+#: are billed while the response that would have reported them never arrives.
+DEFAULT_CALL_TIMEOUT_S = 300.0
+
+
+def call_timeout_s() -> float | None:
+    """How long one call may stream before it is treated as a hang.
+
+    ``COMPOUND_CALL_TIMEOUT`` overrides the default; ``0`` disables the ceiling
+    for a run that would rather wait than lose a slow but genuine completion.
+    """
+    raw = os.getenv("COMPOUND_CALL_TIMEOUT", "").strip()
+    if not raw:
+        return DEFAULT_CALL_TIMEOUT_S
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_CALL_TIMEOUT_S
+    return None if value <= 0 else value
+
+
 def ledger_path_from_env() -> str | None:
     """Where to write the call ledger for this run, or ``None`` when disabled."""
     path = os.getenv("COMPOUND_CALL_LEDGER", "").strip()
@@ -224,6 +248,7 @@ def build_record(
     content_type: str = "",
     error: str | None = None,
     truncated: bool = False,
+    request_bytes: int | None = None,
 ) -> dict[str, Any]:
     """Assemble one ledger row from a completed (or failed) call.
 
@@ -241,6 +266,11 @@ def build_record(
         "latency_ms": round(latency_ms, 2),
         "error": error,
         "response_truncated": truncated,
+        # Wire sizes, kept even when the body never parsed. An abandoned call
+        # reports no tokens, so this is the only surviving evidence of how large
+        # the request that was lost actually was.
+        "request_bytes": request_bytes,
+        "response_bytes": len(response_raw),
     }
     record.update(request_fields(request_body))
     record.update(usage_fields(payload))

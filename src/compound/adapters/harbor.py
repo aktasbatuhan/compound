@@ -15,6 +15,11 @@ rather than reimplements them:
   (``EnvironmentStartTimeoutError``). Capping only how long the agent may work
   is ``agent_timeout_multiplier``, which leaves build and verification alone.
 * ``-k`` runs repeated attempts per task, replacing our per-trial subdirectories.
+* ``--agent-kwarg`` reaches the agent's own constructor, which is how a run caps
+  terminus by ``max_turns``. For a cross-host comparison that is the control
+  worth having: an equal wall clock hands the faster host more turns and turns a
+  slow host into a failure it never earned, whereas an equal turn budget gives
+  every host the same work and lets duration be measured instead of truncated.
 * ``-n`` plus a sandbox backend runs trials concurrently, which is what turns a
   full provider matrix from an overnight VM fan-out into a single job.
 
@@ -79,6 +84,7 @@ def build_command(
     agent_timeout_multiplier: float | None = None,
     env_type: str = "docker",
     allow_agent_hosts: list[str] | None = None,
+    agent_kwargs: dict[str, str] | None = None,
     proxied: bool = False,
     extra_args: list[str] | None = None,
 ) -> list[str]:
@@ -123,6 +129,8 @@ def build_command(
         command += ["--timeout-multiplier", str(timeout_multiplier)]
     if agent_timeout_multiplier is not None and agent_timeout_multiplier != 1.0:
         command += ["--agent-timeout-multiplier", str(agent_timeout_multiplier)]
+    for key, value in (agent_kwargs or {}).items():
+        command += ["--agent-kwarg", f"{key}={value}"]
     for host in allow_agent_hosts or []:
         command += ["--allow-agent-host", host]
     command += extra_args or []
@@ -255,6 +263,26 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def load_trial_results(jobs_dir: str | Path, job_name: str) -> list[dict[str, Any]]:
+    """Every trial's own ``result.json`` under a job directory.
+
+    Harbor writes each trial's result into its own subdirectory and does not
+    always aggregate them into the job-level ``trial_results``: a finished job
+    can carry an empty list there while every trial's outcome sits on disk.
+    Reading only the job level therefore reported a completed arm as having run
+    nothing, so the trial files are the source of truth and the job level is
+    used only as a fallback.
+    """
+    root = Path(jobs_dir) / job_name
+    results: list[dict[str, Any]] = []
+    for path in sorted(root.glob("*/result.json")):
+        try:
+            results.append(json.loads(path.read_text()))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return results
+
+
 def load_job_summary(jobs_dir: str | Path, job_name: str) -> dict[str, Any]:
     """Read a finished job and summarize it, keeping Harbor's own totals.
 
@@ -267,7 +295,8 @@ def load_job_summary(jobs_dir: str | Path, job_name: str) -> dict[str, Any]:
     if not path.exists():
         raise SystemExit(f"error: no Harbor job result at {path}")
     job_result = json.loads(path.read_text())
-    rows = trial_rows(job_result)
+    trials = job_result.get("trial_results") or load_trial_results(jobs_dir, job_name)
+    rows = trial_rows({"trial_results": trials})
     stats = job_result.get("stats") or {}
     summary = summarize(rows)
     # A trial that died before producing a result is counted by Harbor but has

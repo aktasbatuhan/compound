@@ -19,6 +19,7 @@ from compound.adapters.harbor import (
     build_command,
     job_result_path,
     load_job_summary,
+    load_trial_results,
     proxy_env,
     qualify_task,
     summarize,
@@ -316,3 +317,48 @@ class TestErroredTrialsAreVisible:
         assert summary["trials"] == 0
         assert summary["errored_trials"] == 1
         assert summary["total_trials"] == 1
+
+
+class TestPerTrialResults:
+    def _job(self, tmp_path, job_trials):
+        job = tmp_path / "job-1"
+        (job / "task-a").mkdir(parents=True)
+        (job / "task-b").mkdir(parents=True)
+        (job / "result.json").write_text(
+            json.dumps({"trial_results": job_trials, "n_total_trials": 2,
+                        "stats": {"n_errored_trials": 1}})
+        )
+        (job / "task-a" / "result.json").write_text(json.dumps(trial(task="a", reward=1)))
+        (job / "task-b" / "result.json").write_text(json.dumps(trial(task="b", reward=0)))
+        return tmp_path
+
+    def test_trial_files_are_used_when_the_job_level_list_is_empty(self, tmp_path):
+        # Observed live: a finished 5-trial job carried trial_results: [] while
+        # every trial's outcome sat in its own directory, so the arm reported
+        # as having run nothing at all.
+        summary = load_job_summary(self._job(tmp_path, []), "job-1")
+        assert summary["trials"] == 2
+        assert summary["resolve_rate"] == 0.5
+
+    def test_the_job_level_list_wins_when_present(self, tmp_path):
+        summary = load_job_summary(self._job(tmp_path, [trial(task="z", reward=1)]), "job-1")
+        assert summary["trials"] == 1
+
+    def test_load_trial_results_reads_each_trial_directory(self, tmp_path):
+        results = load_trial_results(self._job(tmp_path, []), "job-1")
+        assert sorted(r["task_name"] for r in results) == ["a", "b"]
+
+
+class TestAgentKwargs:
+    def test_max_turns_reaches_the_agent_constructor(self):
+        # Equal turns, not equal wall clock: a clock cap hands the faster host
+        # more turns and records a slow host's truncation as a failure.
+        got = cmd(agent_kwargs={"max_turns": "30"})
+        assert got[got.index("--agent-kwarg") + 1] == "max_turns=30"
+
+    def test_multiple_kwargs_repeat_the_flag(self):
+        got = cmd(agent_kwargs={"max_turns": "30", "max_thinking_tokens": "2048"})
+        assert got.count("--agent-kwarg") == 2
+
+    def test_no_kwargs_adds_nothing(self):
+        assert "--agent-kwarg" not in cmd()

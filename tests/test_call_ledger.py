@@ -14,8 +14,10 @@ import threading
 import pytest
 
 from compound.call_ledger import (
+    DEFAULT_CALL_TIMEOUT_S,
     CallLedger,
     build_record,
+    call_timeout_s,
     format_summary,
     load_records,
     normalize_host,
@@ -372,3 +374,35 @@ class TestAbandonedCalls:
         assert row["calls"] == 3
         assert row["errors"] == 1
         assert row["abandoned"] == 1
+
+
+class TestWireSizes:
+    def test_sizes_survive_an_abandoned_call(self):
+        # An abandoned call reports no tokens, so the request size is the only
+        # surviving evidence of how large the lost call was.
+        record = build_record(
+            route="auto", upstream=None, status=200, latency_ms=212000.0,
+            request_body=None, response_raw=b"\n   \n", request_bytes=180000,
+        )
+        assert record["abandoned"] is True
+        assert record["request_bytes"] == 180000
+        assert record["response_bytes"] == 5
+
+
+class TestCallTimeout:
+    def test_default_ceiling(self, monkeypatch):
+        monkeypatch.delenv("COMPOUND_CALL_TIMEOUT", raising=False)
+        assert call_timeout_s() == DEFAULT_CALL_TIMEOUT_S
+
+    def test_override(self, monkeypatch):
+        monkeypatch.setenv("COMPOUND_CALL_TIMEOUT", "45")
+        assert call_timeout_s() == 45.0
+
+    def test_zero_disables_the_ceiling(self, monkeypatch):
+        # Some runs would rather wait than lose a slow but genuine completion.
+        monkeypatch.setenv("COMPOUND_CALL_TIMEOUT", "0")
+        assert call_timeout_s() is None
+
+    def test_garbage_falls_back_to_the_default(self, monkeypatch):
+        monkeypatch.setenv("COMPOUND_CALL_TIMEOUT", "soon")
+        assert call_timeout_s() == DEFAULT_CALL_TIMEOUT_S
