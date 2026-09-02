@@ -30,6 +30,7 @@ import gepa
 from gepa import EvaluationBatch
 
 from compound.providers import OpenAICompatibleProvider
+from compound.spend_ledger import SpendLedger, TokenPrice
 
 
 def _assistant_message(raw: dict[str, Any]) -> dict[str, Any]:
@@ -73,12 +74,16 @@ class CompoundAdapter:
         model: str,
         task_key: str,
         grade_cmd: list[str],
+        ledger: SpendLedger,
+        price: TokenPrice,
         user_field: str = "request",
     ) -> None:
         self.provider = provider
         self.model = model
         self.task_key = task_key
         self.grade_cmd = grade_cmd
+        self.ledger = ledger
+        self.price = price
         self.user_field = user_field
 
     def _grade(self, items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -95,11 +100,13 @@ class CompoundAdapter:
         system_prompt = candidate["system_prompt"]
         outputs: list[dict[str, Any]] = []
         for case in batch:
-            response = self.provider.complete(
+            response = self.ledger.paid_call(
+                self.provider,
                 model=self.model,
                 messages=_compose(system_prompt, case["messages"]),
                 tools=case.get("tools") or None,
                 max_tokens=1024,
+                price=self.price,
             )
             message = _assistant_message(response.output)
             outputs.append({"case_id": case["case_id"], "output": message})
@@ -152,18 +159,35 @@ def _user_text(case: dict[str, Any]) -> str:
 class ReflectionLM:
     """Minimal GEPA reflection LM: rewrite a prompt component from the evidence."""
 
-    def __init__(self, *, provider: OpenAICompatibleProvider, model: str, max_calls: int) -> None:
+    def __init__(
+        self,
+        *,
+        provider: OpenAICompatibleProvider,
+        model: str,
+        max_calls: int,
+        ledger: SpendLedger,
+        price: TokenPrice,
+    ) -> None:
         self.provider = provider
         self.model = model
         self.max_calls = max_calls
         self.calls = 0
+        self.ledger = ledger
+        self.price = price
 
     def __call__(self, prompt: str | list[dict[str, Any]]) -> str:
         if self.calls >= self.max_calls:
             raise RuntimeError("reflection budget exhausted")
         self.calls += 1
         messages = [{"role": "user", "content": prompt}] if isinstance(prompt, str) else prompt
-        response = self.provider.complete(model=self.model, messages=messages, max_tokens=1200)
+        response = self.ledger.paid_call(
+            self.provider,
+            model=self.model,
+            messages=messages,
+            tools=None,
+            max_tokens=1200,
+            price=self.price,
+        )
         return _assistant_message(response.output).get("content") or ""
 
 
@@ -171,7 +195,34 @@ def _mean(xs: Sequence[float]) -> float:
     return sum(xs) / len(xs) if xs else 0.0
 
 
+def _ledger_from(job: dict[str, Any]) -> SpendLedger:
+    """Fail closed (#52): no budget block, no spend."""
+    budget = job.get("budget")
+    if not isinstance(budget, dict):
+        raise SystemExit(
+            "optimize job carries no budget block; refusing to call providers outside the "
+            "spend ledger. Run through `compound optimize --paid --cap <usd>`."
+        )
+    return SpendLedger(
+        str(budget["db"]),
+        experiment_id=str(budget["experiment_id"]),
+        cap_usd=float(budget["cap_usd"]),
+        global_hard_limit_usd=float(budget["global_hard_limit_usd"]),
+    )
+
+
+def _price_from(job: dict[str, Any], role: str) -> TokenPrice:
+    prices = job.get("prices") or {}
+    entry = prices.get(role)
+    if not isinstance(entry, dict):
+        raise SystemExit(f"optimize job carries no {role} price; refusing to spend unpriced.")
+    return TokenPrice(input=float(entry["input"]), output=float(entry["output"]))
+
+
 def run(job: dict[str, Any]) -> dict[str, Any]:
+    ledger = _ledger_from(job)
+    candidate_price = _price_from(job, "candidate")
+    reflection_price = _price_from(job, "reflection")
     candidate_provider = OpenAICompatibleProvider(
         name="candidate",
         base_url=job["candidate"]["base_url"],
@@ -187,11 +238,15 @@ def run(job: dict[str, Any]) -> dict[str, Any]:
         model=job["candidate_model"],
         task_key=job["task_key"],
         grade_cmd=job["grade_cmd"],
+        ledger=ledger,
+        price=candidate_price,
     )
     reflection = ReflectionLM(
         provider=reflection_provider,
         model=job["reflection_model"],
         max_calls=int(job.get("max_metric_calls", 30)),
+        ledger=ledger,
+        price=reflection_price,
     )
     seed = {"system_prompt": job["seed_prompt"]}
     run_dir = Path(job["run_dir"])
@@ -231,6 +286,11 @@ def run(job: dict[str, Any]) -> dict[str, Any]:
         "after_val_score": _mean(after.scores),
         "val_cases": len(job["valset"]),
         "reflection_calls": reflection.calls,
+        # Measured where the provider reported usage, estimated where it did
+        # not; every call is in the shared ledger either way.
+        "cost_usd": ledger.total_charged_usd,
+        "paid_calls": ledger.calls,
+        "calls_usage_unknown": ledger.calls_usage_unknown,
     }
 
 

@@ -40,9 +40,9 @@ budget:
 ```
 
 `bfcl` and `ds1000` enforce this limit and the per-run `--cap`. `tau2` bills
-whatever the episodes cost, so size the subset with a dry run first. Note the
-[known gaps](../traces/#known-gaps) in how the limit is enforced under
-concurrency.
+whatever the episodes cost, so size the subset with a dry run first. The trace
+pipeline enforces the same limit with atomic reservations; see
+[Money controls](../traces/#money-controls).
 
 ## Models
 

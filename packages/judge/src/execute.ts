@@ -15,8 +15,9 @@ import {
 import {
   cacheCompletion,
   getCachedCompletion,
-  recordSpend,
-  requireBudgetHeadroom,
+  releaseSpend,
+  reserveSpend,
+  settleSpend,
 } from "@compound/storage";
 import {
   buildPointwiseMessages,
@@ -87,14 +88,20 @@ export async function judgeGradeOutput(
     return { status: "cache_miss_dry_run", fingerprint };
   } else {
     const estimate = estimateCost(request, ctx.price);
-    requireBudgetHeadroom(ctx.db, {
+    const judgeExperimentId = `judge:${ctx.judgeModel}`;
+    const reservationId = reserveSpend(ctx.db, {
       fingerprint,
       estimatedCost: estimate,
-      experimentId: `judge:${ctx.judgeModel}`,
+      experimentId: judgeExperimentId,
       experimentCapUsd: ctx.experimentCapUsd,
       globalHardLimitUsd: ctx.globalHardLimitUsd,
     });
-    response = await ctx.provider.complete(request);
+    try {
+      response = await ctx.provider.complete(request);
+    } catch (error) {
+      releaseSpend(ctx.db, reservationId);
+      throw error;
+    }
     // A real judge call whose usage is null must ledger the estimate, never $0
     // (#3): the judge shares the same Flex provider and ledger as the runner, so
     // a $0 judge charge silently leaks the experiment cap and the global limit.
@@ -102,7 +109,7 @@ export async function judgeGradeOutput(
     costUsd = charge.costUsd;
     costEstimated = !charge.usageKnown;
     // Persist before parsing, so a paid call is never lost to a parse error.
-    recordSpend(ctx.db, { fingerprint, costUsd });
+    settleSpend(ctx.db, reservationId, { fingerprint, costUsd, experimentId: judgeExperimentId });
     cacheCompletion(ctx.db, {
       fingerprint,
       provider: ctx.providerName,

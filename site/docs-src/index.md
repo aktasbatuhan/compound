@@ -15,8 +15,8 @@ Two halves, two languages:
 | Benchmark sweeps | Python | `compound-bench` | Run public benchmarks across pinned hosts and report per host |
 | Trace backtesting | TypeScript | `bun run compound` | Turn your production traces into graded cases and gate a model or host switch on them |
 
-Most people start with the sweep. The trace pipeline is earlier stage and has
-[known gaps](traces/#known-gaps) in its money controls.
+Most people start with the sweep. The trace pipeline is earlier stage; its
+[money controls](traces/#money-controls) are shared with the Python optimizer.
 
 ## Install
 

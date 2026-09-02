@@ -42,6 +42,8 @@ describe("migrations", () => {
     expect(names).toContain("experiments");
     expect(names).toContain("completions");
     expect(names).toContain("spend_records");
+    expect(names).toContain("spend_reservations");
+    expect(names).toContain("gate_decision_claims");
     expect(names).toContain("experiment_results");
     expect(names).toContain("gate_specs");
     expect(names).toContain("gate_results");
@@ -72,7 +74,8 @@ describe("migrations", () => {
       "judge_calibrations_task_key_idx",
       "optimization_runs_task_key_idx",
       "spend_records_experiment_id_idx",
-      "spend_records_fingerprint_unique",
+      "spend_records_fingerprint_idx",
+      "spend_reservations_experiment_id_idx",
       "traces_content_hash_idx",
       "traces_import_batch_id_idx",
       "traces_started_at_idx",

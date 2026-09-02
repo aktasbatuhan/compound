@@ -278,12 +278,39 @@ export const spendRecords = sqliteTable(
       .default(sql`(unixepoch() * 1000)`),
   },
   (table) => [
-    uniqueIndex("spend_records_fingerprint_unique").on(table.fingerprint),
+    // Not unique (#51): a fingerprint that is re-executed against the provider
+    // (cache cleared, or a per-turn resume) is real spend and must be ledgered
+    // again. Idempotency lives in the completion cache, not in the ledger.
+    index("spend_records_fingerprint_idx").on(table.fingerprint),
     index("spend_records_experiment_id_idx").on(table.experimentId),
   ],
 );
 
 export type SpendRecordRow = typeof spendRecords.$inferSelect;
+
+/**
+ * Open reservations against the budget (#51). A paid call reserves its
+ * estimate here, atomically against the committed ledger plus every other open
+ * reservation, BEFORE the provider is called; completion settles the row into
+ * `spend_records` at the actual charge. Two concurrent runs therefore cannot
+ * both pass a check that only one of them could afford. Rows older than the
+ * TTL are treated as abandoned by a crashed process and ignored.
+ */
+export const spendReservations = sqliteTable(
+  "spend_reservations",
+  {
+    id: text("id").primaryKey(),
+    experimentId: text("experiment_id"),
+    fingerprint: text("fingerprint").notNull(),
+    reservedUsd: real("reserved_usd").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [index("spend_reservations_experiment_id_idx").on(table.experimentId)],
+);
+
+export type SpendReservationRow = typeof spendReservations.$inferSelect;
 
 /** Stored on each experiment (docs/execution-v1.md, "Experiment and run"). */
 export interface ExperimentReport {
@@ -486,6 +513,23 @@ export const gateDecisionCases = sqliteTable(
 );
 
 export type GateDecisionCaseRow = typeof gateDecisionCases.$inferSelect;
+
+/**
+ * In-flight claims on a sealed decision cohort (#54). A paid gate inserts the
+ * cohort digest here, atomically with the prior-decision check, before it
+ * spends anything; a second gate on the same cohort then fails the insert
+ * instead of also passing a read-only preflight. Released when the gate ends,
+ * and ignored after the TTL so a crashed gate cannot lock a task forever.
+ */
+export const gateDecisionClaims = sqliteTable("gate_decision_claims", {
+  cohortDigest: text("cohort_digest").primaryKey(),
+  taskKey: text("task_key").notNull(),
+  claimedAt: integer("claimed_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`),
+});
+
+export type GateDecisionClaimRow = typeof gateDecisionClaims.$inferSelect;
 
 // ---------------------------------------------------------------------------
 // Judge calibration (docs/judges-v1.md)

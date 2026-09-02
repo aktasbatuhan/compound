@@ -19,11 +19,12 @@ import {
 } from "@compound/execution";
 import { decideGate, GateInputError } from "@compound/gate";
 import {
+  claimDecisionCohort,
   decisionTestCohortHashes,
   type GateMetric,
   type GateMode,
   getOptimizationRun,
-  priorDecisions,
+  releaseDecisionClaim,
 } from "@compound/storage";
 import type { CommandEnvironment, CommandResult, ParsedArgs } from "./commands";
 import { DEFAULT_CONFIG_PATH, DEFAULT_DATABASE_PATH, decisionPowerLines } from "./commands";
@@ -276,15 +277,28 @@ export async function runGateCommand(
     config.gate?.block_repeat_after_adoption !== false;
   const forced = args.flags.force === true;
 
+  let claimDigest: string | null = null;
   try {
     // Preflight the peeking guard BEFORE paying (#2). decideGate throws only
     // after both experiments have re-run — by which point the paid calls that
     // re-examine the sealed labels have already happened. Check the sealed
     // cohort against prior decisions up front and refuse before spending a cent.
     if (wantsPaid && blockRepeat && !forced) {
+      // The check and the claim are one transaction (#54), so a second gate on
+      // the same cohort started at the same moment fails here instead of also
+      // passing a read-only preflight and spending on the same sealed labels.
       const sealedHashes = decisionTestCohortHashes(db, taskKey);
-      const prior = priorDecisions(db, taskKey, sealedHashes);
-      if (prior.count >= 1 || prior.legacyCount >= 1) {
+      const claim = claimDecisionCohort(db, taskKey, sealedHashes);
+      if (!claim.claimed) {
+        if (claim.reason === "held_by_another_gate") {
+          env.write(
+            `error: another gate is deciding the held-out set for '${taskKey}' right now. ` +
+              "Wait for it to finish, or pass --force with a stated escalation reason. " +
+              "(Refused before running — no provider calls were made.)",
+          );
+          return { exitCode: 1 };
+        }
+        const prior = claim.prior;
         const first = prior.firstDecidedAt?.toISOString() ?? "an earlier run";
         const legacyNote =
           prior.legacyCount >= 1
@@ -299,6 +313,7 @@ export async function runGateCommand(
         );
         return { exitCode: 1 };
       }
+      claimDigest = claim.digest;
     }
 
     // A dry run previews the verdict WITHOUT opening the seal or recording it;
@@ -479,6 +494,9 @@ export async function runGateCommand(
     env.write(`error: ${command} failed: ${error instanceof Error ? error.message : error}`);
     return { exitCode: 1 };
   } finally {
+    // Release the cohort claim whether the gate decided, refused, or threw; a
+    // recorded verdict is what stops the next attempt, not the claim.
+    if (claimDigest !== null) releaseDecisionClaim(db, claimDigest);
     db.close();
   }
 }
