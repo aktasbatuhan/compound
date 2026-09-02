@@ -130,7 +130,8 @@ export const GateSchema = z.looseObject({
   /**
    * The peeking guard (#22, #3): block a further paid decision that reuses any
    * of a task's already-decided held-out labels. Curate a fresh, non-overlapping
-   * decision set to decide again, or pass --force. Defaults to warn-only.
+   * decision set to decide again, or pass --force. Defaults to BLOCK (#54);
+   * set to false to downgrade the guard to a warning.
    */
   block_repeat_decision: z.boolean().optional(),
   /** Deprecated alias for `block_repeat_decision`; both enable the guard. */

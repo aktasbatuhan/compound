@@ -106,7 +106,7 @@ Usage:
   compound init [--config PATH] [--db PATH] [--force]
   compound validate [--config PATH]
   compound providers [name]                        (known providers; a name prints a paste-ready block)
-  compound import <file> [--importer langfuse|json|otel] [--db PATH] [--config PATH] [--project-id ID]
+  compound import <file> [--importer langfuse|json|otel] [--db PATH] [--config PATH] [--project-id ID] [--unsafe-no-redaction]
   compound curate <task_key> [--split train:val:cal:dec] [--db PATH]
   compound suggest-assertions <task_key> [--db PATH] [--config PATH]
   compound experiment <task_key> <model> [--partition P] [--paid --cap USD]
@@ -149,12 +149,23 @@ export function runImportCommand(args: ParsedArgs, env: CommandEnvironment): Com
   try {
     config = loadConfig(configPath);
   } catch (error) {
-    // An import can proceed without config, but the user must know that the
-    // redaction rules and ingest permissions they configured are NOT applied.
+    // Fail closed (#53). Without config there are no redaction rules and no
+    // ingest permissions, so a YAML typo would otherwise turn a redacted import
+    // into raw persistence of production traces with only a warning. Importing
+    // unredacted is allowed only when the user says so in the command itself.
+    const reason = error instanceof Error ? error.message : String(error);
+    if (args.flags["unsafe-no-redaction"] !== true) {
+      env.write(`error: could not load ${configPath} (${reason}).`);
+      env.write(
+        "error: refusing to import without redaction rules or configured permissions. " +
+          "Fix the config, or pass --unsafe-no-redaction to persist these traces UNREDACTED.",
+      );
+      return { exitCode: 1 };
+    }
+    env.write(`warning: could not load ${configPath} (${reason}).`);
     env.write(
-      `warning: could not load ${configPath} (${error instanceof Error ? error.message : error}).`,
+      "warning: --unsafe-no-redaction given: importing WITHOUT redaction rules or configured permissions.",
     );
-    env.write("warning: importing WITHOUT redaction rules or configured permissions.");
   }
 
   const db = env.openDatabase(stringFlag(args.flags, "db") ?? DEFAULT_DATABASE_PATH);

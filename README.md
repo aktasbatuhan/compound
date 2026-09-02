@@ -127,10 +127,8 @@ as guard rails for a single sequential run, not as a hard wall:
   before a call and recorded after it, with no reservation, so concurrent runs can overshoot it.
 - [#52](https://github.com/aktasbatuhan/compound/issues/52) `compound optimize` calls
   providers from Python outside the cache and spend ledger and records its cost as $0.
-- [#53](https://github.com/aktasbatuhan/compound/issues/53) A config file that fails to
-  load imports traces with no redaction after only a warning.
-- [#54](https://github.com/aktasbatuhan/compound/issues/54) The sealed-set repeat guard is
-  warn-only by default and not atomic.
+- [#54](https://github.com/aktasbatuhan/compound/issues/54) The sealed-set repeat guard
+  blocks by default but its preflight is not atomic under concurrent gates.
 
 ## Development
 
@@ -139,8 +137,8 @@ uv run pytest -q          # Python: benchmark engine, proxy, ledger, adapters
 bun test                  # TypeScript: ingest, curation, experiments, gate, dashboard
 ```
 
-CI, a security policy, and a contributing guide are tracked in
-[#55](https://github.com/aktasbatuhan/compound/issues/55).
+CI runs both suites plus lint and a docs-build check on every pull request. See
+[CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## License
 

@@ -1,6 +1,5 @@
 """Offline checks for the tau GEPA adapter: no network, no tau episodes."""
 
-import json
 
 import pytest
 

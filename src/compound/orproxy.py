@@ -120,7 +120,10 @@ def open_with_retries(
             if attempt == attempts - 1:
                 raise
             delay = delays[attempt]
-            log(f"orproxy: connection error ({exc.reason}), retry {attempt + 1}/{attempts - 1} in {delay:.1f}s")
+            log(
+                f"orproxy: connection error ({exc.reason}), "
+                f"retry {attempt + 1}/{attempts - 1} in {delay:.1f}s"
+            )
             last_exc = exc
         sleep(delay)
     raise last_exc if last_exc else RuntimeError("unreachable")  # pragma: no cover

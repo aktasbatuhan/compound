@@ -75,7 +75,7 @@ def reference_markdown() -> str:
         parts += [f"## compound-bench {sub}", "", "```text", text, "```", ""]
     text = cli_help(["bun", "run", "compound", "--help"])
     text = re.sub(r"\x1b\[[0-9;]*m", "", text)
-    text = "\n".join(l for l in text.splitlines() if not l.startswith("$ bun run"))
+    text = "\n".join(line for line in text.splitlines() if not line.startswith("$ bun run"))
     parts += ["## compound (trace pipeline, TypeScript)", "", "```text", text.strip(), "```", ""]
     return "\n".join(parts)
 
@@ -89,7 +89,9 @@ SHELL = """<!doctype html>
 <meta name="description" content="{description}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?\
+family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600\
+&family=Spline+Sans+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="{root}assets/site.css">
 </head>
 <body>
@@ -137,13 +139,17 @@ def build() -> None:
         md.reset()
         rendered = md.convert(body)
         first_p = re.search(r"<p>(.*?)</p>", rendered, re.S)
-        description = html.escape(re.sub(r"<[^>]+>", "", first_p.group(1)))[:300] if first_p else ""
+        description = ""
+        if first_p:
+            description = html.escape(re.sub(r"<[^>]+>", "", first_p.group(1)))[:300]
         items = []
         for _, m2, _, out2, _ in nav_pages:
             cur = ' class="cur"' if out2 == out else ""
             items.append(f'    <a href="{root}{out2}/"{cur}>{html.escape(m2["title"])}</a>')
         in_docs = meta.get("nav", "docs") == "docs"
-        sidebar = "  <nav class=\"docs-nav\">\n" + "\n".join(items) + "\n  </nav>" if in_docs else ""
+        sidebar = ""
+        if in_docs:
+            sidebar = '  <nav class="docs-nav">\n' + "\n".join(items) + "\n  </nav>"
         page = SHELL.format(
             title=html.escape(meta["title"]),
             description=description,

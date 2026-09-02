@@ -271,10 +271,27 @@ describe("import", () => {
     expect(output()).toContain("could not read");
   });
 
-  test("warns loudly when config is missing, since redaction is then not applied", async () => {
+  test("refuses to import when config cannot be loaded, since redaction would not apply", async () => {
     const { env, output } = testEnvironment();
     await withTempFile(EXPORT_JSON, async (path) => {
-      await runCommand(["import", path, "--config", "/nonexistent/compound.yaml"], env);
+      const result = await runCommand(
+        ["import", path, "--config", "/nonexistent/compound.yaml"],
+        env,
+      );
+      expect(result.exitCode).toBe(1);
+    });
+    expect(output()).toContain("refusing to import without redaction rules");
+    expect(output()).not.toContain("eval_ready:");
+  });
+
+  test("--unsafe-no-redaction imports without config and says so loudly", async () => {
+    const { env, output } = testEnvironment();
+    await withTempFile(EXPORT_JSON, async (path) => {
+      const result = await runCommand(
+        ["import", path, "--config", "/nonexistent/compound.yaml", "--unsafe-no-redaction"],
+        env,
+      );
+      expect(result.exitCode).toBe(0);
     });
     expect(output()).toContain("importing WITHOUT redaction rules");
   });

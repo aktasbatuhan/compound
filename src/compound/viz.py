@@ -75,7 +75,7 @@ class Route:
     flagged: bool = False
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Route":
+    def from_dict(cls, d: dict) -> Route:
         known = {f for f in cls.__dataclass_fields__}
         return cls(**{k: v for k, v in d.items() if k in known})
 
@@ -216,7 +216,7 @@ def render(
                 lx_ < mx + 12 and rx_ > mx - 12 and abs(ly_ - my) < 14 for mx, my in coords)
 
         body = []
-        for r, (cx, cy) in zip(pts, coords):
+        for r, (cx, cy) in zip(pts, coords, strict=True):
             tip = (f'{r.model} @ {r.host}: {r.quality_label}, ${r.cost:.4f}, '
                    f'p50 {r.lat_p50}s, {r.tps} tps, quant {r.quant}')
             body.append(marker(r, cx, cy, tip))

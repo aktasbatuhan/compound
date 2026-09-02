@@ -129,6 +129,9 @@ gate:
   metric: task_success
   max_regression: 0.02
   require_decision_test: true
+  # Refuse a further paid decision that reuses already-inspected sealed labels.
+  # This is the default; it is written out so the choice is visible.
+  block_repeat_decision: true
 `;
 }
 
