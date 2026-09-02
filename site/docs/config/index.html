@@ -67,9 +67,9 @@ any <code>--providers</code> list, and sits in the same report as the OpenRouter
   smoke_cases_per_benchmark: 2
 </code></pre>
 <p><code>bfcl</code> and <code>ds1000</code> enforce this limit and the per-run <code>--cap</code>. <code>tau2</code> bills
-whatever the episodes cost, so size the subset with a dry run first. Note the
-<a href="../traces/#known-gaps">known gaps</a> in how the limit is enforced under
-concurrency.</p>
+whatever the episodes cost, so size the subset with a dry run first. The trace
+pipeline enforces the same limit with atomic reservations; see
+<a href="../traces/#money-controls">Money controls</a>.</p>
 <h2 id="models">Models</h2>
 <pre><code class="language-yaml">models:
   candidates:

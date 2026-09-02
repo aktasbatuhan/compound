@@ -8,7 +8,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import type { CompoundDatabase } from "./db";
 import {
   cases,
@@ -19,6 +19,7 @@ import {
   type GateResultRow,
   type GateSpecRow,
   gateDecisionCases,
+  gateDecisionClaims,
   gateResults,
   gateSpecs,
 } from "./schema";
@@ -312,4 +313,71 @@ export function listGateResults(handle: CompoundDatabase, limit = 100): GateResu
     .limit(limit)
     .all();
   return rows.map((r) => ({ result: r.gate_results, spec: r.gate_specs }));
+}
+
+/**
+ * How long an unreleased claim blocks a cohort. A gate runs two experiments
+ * and a decision: hours, not days. Past this a claim is treated as left behind
+ * by a crashed gate and ignored.
+ */
+export const DECISION_CLAIM_TTL_MS = 6 * 60 * 60 * 1000;
+
+/** Stable digest of a sealed cohort: the task plus its sorted content hashes. */
+export function cohortDigest(taskKey: string, cohortHashes: readonly string[]): string {
+  const hash = createHash("sha256");
+  hash.update(taskKey);
+  for (const contentHash of [...cohortHashes].sort()) hash.update(`\n${contentHash}`);
+  return hash.digest("hex");
+}
+
+export type CohortClaim =
+  | { claimed: true; digest: string }
+  | {
+      claimed: false;
+      digest: string;
+      reason: "prior_decision" | "held_by_another_gate";
+      prior: PriorDecisions;
+    };
+
+/**
+ * Claim a sealed cohort for one paid decision, atomically with the prior-
+ * decision check (#54). Inside an IMMEDIATE transaction: expire stale claims,
+ * refuse if any prior verdict reused these labels, refuse if another live
+ * claim holds the digest, else insert the claim. Two gates started at the same
+ * moment therefore cannot both pass; the second sees the first's claim. The
+ * caller must `releaseDecisionClaim` when the gate ends, decided or not.
+ */
+export function claimDecisionCohort(
+  handle: CompoundDatabase,
+  taskKey: string,
+  cohortHashes: readonly string[],
+): CohortClaim {
+  const digest = cohortDigest(taskKey, cohortHashes);
+  let outcome: CohortClaim = { claimed: true, digest };
+  const claim = handle.sqlite.transaction(() => {
+    const cutoff = new Date(Date.now() - DECISION_CLAIM_TTL_MS);
+    handle.db.delete(gateDecisionClaims).where(lt(gateDecisionClaims.claimedAt, cutoff)).run();
+    const prior = priorDecisions(handle, taskKey, cohortHashes);
+    if (prior.count >= 1 || prior.legacyCount >= 1) {
+      outcome = { claimed: false, digest, reason: "prior_decision", prior };
+      return;
+    }
+    const held = handle.db
+      .select({ digest: gateDecisionClaims.cohortDigest })
+      .from(gateDecisionClaims)
+      .where(eq(gateDecisionClaims.cohortDigest, digest))
+      .all();
+    if (held.length > 0) {
+      outcome = { claimed: false, digest, reason: "held_by_another_gate", prior };
+      return;
+    }
+    handle.db.insert(gateDecisionClaims).values({ cohortDigest: digest, taskKey }).run();
+  });
+  claim.immediate();
+  return outcome;
+}
+
+/** Release a claim taken by `claimDecisionCohort`. Safe to call twice. */
+export function releaseDecisionClaim(handle: CompoundDatabase, digest: string): void {
+  handle.db.delete(gateDecisionClaims).where(eq(gateDecisionClaims.cohortDigest, digest)).run();
 }

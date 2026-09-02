@@ -1114,6 +1114,17 @@ describe("optimize", () => {
     expect(output()).toContain("not calibrated");
     expect(output()).toContain("judge calibrate");
   });
+
+  test("refuses to optimize without --paid --cap, judge or not (#52)", async () => {
+    const { env, output } = testEnvironment();
+    // 'extraction' has no judge; before #52 this launched unmetered provider calls.
+    const result = await runCommand(
+      ["optimize", "extraction", "--candidate", "zai-org/GLM-5.2-FP8", "--config", "compound.yaml"],
+      env,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(output()).toContain("pass --paid --cap");
+  });
 });
 
 describe("telemetry", () => {

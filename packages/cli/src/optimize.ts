@@ -16,6 +16,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "@compound/config";
+import { resolveModel } from "@compound/execution";
 import { type JudgeConfig, judgeTrust } from "@compound/judge";
 import { assessEligibility } from "@compound/optimize";
 import { listCases, listGateResults, recordOptimizationRun } from "@compound/storage";
@@ -123,16 +124,38 @@ export function runOptimizeCommand(args: ParsedArgs, env: CommandEnvironment): C
         );
         return { exitCode: 1 };
       }
-      if (args.flags.paid !== true || cap === undefined || !(Number.parseFloat(cap) > 0)) {
-        env.write(
-          `error: judge-graded optimization spends judge tokens — pass --paid --cap <usd> ` +
-            `(judge: ${judge.model}).`,
-        );
-        return { exitCode: 1 };
-      }
       env.write(
         `judge-graded task: grading via calibrated judge ${judge.model} (${trust.reason}).`,
       );
+    }
+
+    // Optimization spends on every rollout and every reflection, judge or not
+    // (#52). The same money controls as an experiment apply: paid runs must be
+    // enabled, the global limit must be positive, and a per-run cap is required.
+    const capUsd = cap === undefined ? Number.NaN : Number.parseFloat(cap);
+    if (args.flags.paid !== true || !(capUsd > 0)) {
+      env.write(
+        "error: optimization spends candidate and reflection tokens — pass --paid --cap <usd>.",
+      );
+      return { exitCode: 1 };
+    }
+    if (config.budget?.paid_runs_enabled !== true) {
+      env.write("error: --paid requires budget.paid_runs_enabled: true in compound.yaml");
+      return { exitCode: 1 };
+    }
+    const globalHardLimitUsd = config.budget?.hard_limit_usd ?? 0;
+    if (!(globalHardLimitUsd > 0)) {
+      env.write("error: --paid requires a positive budget.hard_limit_usd in compound.yaml");
+      return { exitCode: 1 };
+    }
+    let candidatePrice: { input: number; output: number };
+    let reflectionPrice: { input: number; output: number };
+    try {
+      candidatePrice = resolveModel(config, candidateModel).price;
+      reflectionPrice = resolveModel(config, reflectionModel).price;
+    } catch (error) {
+      env.write(`error: ${error instanceof Error ? error.message : error}`);
+      return { exitCode: 1 };
     }
 
     // Eligibility: only optimize a gap worth closing (unless forced).
@@ -189,6 +212,19 @@ export function runOptimizeCommand(args: ParsedArgs, env: CommandEnvironment): C
       valset: val.map(toJobCase),
       max_metric_calls: maxCalls,
       reflection_minibatch_size: 3,
+      // The shared paid-call contract (#52): the Python side reserves each call
+      // against this database's ledger before making it and settles it after,
+      // under the same per-run cap and global limit as an experiment.
+      budget: {
+        db: dbPath,
+        experiment_id: `optimize:${taskKey}:${Date.now()}`,
+        cap_usd: capUsd,
+        global_hard_limit_usd: globalHardLimitUsd,
+      },
+      prices: {
+        candidate: candidatePrice,
+        reflection: reflectionPrice,
+      },
       // The single grader the Python adapter shells back to. For a judge-graded
       // task it grades on the calibrated judge, so pass the money-safe judge
       // controls and the same db that holds its calibration + cache.
@@ -225,6 +261,7 @@ export function runOptimizeCommand(args: ParsedArgs, env: CommandEnvironment): C
       after_val_score: number;
       val_cases: number;
       reflection_calls: number;
+      cost_usd: number;
     };
     const run = recordOptimizationRun(db, {
       taskKey,
@@ -235,6 +272,7 @@ export function runOptimizeCommand(args: ParsedArgs, env: CommandEnvironment): C
       afterValScore: result.after_val_score,
       valCases: result.val_cases,
       reflectionCalls: result.reflection_calls,
+      costUsd: result.cost_usd,
       eligibilityReason,
     });
 

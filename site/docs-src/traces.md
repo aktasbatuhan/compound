@@ -8,8 +8,8 @@ Compound compares them on your own traffic instead: it imports the traces you
 already produce, turns them into graded cases, replays candidates against them,
 and decides a switch under a rule fixed before anyone looks.
 
-This half is earlier stage than the sweep. Read [Known gaps](#known-gaps)
-before relying on its money controls.
+This half is earlier stage than the sweep. See [Money controls](#money-controls)
+for what the budget guarantees.
 
 ```bash
 bun install
@@ -45,14 +45,14 @@ frontier. `compound serve` exposes the same data on a local API, and
 Storage is local SQLite. Keys stay in `.env`. Redacted case inputs are sent to
 the providers you explicitly run, and nowhere else.
 
-## Known gaps
+## Money controls
 
-These were found in review and confirmed in the code. Until they are closed,
-treat the budget controls as guard rails for one sequential run, not a hard
-wall.
+Every paid call goes through one primitive, in both languages:
 
-- [#51](https://github.com/aktasbatuhan/compound/issues/51) The hard USD limit is checked before a call and recorded after it, with no reservation. Concurrent runs can overshoot it.
-- [#52](https://github.com/aktasbatuhan/compound/issues/52) `compound optimize` calls providers from Python outside the completion cache and spend ledger, and records its cost as $0.
-- [#54](https://github.com/aktasbatuhan/compound/issues/54) The sealed-set repeat guard now blocks by default, but its preflight is a read, not a claim, so two gates started at the same moment can both pass it.
+1. **Reserve.** The call's estimated cost (prompt size plus the full output budget at the model's price) is written to `spend_reservations` inside an IMMEDIATE transaction, after checking the committed ledger plus every other live reservation against the per-run cap and the global hard limit. Two processes on one database serialize here.
+2. **Call** the provider.
+3. **Settle.** The reservation is deleted and the actual charge appended to `spend_records` in one transaction. A call that fails releases its reservation. A call that returns no usage is charged at the estimate, never zero.
 
-Closed: a `compound.yaml` that fails to load now stops the import instead of persisting raw traces; `--unsafe-no-redaction` is the explicit override (#53).
+`compound optimize` requires `--paid --cap` and hands the Python side the database path, the cap, the limit, and the prices; every candidate rollout and reflection call reserves and settles the same way, and the run's measured cost is stored with the optimization. A reservation left by a crashed process expires after 15 minutes.
+
+A paid gate claims its sealed cohort atomically with the prior-decision check before running either experiment, so two gates on the same cohort cannot both pass the preflight. The claim is released when the gate ends; the recorded verdict is what blocks the next attempt.

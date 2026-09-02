@@ -20,8 +20,9 @@ import {
   getCachedCompletion,
   listCases,
   recordCaseResults,
-  recordSpend,
-  requireBudgetHeadroom,
+  releaseSpend,
+  reserveSpend,
+  settleSpend,
 } from "@compound/storage";
 import {
   chargeableCost,
@@ -398,6 +399,9 @@ export async function runExperiment(
         // Real provider calls this run — replayed (per-turn cached) turns don't
         // count, so a resumed trajectory reports only the calls it actually made.
         let realTurnCalls = 0;
+        // The reservation taken before the current turn (#51); settled by the
+        // turn's completion, released if the trajectory throws before that.
+        let pendingReservation: string | null = null;
         const traj = await runTrajectory(options.provider, {
           request,
           recordedToolResults,
@@ -430,7 +434,7 @@ export async function runExperiment(
             // Flex cushions the CHECK only; the reported estimate stays raw.
             const reservation =
               perCallEstimate + (options.transport === "flex" ? FLEX_REQUEST_RESERVE_USD : 0);
-            requireBudgetHeadroom(db, {
+            pendingReservation = reserveSpend(db, {
               fingerprint: turnFingerprint,
               estimatedCost: reservation,
               experimentId: experiment.id,
@@ -457,11 +461,14 @@ export async function runExperiment(
             // call's spend, and a later re-run RESUMES this turn from cache instead
             // of re-charging it (#1). Keyed by the per-turn fingerprint, distinct
             // from the aggregate fingerprint the whole trajectory caches under.
-            recordSpend(db, {
-              fingerprint: turnFingerprint,
-              costUsd: turnCost,
-              experimentId: experiment.id,
-            });
+            if (pendingReservation !== null) {
+              settleSpend(db, pendingReservation, {
+                fingerprint: turnFingerprint,
+                costUsd: turnCost,
+                experimentId: experiment.id,
+              });
+              pendingReservation = null;
+            }
             cacheCompletion(db, {
               fingerprint: turnFingerprint,
               provider: options.providerName,
@@ -478,6 +485,11 @@ export async function runExperiment(
               costUsd: turnCost,
             });
           },
+        }).catch((error: unknown) => {
+          // A throw between reserve and settle (provider error, budget stop on
+          // a later turn) must not leave the estimate charged against the caps.
+          if (pendingReservation !== null) releaseSpend(db, pendingReservation);
+          throw error;
         });
         providerCalls += realTurnCalls; // only real calls, not replayed turns
         costUsd = trajCost;
@@ -548,7 +560,7 @@ export async function runExperiment(
         const reservation =
           options.transport === "flex" ? estimate + FLEX_REQUEST_RESERVE_USD : estimate;
         // Enforce BOTH caps before spending a cent.
-        requireBudgetHeadroom(db, {
+        const reservationId = reserveSpend(db, {
           fingerprint,
           estimatedCost: reservation,
           experimentId: experiment.id,
@@ -557,7 +569,12 @@ export async function runExperiment(
         });
         estimatedCost += estimate;
 
-        response = await options.provider.complete(request);
+        try {
+          response = await options.provider.complete(request);
+        } catch (error) {
+          releaseSpend(db, reservationId);
+          throw error;
+        }
         providerCalls += 1;
         // A completed paid call with no reported usage ledgers the estimate, not
         // $0 (#3) — the money was spent whether or not the provider counted it.
@@ -567,7 +584,7 @@ export async function runExperiment(
         actualCost += costUsd;
 
         // Persist before grading, so a crash after the paid call never loses it.
-        recordSpend(db, { fingerprint, costUsd, experimentId: experiment.id });
+        settleSpend(db, reservationId, { fingerprint, costUsd, experimentId: experiment.id });
         cacheCompletion(db, {
           fingerprint,
           provider: options.providerName,

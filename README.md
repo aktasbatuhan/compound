@@ -118,17 +118,15 @@ with [GEPA](https://github.com/gepa-ai/gepa) on train and validation cases only.
 Storage is local SQLite and keys live in a git-ignored `.env`. Redacted case inputs are
 sent to the providers you explicitly run, and nowhere else.
 
-### Known gaps in the money and safety guarantees
+### Money controls
 
-Reviewers found these and they are real. Until they are closed, treat the budget controls
-as guard rails for a single sequential run, not as a hard wall:
-
-- [#51](https://github.com/aktasbatuhan/compound/issues/51) The hard USD limit is checked
-  before a call and recorded after it, with no reservation, so concurrent runs can overshoot it.
-- [#52](https://github.com/aktasbatuhan/compound/issues/52) `compound optimize` calls
-  providers from Python outside the cache and spend ledger and records its cost as $0.
-- [#54](https://github.com/aktasbatuhan/compound/issues/54) The sealed-set repeat guard
-  blocks by default but its preflight is not atomic under concurrent gates.
+Every paid call, in TypeScript or in the Python optimizer, reserves its estimate
+against the shared SQLite ledger inside a write transaction before the provider is
+called, and settles the reservation at the actual charge afterwards. Concurrent runs
+therefore serialize on the same limit instead of each checking a stale total. A
+gate claims its sealed cohort the same way before spending. Runs stay dry without
+`--paid` and a per-run `--cap`; a config that fails to load stops an import instead
+of persisting raw traces.
 
 ## Development
 

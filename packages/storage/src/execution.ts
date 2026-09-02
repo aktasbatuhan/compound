@@ -6,7 +6,7 @@
  *   fingerprint;
  * - a cached completion costs $0 and is served without a provider call.
  */
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, lt, sql } from "drizzle-orm";
 import type { CompoundDatabase } from "./db";
 import {
   type CasePartition,
@@ -19,6 +19,7 @@ import {
   experimentResults,
   experiments,
   spendRecords,
+  spendReservations,
 } from "./schema";
 import { cachedTokensOf, serviceTierOf, usageTokens } from "./telemetry";
 
@@ -57,7 +58,7 @@ export function experimentSpendUsd(handle: CompoundDatabase, experimentId: strin
   return row?.total ?? 0;
 }
 
-/** Whether a fingerprint has already been charged (so it must not be again). */
+/** Whether a fingerprint has ever been charged. Informational; no longer gates anything. */
 export function isFingerprintCharged(handle: CompoundDatabase, fingerprint: string): boolean {
   const rows = handle.db
     .select({ id: spendRecords.id })
@@ -74,12 +75,11 @@ export interface RecordSpendInput {
 }
 
 /**
- * Append a spend record. Idempotent on fingerprint: a fingerprint already in
- * the ledger is a no-op that returns the existing total, so a retried call is
- * never charged twice.
+ * Append a spend record. Every real paid call appends, including one whose
+ * fingerprint was charged before (#51): whether a call happens is decided by
+ * the completion cache, and once it has happened the money is gone.
  */
 export function recordSpend(handle: CompoundDatabase, input: RecordSpendInput): void {
-  if (isFingerprintCharged(handle, input.fingerprint)) return;
   handle.db
     .insert(spendRecords)
     .values({
@@ -92,9 +92,100 @@ export function recordSpend(handle: CompoundDatabase, input: RecordSpendInput): 
 }
 
 /**
- * Enforce both caps before a call. Throws `BudgetExceededError` if adding
- * `estimatedCost` would exceed the per-experiment cap or the global hard limit.
- * A fingerprint already charged is free to proceed (it will hit the cache).
+ * A reservation older than this is treated as abandoned by a process that died
+ * between reserving and settling. Provider calls are bounded well under it (the
+ * pinning proxy abandons a call at 300 s), so a live reservation never ages out.
+ */
+export const RESERVATION_TTL_MS = 15 * 60 * 1000;
+
+/** Sum of live reservations, optionally for one experiment. Expired rows are purged. */
+export function openReservationsUsd(handle: CompoundDatabase, experimentId?: string): number {
+  const cutoff = new Date(Date.now() - RESERVATION_TTL_MS);
+  handle.db.delete(spendReservations).where(lt(spendReservations.createdAt, cutoff)).run();
+  const total = sql<number>`coalesce(sum(${spendReservations.reservedUsd}), 0)`;
+  const [row] =
+    experimentId === undefined
+      ? handle.db.select({ total }).from(spendReservations).all()
+      : handle.db
+          .select({ total })
+          .from(spendReservations)
+          .where(eq(spendReservations.experimentId, experimentId))
+          .all();
+  return row?.total ?? 0;
+}
+
+export interface ReserveSpendInput {
+  fingerprint: string;
+  estimatedCost: number;
+  experimentId: string;
+  experimentCapUsd: number;
+  globalHardLimitUsd: number;
+}
+
+/**
+ * Reserve budget for one paid call, atomically (#51).
+ *
+ * Runs inside an IMMEDIATE transaction, so concurrent processes on the same
+ * database serialize here: each one sees the committed ledger PLUS every other
+ * live reservation before deciding. Throws `BudgetExceededError` when the
+ * estimate would push either total past its limit; otherwise inserts the
+ * reservation and returns its id, which `settleSpend` or `releaseSpend` must
+ * consume. The estimate counts against both caps until then.
+ */
+export function reserveSpend(handle: CompoundDatabase, input: ReserveSpendInput): string {
+  const id = crypto.randomUUID();
+  const reserve = handle.sqlite.transaction(() => {
+    const globalAfter = totalSpendUsd(handle) + openReservationsUsd(handle) + input.estimatedCost;
+    if (globalAfter > input.globalHardLimitUsd) {
+      throw new BudgetExceededError(globalAfter, input.globalHardLimitUsd, "global");
+    }
+    const experimentAfter =
+      experimentSpendUsd(handle, input.experimentId) +
+      openReservationsUsd(handle, input.experimentId) +
+      input.estimatedCost;
+    if (experimentAfter > input.experimentCapUsd) {
+      throw new BudgetExceededError(experimentAfter, input.experimentCapUsd, "experiment");
+    }
+    handle.db
+      .insert(spendReservations)
+      .values({
+        id,
+        experimentId: input.experimentId,
+        fingerprint: input.fingerprint,
+        reservedUsd: input.estimatedCost,
+      })
+      .run();
+  });
+  reserve.immediate();
+  return id;
+}
+
+/**
+ * Turn a reservation into the actual charge: delete the reservation and append
+ * the spend record in one transaction, so there is no moment at which the
+ * money is neither reserved nor recorded.
+ */
+export function settleSpend(
+  handle: CompoundDatabase,
+  reservationId: string,
+  input: RecordSpendInput,
+): void {
+  const settle = handle.sqlite.transaction(() => {
+    handle.db.delete(spendReservations).where(eq(spendReservations.id, reservationId)).run();
+    recordSpend(handle, input);
+  });
+  settle.immediate();
+}
+
+/** Drop a reservation whose call never completed (provider error, cancellation). */
+export function releaseSpend(handle: CompoundDatabase, reservationId: string): void {
+  handle.db.delete(spendReservations).where(eq(spendReservations.id, reservationId)).run();
+}
+
+/**
+ * Read-only headroom check against the ledger plus live reservations. Fine for
+ * estimates and dry runs; a paid call must go through `reserveSpend`, the only
+ * check that holds when two runs share the database.
  */
 export function requireBudgetHeadroom(
   handle: CompoundDatabase,
@@ -106,13 +197,14 @@ export function requireBudgetHeadroom(
     globalHardLimitUsd: number;
   },
 ): void {
-  if (isFingerprintCharged(handle, params.fingerprint)) return;
-
-  const globalAfter = totalSpendUsd(handle) + params.estimatedCost;
+  const globalAfter = totalSpendUsd(handle) + openReservationsUsd(handle) + params.estimatedCost;
   if (globalAfter > params.globalHardLimitUsd) {
     throw new BudgetExceededError(globalAfter, params.globalHardLimitUsd, "global");
   }
-  const experimentAfter = experimentSpendUsd(handle, params.experimentId) + params.estimatedCost;
+  const experimentAfter =
+    experimentSpendUsd(handle, params.experimentId) +
+    openReservationsUsd(handle, params.experimentId) +
+    params.estimatedCost;
   if (experimentAfter > params.experimentCapUsd) {
     throw new BudgetExceededError(experimentAfter, params.experimentCapUsd, "experiment");
   }

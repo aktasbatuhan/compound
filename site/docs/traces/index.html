@@ -42,8 +42,8 @@ and decides a switch under a rule fixed before anyone looks.">
 Compound compares them on your own traffic instead: it imports the traces you
 already produce, turns them into graded cases, replays candidates against them,
 and decides a switch under a rule fixed before anyone looks.</p>
-<p>This half is earlier stage than the sweep. Read <a href="#known-gaps">Known gaps</a>
-before relying on its money controls.</p>
+<p>This half is earlier stage than the sweep. See <a href="#money-controls">Money controls</a>
+for what the budget guarantees.</p>
 <pre><code class="language-bash">bun install
 bun run compound init                                       # writes compound.yaml
 bun run compound import export.jsonl --importer langfuse    # or json, otel
@@ -72,16 +72,15 @@ frontier. <code>compound serve</code> exposes the same data on a local API, and
 <h2 id="data-handling">Data handling</h2>
 <p>Storage is local SQLite. Keys stay in <code>.env</code>. Redacted case inputs are sent to
 the providers you explicitly run, and nowhere else.</p>
-<h2 id="known-gaps">Known gaps</h2>
-<p>These were found in review and confirmed in the code. Until they are closed,
-treat the budget controls as guard rails for one sequential run, not a hard
-wall.</p>
-<ul>
-<li><a href="https://github.com/aktasbatuhan/compound/issues/51">#51</a> The hard USD limit is checked before a call and recorded after it, with no reservation. Concurrent runs can overshoot it.</li>
-<li><a href="https://github.com/aktasbatuhan/compound/issues/52">#52</a> <code>compound optimize</code> calls providers from Python outside the completion cache and spend ledger, and records its cost as $0.</li>
-<li><a href="https://github.com/aktasbatuhan/compound/issues/54">#54</a> The sealed-set repeat guard now blocks by default, but its preflight is a read, not a claim, so two gates started at the same moment can both pass it.</li>
-</ul>
-<p>Closed: a <code>compound.yaml</code> that fails to load now stops the import instead of persisting raw traces; <code>--unsafe-no-redaction</code> is the explicit override (#53).</p>
+<h2 id="money-controls">Money controls</h2>
+<p>Every paid call goes through one primitive, in both languages:</p>
+<ol>
+<li><strong>Reserve.</strong> The call's estimated cost (prompt size plus the full output budget at the model's price) is written to <code>spend_reservations</code> inside an IMMEDIATE transaction, after checking the committed ledger plus every other live reservation against the per-run cap and the global hard limit. Two processes on one database serialize here.</li>
+<li><strong>Call</strong> the provider.</li>
+<li><strong>Settle.</strong> The reservation is deleted and the actual charge appended to <code>spend_records</code> in one transaction. A call that fails releases its reservation. A call that returns no usage is charged at the estimate, never zero.</li>
+</ol>
+<p><code>compound optimize</code> requires <code>--paid --cap</code> and hands the Python side the database path, the cap, the limit, and the prices; every candidate rollout and reflection call reserves and settles the same way, and the run's measured cost is stored with the optimization. A reservation left by a crashed process expires after 15 minutes.</p>
+<p>A paid gate claims its sealed cohort atomically with the prior-decision check before running either experiment, so two gates on the same cohort cannot both pass the preflight. The claim is released when the gate ends; the recorded verdict is what blocks the next attempt.</p>
   </article>
 </main>
 <footer>

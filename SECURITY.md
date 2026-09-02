@@ -18,15 +18,12 @@ spend. You will get a reply within a few days.
 - **Money.** Benchmark runs are dry runs without `--go`; trace experiments need
   `--paid` and a cap.
 
-## Known limitations
+## Money controls
 
-These are tracked publicly and are listed here so nobody relies on a guarantee
-the code does not yet give:
-
-- [#51](https://github.com/aktasbatuhan/compound/issues/51): the hard USD limit
-  in the trace pipeline is checked before a call and recorded after it, so
-  concurrent runs can overshoot it.
-- [#52](https://github.com/aktasbatuhan/compound/issues/52): `compound optimize`
-  spends outside the completion cache and spend ledger.
-
-If you find something in the same family, report it the same way.
+Every paid call reserves its estimated cost against the shared SQLite ledger
+inside an IMMEDIATE transaction before the provider is called, and settles the
+reservation at the actual charge afterwards, so two runs on one database cannot
+both pass a check only one could afford. The Python optimizer uses the same
+tables under the same rules and refuses to run without a budget. A reservation
+left by a crashed process expires after 15 minutes. If you find a way to spend
+outside the ledger, report it as above.
