@@ -694,7 +694,9 @@ def main() -> int:
 
     prepare = sub.add_parser("prepare", help="install a benchmark's engine or build its manifest")
     prepare.add_argument("benchmark", choices=("tau2", "mmlu", "terminal_bench"))
-    prepare.add_argument("--per-subject", type=int, default=5, help="mmlu: test questions per subject")
+    prepare.add_argument(
+        "--per-subject", type=int, default=5, help="mmlu: test questions per subject"
+    )
 
     providers = sub.add_parser(
         "providers",
@@ -829,14 +831,20 @@ def main() -> int:
         "openrouter/deepinfra,openrouter/baseten,doubleword/flex",
     )
     # tau2 routing (any provider, any model)
-    run.add_argument("--provider", default="openrouter", help="tau2: openrouter, doubleword, or a label for --api-base")
+    run.add_argument(
+        "--provider",
+        default="openrouter",
+        help="tau2: openrouter, doubleword, or a label for --api-base",
+    )
     run.add_argument("--api-base", help="tau2: custom OpenAI-compatible endpoint")
     run.add_argument("--api-key-env", help="tau2: env var holding the key for --api-base")
     run.add_argument("--upstream", help="tau2: pin one OpenRouter upstream (fallbacks disabled)")
     run.add_argument("--tier", help="tau2: service tier flag (e.g. doubleword flex)")
     run.add_argument("--max-steps", type=int, default=30)
     run.add_argument("--max-tokens", type=int, default=None)
-    run.add_argument("--user-model", default="openai/gpt-5.6-luna", help="tau2: user simulator (OpenRouter)")
+    run.add_argument(
+        "--user-model", default="openai/gpt-5.6-luna", help="tau2: user simulator (OpenRouter)"
+    )
     run.add_argument("--output", help="tau2: episode output dir")
     # bfcl / ds1000 delegation
     run.add_argument("--cap", type=float, default=4.0, help="bfcl/ds1000: per-run USD cap")

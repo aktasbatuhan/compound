@@ -102,7 +102,10 @@ def estimate(spec: dict, trials: int) -> float:
         user_in * float(user_price["usd_in_per_m"]) + user_out * float(user_price["usd_out_per_m"])
     ) / 1e6
 
-    print(f"episodes per config: {episodes} (tasks x {trials} trial(s)), max_steps scale x{scale:.2f}")
+    print(
+        f"episodes per config: {episodes} (tasks x {trials} trial(s)), "
+        f"max_steps scale x{scale:.2f}"
+    )
     print(f"user simulator: {user_price['model']} ~ ${user_usd * episodes:.2f} per config")
     print()
     print(f"{'config':52s} {'quant':8s} {'$/episode':>10s} {'$/config':>9s}")

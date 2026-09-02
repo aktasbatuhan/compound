@@ -268,9 +268,12 @@ export async function runGateCommand(
     });
 
   // The peeking guard, evaluated ONCE so the preflight below and decideGate agree.
+  // Blocks by default (#54): re-deciding on already-inspected sealed labels is
+  // the failure the sealed set exists to prevent, so opting OUT is the explicit
+  // act. `block_repeat_decision: false` (or the deprecated alias) disables it.
   const blockRepeat =
-    config.gate?.block_repeat_decision === true ||
-    config.gate?.block_repeat_after_adoption === true;
+    config.gate?.block_repeat_decision !== false &&
+    config.gate?.block_repeat_after_adoption !== false;
   const forced = args.flags.force === true;
 
   try {

@@ -53,5 +53,6 @@ wall.
 
 - [#51](https://github.com/aktasbatuhan/compound/issues/51) The hard USD limit is checked before a call and recorded after it, with no reservation. Concurrent runs can overshoot it.
 - [#52](https://github.com/aktasbatuhan/compound/issues/52) `compound optimize` calls providers from Python outside the completion cache and spend ledger, and records its cost as $0.
-- [#53](https://github.com/aktasbatuhan/compound/issues/53) A `compound.yaml` that fails to load imports traces with no redaction after only a warning.
-- [#54](https://github.com/aktasbatuhan/compound/issues/54) The sealed-set repeat guard is warn-only by default and not atomic.
+- [#54](https://github.com/aktasbatuhan/compound/issues/54) The sealed-set repeat guard now blocks by default, but its preflight is a read, not a claim, so two gates started at the same moment can both pass it.
+
+Closed: a `compound.yaml` that fails to load now stops the import instead of persisting raw traces; `--unsafe-no-redaction` is the explicit override (#53).

@@ -14,8 +14,9 @@ import json
 import re
 import time
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 HF_ROWS = (
     "https://datasets-server.huggingface.co/rows"
