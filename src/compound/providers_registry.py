@@ -100,6 +100,11 @@ class ProviderSpec:
     #: Left ``None`` at construction, it is filled from :attr:`kind` in
     #: ``__post_init__``; a direct host may override it in compound.yaml.
     cache_strategy: str | None = None
+    #: Model id to send on the wire when this host names the weights differently
+    #: from the id the sweep was invoked with (Doubleword serves
+    #: ``zai-org/GLM-5.3-Flash`` where OpenRouter serves ``z-ai/glm-5.3-flash``).
+    #: ``None`` sends the caller's id unchanged.
+    wire_model: str | None = None
 
     def __post_init__(self) -> None:
         if self.cache_strategy is None:
@@ -275,3 +280,31 @@ def parse_providers(
     if not specs:
         raise ValueError("no provider tokens given")
     return specs
+
+
+def apply_host_models(specs: list[ProviderSpec], mapping: dict[str, str]) -> list[ProviderSpec]:
+    """Return ``specs`` with :attr:`ProviderSpec.wire_model` set from ``mapping``.
+
+    A mapping key matches a spec by exact token (``doubleword/flex``), by label
+    (``doubleword-flex``), or by kind (``doubleword``), most specific first.
+    Keys that match nothing raise, so a typo cannot silently leave an arm on
+    the wrong model id.
+    """
+    from dataclasses import replace
+
+    unused = set(mapping)
+    out: list[ProviderSpec] = []
+    for spec in specs:
+        chosen = None
+        for key in (spec.token, spec.label, spec.kind):
+            if key in mapping:
+                chosen = key
+                break
+        if chosen is None:
+            out.append(spec)
+            continue
+        unused.discard(chosen)
+        out.append(replace(spec, wire_model=mapping[chosen]))
+    if unused:
+        raise ValueError(f"--host-model keys match no provider: {sorted(unused)}")
+    return out

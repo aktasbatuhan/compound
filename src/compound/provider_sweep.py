@@ -29,7 +29,8 @@ def plan(specs: list[ProviderSpec], model: str) -> list[str]:
     lines = []
     for spec in specs:
         pin = spec.proxy_injection() or "(host default)"
-        lines.append(f"  {spec.label:22s} {model} -> {spec.forward_base_url}  pin={pin}")
+        wire = spec.wire_model or model
+        lines.append(f"  {spec.label:22s} {wire} -> {spec.forward_base_url}  pin={pin}")
     return lines
 
 
