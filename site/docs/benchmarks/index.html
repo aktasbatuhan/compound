@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Benchmarks · Compound</title>
+<meta name="description" content="One front door runs any task subset from any shipped benchmark. Every benchmark
+ships with its official grader; Compound adds the provider sweep, the report,
+and the ledger around it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../../docs/" class="cur">docs</a>
+      <a href="../../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../../docs/">Overview</a>
+    <a href="../../docs/providers/">Providers</a>
+    <a href="../../docs/benchmarks/" class="cur">Benchmarks</a>
+    <a href="../../docs/harbor/">Terminal-Bench 4.0</a>
+    <a href="../../docs/reports/">Reports and ledgers</a>
+    <a href="../../docs/serving/">Serving metrics</a>
+    <a href="../../docs/traces/">Your own traces</a>
+    <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="benchmarks">Benchmarks</h1>
+<p>One front door runs any task subset from any shipped benchmark. Every benchmark
+ships with its official grader; Compound adds the provider sweep, the report,
+and the ledger around it.</p>
+<table>
+<thead>
+<tr>
+<th>Benchmark</th>
+<th>What it measures</th>
+<th>How it grades</th>
+<th>Needs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>terminal_bench</code></td>
+<td>agentic terminal tasks</td>
+<td>official harness in Docker, task test suites</td>
+<td>Docker, <code>prepare terminal_bench</code></td>
+</tr>
+<tr>
+<td><code>tau2</code></td>
+<td>interactive tool-calling support (airline, retail, telecom)</td>
+<td>live user simulator + official reward</td>
+<td><code>prepare tau2</code></td>
+</tr>
+<tr>
+<td><code>bfcl</code></td>
+<td>single-turn function-call generation</td>
+<td>official AST checker</td>
+<td>nothing</td>
+</tr>
+<tr>
+<td><code>ds1000</code></td>
+<td>data-science code generation</td>
+<td>official tests in a pinned container</td>
+<td>Docker image</td>
+</tr>
+<tr>
+<td><code>mmlu</code></td>
+<td>multiple-choice knowledge, 57 subjects</td>
+<td>exact letter match, no judge</td>
+<td><code>prepare mmlu</code></td>
+</tr>
+</tbody>
+</table>
+<p>Terminal-Bench 4.0 runs through a separate <code>harbor</code> subcommand; see
+<a href="../harbor/">Terminal-Bench 4.0</a>.</p>
+<h2 id="commands">Commands</h2>
+<pre><code class="language-bash">compound-bench list                                # benchmarks, case counts, how each runs
+compound-bench prepare tau2                        # one-time engine or dataset setup
+compound-bench tasks tau2 --contains retail        # case ids, optionally filtered
+compound-bench run tau2 --model ... --tasks retail:10,airline:3 --go
+</code></pre>
+<p><code>run</code> accepts one of <code>--tasks</code> (explicit ids), <code>--partition</code> (every case in a
+partition), or <code>--contains</code> (substring match). <code>--trials N</code> repeats each case.</p>
+<h2 id="partitions">Partitions</h2>
+<p>Each benchmark manifest splits its cases into fixed partitions:
+<code>optimizer_train</code>, <code>optimizer_validation</code>, and <code>decision_test</code>. The split is
+hash-based, so it is stable across machines. If you use Compound's prompt
+optimizer, it sees only the first two; <code>decision_test</code> is the sealed set.</p>
+<h2 id="sweeping-hosts">Sweeping hosts</h2>
+<pre><code class="language-bash">compound-bench run tau2 \
+    --model deepseek/deepseek-v4-flash-0731 \
+    --providers openrouter/deepinfra/fp4,openrouter/baseten/fp8,doubleword/realtime,doubleword/flex \
+    --tasks airline:6,retail:20 --trials 3 --max-tokens 8192 \
+    --output artifacts/dsflash --go
+</code></pre>
+<p>Each host runs the same cases with the same settings. The output directory gets
+one subdirectory per host, and <a href="../reports/"><code>bench_report</code></a> turns it into one
+table.</p>
+<p>Give <code>--max-tokens</code> headroom on agentic benchmarks. A low cap truncates long
+tool-calling turns and records a failure the host did not earn.</p>
+<h2 id="terminal-bench-1x">Terminal-Bench 1.x</h2>
+<p><code>run terminal_bench</code> delegates to the original terminal-bench harness through
+the pinning proxy:</p>
+<pre><code class="language-bash">compound-bench run terminal_bench \
+    --model deepseek/deepseek-v4-flash-0731 \
+    --providers openrouter/deepinfra/fp4,doubleword/flex \
+    --tasks hello-world,fix-permissions --trials 3 \
+    --call-ledger artifacts/tb/calls.jsonl --go
+</code></pre>
+<p>Flags specific to it:</p>
+<ul>
+<li><code>--tb-agent</code> picks the harness agent (default <code>terminus</code>); <code>--tb-concurrent</code> sets tasks per host.</li>
+<li><code>--tb-timeout-mult N</code> multiplies every task's agent time limit. Results are labeled non-official when set. Use it when a slow host would otherwise fail only for being slow.</li>
+<li><code>--reasoning on|off</code> pins the model's reasoning mode through the proxy. Hosts disagree on the default, so an unpinned comparison mixes modes.</li>
+<li><code>--cache-optin</code> injects prompt-cache markers for hosts whose cache is opt-in.</li>
+<li><code>--call-ledger PATH</code> records every model call. Cache-hit and routing claims need this; episode results only carry totals.</li>
+</ul>
+<h2 id="adding-a-benchmark">Adding a benchmark</h2>
+<p>A benchmark is one registry entry: a manifest of partitioned case ids and a
+runner that accepts <code>(models, case_ids)</code>. See
+<a href="https://github.com/aktasbatuhan/compound/tree/main/src/compound/adapters"><code>src/compound/adapters/</code></a>
+for the interface and the five existing adapters.</p>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../../docs/">docs</a> <a href="../../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Providers · Compound</title>
+<meta name="description" content="A provider token names where a model is served, independent of which model.
+Every sweep takes a comma-separated list of them in --providers, so &quot;same model,
+many hosts&quot; is one flag.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../../docs/" class="cur">docs</a>
+      <a href="../../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../../docs/">Overview</a>
+    <a href="../../docs/providers/" class="cur">Providers</a>
+    <a href="../../docs/benchmarks/">Benchmarks</a>
+    <a href="../../docs/harbor/">Terminal-Bench 4.0</a>
+    <a href="../../docs/reports/">Reports and ledgers</a>
+    <a href="../../docs/serving/">Serving metrics</a>
+    <a href="../../docs/traces/">Your own traces</a>
+    <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="providers">Providers</h1>
+<p>A provider token names where a model is served, independent of which model.
+Every sweep takes a comma-separated list of them in <code>--providers</code>, so "same model,
+many hosts" is one flag.</p>
+<h2 id="token-forms">Token forms</h2>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>openrouter/auto</code></td>
+<td>OpenRouter's own routing, no pin. Useful as a control arm.</td>
+</tr>
+<tr>
+<td><code>openrouter/&lt;upstream&gt;</code></td>
+<td>one OpenRouter upstream, fallbacks disabled: <code>openrouter/deepinfra</code></td>
+</tr>
+<tr>
+<td><code>openrouter/&lt;upstream&gt;/&lt;quant&gt;</code></td>
+<td>the same, restricted to one quantization: <code>openrouter/deepinfra/fp8</code></td>
+</tr>
+<tr>
+<td><code>doubleword/realtime</code></td>
+<td>Doubleword's realtime tier, addressed directly</td>
+</tr>
+<tr>
+<td><code>doubleword/flex</code></td>
+<td>Doubleword's flex (queued) tier</td>
+</tr>
+<tr>
+<td><code>direct/&lt;name&gt;</code></td>
+<td>any OpenAI-compatible host defined under <code>providers.&lt;name&gt;</code> in <code>compound.yaml</code></td>
+</tr>
+</tbody>
+</table>
+<p>You do not need to know the upstream slugs. <code>providers &lt;model&gt;</code> reads them off
+OpenRouter and prints paste-ready tokens:</p>
+<pre><code class="language-bash">compound-bench providers z-ai/glm-5.3-flash
+# PROVIDER TOKEN              QUANT   CONTEXT   $IN/M  $OUT/M  STATUS
+# openrouter/z-ai/fp8         fp8        1.0M  $0.075  $0.250  up
+# openrouter/novita/fp8       fp8        1.0M  $0.075  $0.250  up
+# openrouter/deepinfra/fp8    fp8        1.0M  $0.075  $0.250  up
+# ...
+</code></pre>
+<p><code>--json</code> gives the same list as machine-readable output.</p>
+<h2 id="what-pinning-does">What pinning does</h2>
+<p>For an <code>openrouter/&lt;upstream&gt;</code> token every request carries</p>
+<pre><code class="language-json">&quot;provider&quot;: {&quot;only&quot;: [&quot;deepinfra&quot;], &quot;allow_fallbacks&quot;: false, &quot;require_parameters&quot;: true}
+</code></pre>
+<p>so OpenRouter may not silently reroute to another host, and a host that cannot
+honor a request parameter (a JSON schema, say) fails fast instead of being
+swapped out. For <code>doubleword/flex</code> the request carries <code>service_tier: flex</code>.</p>
+<p>The served host is recorded on every call from the provider echo in the
+response, so a pinned run can be checked after the fact rather than trusted.</p>
+<h2 id="your-own-host">Your own host</h2>
+<p>Any OpenAI-compatible endpoint works without adapter code. For tau2 it is three
+flags:</p>
+<pre><code class="language-bash">compound-bench run tau2 --model my-model \
+    --provider myhost --api-base http://localhost:8000/v1 --api-key-env MYHOST_API_KEY --go
+</code></pre>
+<p>For sweeps, define the host once in <code>compound.yaml</code> and use <code>direct/&lt;name&gt;</code> as a
+token. See <a href="../config/">Configuration</a>.</p>
+<h2 id="the-pinning-proxy">The pinning proxy</h2>
+<p>In-process benchmarks (tau2, mmlu) set the pinning on each request directly.
+Third-party harnesses (terminal-bench, Harbor) build their own model calls and
+cannot. For those, each host gets its own localhost proxy that:</p>
+<ul>
+<li>forwards to the host's base URL with the host's real key, so the harness only
+  sees a placeholder key</li>
+<li>merges the pin into every request body, overriding any routing the harness set</li>
+<li>asks OpenRouter for usage accounting so cost and cached-token counts come back</li>
+<li>optionally pins the reasoning mode (<code>--reasoning on|off</code>) and injects
+  prompt-cache markers for hosts whose cache is opt-in (<code>--cache-optin</code>)</li>
+<li>writes one ledger row per call when a ledger is enabled</li>
+<li>retries 408, 429, and 5xx with backoff, and abandons a call that has not
+  completed within 300 seconds so a stalled host cannot hold a trial forever</li>
+</ul>
+<p>The proxy works only with agents that run in the harness process and reach
+<code>localhost</code>. An agent that runs inside the task sandbox cannot see it, and the
+CLI refuses to pin such an agent rather than run an unpinned arm by mistake.</p>
+<h2 id="cache-behavior-differs-by-host">Cache behavior differs by host</h2>
+<p>OpenRouter's larger upstreams cache prompt prefixes on their own. Doubleword
+caches only when a request carries an explicit <code>cache_control</code> marker, so a
+stock client re-bills the whole growing transcript every agent turn. Each
+provider spec carries a <code>cache_strategy</code> (<code>implicit</code>, <code>explicit_marker</code>, or
+<code>none</code>); <code>--cache-optin</code> injects the marker for the hosts that need one. The
+ledger's <code>cached_tokens</code> column is how you check what actually happened.</p>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../../docs/">docs</a> <a href="../../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>

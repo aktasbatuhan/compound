@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="GLM 5.3 Flash on Terminal-Bench 4.0: five OpenRouter routes run concurrently, 1,801 traced calls. Pinned DeepInfra completed calls far more reliably than auto routing, at the lowest price.">
+<title>Pinned Beats Auto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+  :root{
+    --ground:#fbfbfd; --surface:#ffffff; --surface-2:#f4f6f9;
+    --ink:#141922; --ink-2:#3d4654; --muted:#626c7a;
+    --rule:#e2e6ec; --rule-strong:#cdd4de;
+    --base:#2d5bd7; --better:#167a5b; --worse:#c0442c;
+    --base-soft:#e7edfc; --better-soft:#e2f2eb; --worse-soft:#fbe8e4;
+    --serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+    --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  :root:not([data-theme="light"]){ @media (prefers-color-scheme: dark){
+    --ground:#0e1116; --surface:#151a21; --surface-2:#1b212a;
+    --ink:#e8ecf2; --ink-2:#c2cad6; --muted:#8b95a3;
+    --rule:#232a34; --rule-strong:#333c48;
+    --base:#5b8cf5; --better:#3da37c; --worse:#d4674f;
+    --base-soft:#1a2439; --better-soft:#122b23; --worse-soft:#2e1d19;
+  }}
+  :root[data-theme="dark"]{
+    --ground:#0e1116; --surface:#151a21; --surface-2:#1b212a;
+    --ink:#e8ecf2; --ink-2:#c2cad6; --muted:#8b95a3;
+    --rule:#232a34; --rule-strong:#333c48;
+    --base:#5b8cf5; --better:#3da37c; --worse:#d4674f;
+    --base-soft:#1a2439; --better-soft:#122b23; --worse-soft:#2e1d19;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--ground); color:var(--ink); font-family:var(--sans);
+       font-size:16px; line-height:1.65; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:860px; margin:0 auto; padding:56px 24px 96px;}
+  header{border-bottom:2px solid var(--ink); padding-bottom:22px; margin-bottom:34px;}
+  .eyebrow{font-family:var(--mono); font-size:11.5px; letter-spacing:.13em;
+           text-transform:uppercase; color:var(--muted); margin-bottom:14px;}
+  h1{font-family:var(--serif); font-weight:600; font-size:clamp(34px,5.2vw,50px);
+     line-height:1.08; letter-spacing:-.015em; margin:0 0 14px; text-wrap:balance;}
+  .standfirst{font-family:var(--serif); font-size:19px; line-height:1.55;
+              color:var(--ink-2); margin:0; max-width:64ch;}
+  .runmeta{display:flex; flex-wrap:wrap; gap:6px 26px; margin-top:22px;
+           font-family:var(--mono); font-size:12px; color:var(--muted);}
+  .runmeta b{color:var(--ink-2); font-weight:500;}
+  h2{font-family:var(--serif); font-size:26px; font-weight:600; letter-spacing:-.01em;
+     margin:52px 0 6px; text-wrap:balance;}
+  h2 + .sub{color:var(--muted); font-size:14.5px; margin:0 0 20px; max-width:66ch;}
+  p{max-width:68ch; margin:0 0 16px;}
+  a{color:var(--base);}
+  .finding{background:var(--surface); border:1px solid var(--rule);
+           border-left:3px solid var(--better); border-radius:3px;
+           padding:26px 28px; margin:30px 0 8px;}
+  .finding .big{font-family:var(--serif); font-size:clamp(24px,3.6vw,32px);
+                line-height:1.25; font-weight:600; margin:0 0 12px; text-wrap:balance;}
+  .finding p{margin:0; color:var(--ink-2); font-size:15.5px;}
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+         gap:1px; background:var(--rule); border:1px solid var(--rule);
+         border-radius:3px; margin:26px 0 8px;}
+  .stat{background:var(--surface); padding:16px 18px;}
+  .stat .k{font-family:var(--mono); font-size:11px; letter-spacing:.1em;
+           text-transform:uppercase; color:var(--muted); margin-bottom:7px;}
+  .stat .v{font-family:var(--mono); font-size:24px; font-weight:600;
+           font-variant-numeric:tabular-nums; line-height:1.1;}
+  .stat .n{font-size:12.5px; color:var(--muted); margin-top:5px;}
+  figure{margin:26px 0 8px;}
+  figcaption{font-size:13px; color:var(--muted); margin-top:12px; max-width:68ch;}
+  .chart{background:var(--surface); border:1px solid var(--rule);
+         border-radius:3px; padding:22px 20px 14px;}
+  .chart svg{display:block; width:100%; height:auto; overflow:visible;}
+  .bar{transition:opacity .12s ease;}
+  .chart:hover .bar{opacity:.45}
+  .chart .barg:hover .bar{opacity:1}
+  .barlab{font-family:var(--mono); font-size:12.5px; fill:var(--ink);
+          font-variant-numeric:tabular-nums;}
+  .barname{font-family:var(--mono); font-size:12.5px; fill:var(--ink-2);}
+  .barnote{font-family:var(--sans); font-size:11.5px; fill:var(--muted);}
+  .axis{stroke:var(--rule); stroke-width:1;}
+  .axistick{font-family:var(--mono); font-size:10.5px; fill:var(--muted);}
+  .ci{stroke:var(--ink-2); stroke-width:1.5; opacity:.55;}
+  .tablewrap{overflow-x:auto; border:1px solid var(--rule); border-radius:3px;
+             background:var(--surface); margin:24px 0 8px;}
+  table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:620px;}
+  th,td{padding:10px 14px; text-align:right; white-space:nowrap;}
+  th:first-child,td:first-child{text-align:left;}
+  thead th{font-family:var(--mono); font-size:10.5px; letter-spacing:.09em;
+           text-transform:uppercase; color:var(--muted); font-weight:500;
+           border-bottom:1px solid var(--rule-strong);}
+  tbody td{border-bottom:1px solid var(--rule); font-variant-numeric:tabular-nums;
+           font-family:var(--mono);}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody td:first-child{font-family:var(--sans); font-weight:500;}
+  tr.hi td{background:var(--better-soft);}
+  tr.baseline td{background:var(--base-soft);}
+  .tag{display:inline-block; font-family:var(--mono); font-size:10.5px;
+       letter-spacing:.06em; padding:2px 7px; border-radius:2px; vertical-align:1px;}
+  .tag.sig{background:var(--better-soft); color:var(--better);}
+  .tag.ns{background:var(--surface-2); color:var(--muted);}
+  .caveats{background:var(--surface-2); border:1px solid var(--rule);
+           border-radius:3px; padding:8px 28px 22px; margin:26px 0 8px;}
+  .caveats li{margin:14px 0; max-width:66ch; font-size:14.5px; color:var(--ink-2);}
+  .caveats li b{color:var(--ink);}
+  code{font-family:var(--mono); font-size:.9em; background:var(--surface-2);
+       padding:1.5px 5px; border-radius:2px;}
+  pre{font-family:var(--mono); font-size:12.5px; background:var(--surface);
+      border:1px solid var(--rule); border-radius:3px; padding:16px 18px;
+      overflow-x:auto; line-height:1.55;}
+  footer{margin-top:64px; padding-top:22px; border-top:1px solid var(--rule);
+         font-size:13px; color:var(--muted);}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Terminal-Bench 4.0 · provider routing · 2026-09-01</div>
+  <h1>Pinned Beats Auto</h1>
+  <p class="standfirst">Letting OpenRouter choose a host for GLM 5.3 Flash made an agent stall
+  almost twice as often as pinning one host, and cost 76% more per prompt token. Five hosts,
+  1,801 model calls, all arms run at the same time.</p>
+  <div class="runmeta">
+    <span><b>Model</b> z-ai/glm-5.3-flash</span>
+    <span><b>Harness</b> Harbor · terminus-2</span>
+    <span><b>Tasks</b> 5 × 2 attempts × 100 turns</span>
+    <span><b>Calls</b> 1,801</span>
+    <span><b>Window</b> 23:36–06:20 UTC</span>
+  </div>
+</header>
+
+<div class="finding">
+  <p class="big">Pinning DeepInfra cut the stall rate from 41.5% to 24.0%.</p>
+  <p>That gap is <b>z = −5.18, p &lt; 0.0001</b>, and it survives Holm correction for the four
+  arms tested against the router. It is not a close call and it is not one lucky arm out of five.</p>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="k">Stall rate</div><div class="v">41.5% → 24.0%</div>
+    <div class="n">auto vs pinned DeepInfra</div></div>
+  <div class="stat"><div class="k">Cost / 1M prompt tok</div><div class="v">$0.067 → $0.038</div>
+    <div class="n">auto pays 1.76×</div></div>
+  <div class="stat"><div class="k">Work completed</div><div class="v">3.3×</div>
+    <div class="n">prompt tokens processed</div></div>
+  <div class="stat"><div class="k">Hosts auto used</div><div class="v">7</div>
+    <div class="n">across 299 calls</div></div>
+</div>
+
+<h2>What was measured</h2>
+<p class="sub">A stall is a call that never finished.</p>
+<p>Each arm ran the same five Terminal-Bench 4.0 tasks with the same agent, differing only in
+which serving host answered the model calls. Four arms pinned a single host through a local
+proxy; the fifth left OpenRouter to route freely. Every call was recorded at the proxy: which
+host actually answered, tokens in and out, the cached-token split, billed cost, latency, status.</p>
+<p>A <b>stall</b> is a call that returned HTTP 200, streamed keep-alive padding for over 300
+seconds, and never delivered a completion. The agent sits idle behind one of these. We saw a
+single call stall for 1,044 seconds before we capped them, on a host that had answered the
+previous four calls in 9 to 24 seconds.</p>
+
+<h2>Stall rate by arm</h2>
+<p class="sub">Bars show the rate; whiskers are 95% Wilson intervals. Hover for detail.</p>
+<figure>
+<div class="chart">
+<svg viewBox="0 0 720 268" role="img" aria-label="Stall rate by arm with 95% confidence intervals">
+  <line class="axis" x1="180" y1="16" x2="180" y2="238"/>
+  <line class="axis" x1="180" y1="238" x2="700" y2="238"/>
+  <g class="axistick" text-anchor="middle">
+    <text x="180" y="256">0%</text><text x="266.7" y="256">10%</text>
+    <text x="353.3" y="256">20%</text><text x="440" y="256">30%</text>
+    <text x="526.7" y="256">40%</text><text x="613.3" y="256">50%</text>
+    <text x="700" y="256">60%</text>
+  </g>
+  <!-- scale: 8.667px per 1%, axis 0-60% so novita's CI upper bound fits -->
+  <g class="barg"><title>DeepInfra (pinned): 118 of 492 calls stalled. 95% CI 20.4–27.9%.</title>
+    <text class="barname" x="172" y="30" text-anchor="end">deepinfra</text>
+    <rect class="bar" x="180" y="18" width="208.0" height="18" rx="4" fill="var(--better)"/>
+    <line class="ci" x1="356.8" y1="27" x2="421.8" y2="27"/>
+    <line class="ci" x1="356.8" y1="22" x2="356.8" y2="32"/><line class="ci" x1="421.8" y1="22" x2="421.8" y2="32"/>
+    <text class="barlab" x="434" y="31">24.0%</text>
+    <text class="barnote" x="492" y="31">p &lt; 0.0001</text>
+  </g>
+  <g class="barg"><title>Parasail (pinned): 129 of 324 calls stalled. 95% CI 34.6–45.2%.</title>
+    <text class="barname" x="172" y="74" text-anchor="end">parasail</text>
+    <rect class="bar" x="180" y="62" width="344.9" height="18" rx="4" fill="var(--muted)"/>
+    <line class="ci" x1="479.9" y1="71" x2="571.7" y2="71"/>
+    <line class="ci" x1="479.9" y1="66" x2="479.9" y2="76"/><line class="ci" x1="571.7" y1="66" x2="571.7" y2="76"/>
+    <text class="barlab" x="584" y="75">39.8%</text>
+  </g>
+  <g class="barg"><title>OpenRouter auto (baseline): 124 of 299 calls stalled. 95% CI 36.0–47.1%.</title>
+    <text class="barname" x="172" y="118" text-anchor="end">auto</text>
+    <rect class="bar" x="180" y="106" width="359.7" height="18" rx="4" fill="var(--base)"/>
+    <line class="ci" x1="492.0" y1="115" x2="588.2" y2="115"/>
+    <line class="ci" x1="492.0" y1="110" x2="492.0" y2="120"/><line class="ci" x1="588.2" y1="110" x2="588.2" y2="120"/>
+    <text class="barlab" x="440" y="119" fill="var(--surface)">41.5%</text>
+    <text class="barnote" x="188" y="119" fill="var(--surface)">baseline</text>
+  </g>
+  <g class="barg"><title>Z.AI (pinned): 158 of 376 calls stalled. 95% CI 37.1–47.1%.</title>
+    <text class="barname" x="172" y="162" text-anchor="end">z-ai</text>
+    <rect class="bar" x="180" y="150" width="364.0" height="18" rx="4" fill="var(--muted)"/>
+    <line class="ci" x1="501.5" y1="159" x2="588.2" y2="159"/>
+    <line class="ci" x1="501.5" y1="154" x2="501.5" y2="164"/><line class="ci" x1="588.2" y1="154" x2="588.2" y2="164"/>
+    <text class="barlab" x="600" y="163">42.0%</text>
+  </g>
+  <g class="barg"><title>Novita (pinned): 161 of 310 calls stalled. 95% CI 46.4–57.4%.</title>
+    <text class="barname" x="172" y="206" text-anchor="end">novita</text>
+    <rect class="bar" x="180" y="194" width="451.5" height="18" rx="4" fill="var(--worse)"/>
+    <line class="ci" x1="582.1" y1="203" x2="677.5" y2="203"/>
+    <line class="ci" x1="582.1" y1="198" x2="582.1" y2="208"/><line class="ci" x1="677.5" y1="198" x2="677.5" y2="208"/>
+    <text class="barlab" x="464" y="207" fill="var(--surface)">51.9%</text>
+    <text class="barnote" x="524" y="207" fill="var(--surface)">p = 0.010</text>
+  </g>
+</svg>
+</div>
+<figcaption>Green is significantly better than the router, red significantly worse, grey
+indistinguishable from it: all after Holm correction over four tests. Two arms separate from
+auto; two do not. Picking a host at random is not the win: picking <em>the right</em> host is.</figcaption>
+</figure>
+
+<h2>Cost per million prompt tokens</h2>
+<p class="sub">Billed by OpenRouter, summed over calls that reported usage.</p>
+<figure>
+<div class="chart">
+<svg viewBox="0 0 720 228" role="img" aria-label="Cost per million prompt tokens by arm">
+  <line class="axis" x1="180" y1="16" x2="180" y2="198"/>
+  <line class="axis" x1="180" y1="198" x2="700" y2="198"/>
+  <g class="axistick" text-anchor="middle">
+    <text x="180" y="216">$0</text><text x="310" y="216">$0.04</text>
+    <text x="440" y="216">$0.08</text><text x="570" y="216">$0.12</text><text x="700" y="216">$0.16</text>
+  </g>
+  <!-- scale: 3250px per $1 -->
+  <g class="barg"><title>DeepInfra: $0.038 per 1M prompt tokens over 16.15M tokens.</title>
+    <text class="barname" x="172" y="30" text-anchor="end">deepinfra</text>
+    <rect class="bar" x="180" y="18" width="123.5" height="18" rx="4" fill="var(--better)"/>
+    <text class="barlab" x="315" y="31">$0.038</text></g>
+  <g class="barg"><title>Z.AI: $0.038 per 1M prompt tokens over 10.25M tokens.</title>
+    <text class="barname" x="172" y="66" text-anchor="end">z-ai</text>
+    <rect class="bar" x="180" y="54" width="123.5" height="18" rx="4" fill="var(--muted)"/>
+    <text class="barlab" x="315" y="67">$0.038</text></g>
+  <g class="barg"><title>Novita: $0.044 per 1M prompt tokens over 5.37M tokens.</title>
+    <text class="barname" x="172" y="102" text-anchor="end">novita</text>
+    <rect class="bar" x="180" y="90" width="143" height="18" rx="4" fill="var(--muted)"/>
+    <text class="barlab" x="335" y="103">$0.044</text></g>
+  <g class="barg"><title>OpenRouter auto: $0.067 per 1M prompt tokens over 4.93M tokens.</title>
+    <text class="barname" x="172" y="138" text-anchor="end">auto</text>
+    <rect class="bar" x="180" y="126" width="217.8" height="18" rx="4" fill="var(--base)"/>
+    <text class="barlab" x="410" y="139">$0.067</text>
+    <text class="barnote" x="470" y="139">1.76× DeepInfra</text></g>
+  <g class="barg"><title>Parasail: $0.126 per 1M prompt tokens over 3.95M tokens.</title>
+    <text class="barname" x="172" y="174" text-anchor="end">parasail</text>
+    <rect class="bar" x="180" y="162" width="409.5" height="18" rx="4" fill="var(--worse)"/>
+    <text class="barlab" x="602" y="175">$0.126</text></g>
+</svg>
+</div>
+<figcaption>Every figure here is a <em>lower bound</em>. Between 30% and 56% of each arm's calls
+were abandoned before the response carrying usage arrived: those tokens were billed and we
+cannot see them. The arms that stall most are understated most, which pushes against the
+finding rather than for it.</figcaption>
+</figure>
+
+<h2>Where the router actually sent traffic</h2>
+<p class="sub">299 auto calls; 150 named a host before finishing.</p>
+<figure>
+<div class="chart">
+<svg viewBox="0 0 720 232" role="img" aria-label="Hosts that answered auto-routed calls">
+  <g class="axistick"><text x="180" y="16">calls answered</text></g>
+  <g class="barg"><title>Z.AI answered 66 auto-routed calls.</title>
+    <text class="barname" x="172" y="42" text-anchor="end">Z.AI</text>
+    <rect class="bar" x="180" y="30" width="330" height="16" rx="4" fill="var(--base)"/>
+    <text class="barlab" x="522" y="43">66</text></g>
+  <g class="barg"><title>Parasail answered 46 auto-routed calls: the most expensive host in the set.</title>
+    <text class="barname" x="172" y="72" text-anchor="end">Parasail</text>
+    <rect class="bar" x="180" y="60" width="230" height="16" rx="4" fill="var(--worse)"/>
+    <text class="barlab" x="422" y="73">46</text>
+    <text class="barnote" x="450" y="73">priciest host</text></g>
+  <g class="barg"><title>DeepInfra answered only 26 auto-routed calls: the cheapest and most reliable host.</title>
+    <text class="barname" x="172" y="102" text-anchor="end">DeepInfra</text>
+    <rect class="bar" x="180" y="90" width="130" height="16" rx="4" fill="var(--better)"/>
+    <text class="barlab" x="322" y="103">26</text>
+    <text class="barnote" x="350" y="103">cheapest + most reliable</text></g>
+  <g class="barg"><title>Novita answered 7 auto-routed calls.</title>
+    <text class="barname" x="172" y="132" text-anchor="end">Novita</text>
+    <rect class="bar" x="180" y="120" width="35" height="16" rx="4" fill="var(--muted)"/>
+    <text class="barlab" x="227" y="133">7</text></g>
+  <g class="barg"><title>Relace answered 2 auto-routed calls.</title>
+    <text class="barname" x="172" y="162" text-anchor="end">Relace</text>
+    <rect class="bar" x="180" y="150" width="10" height="16" rx="4" fill="var(--muted)"/>
+    <text class="barlab" x="202" y="163">2</text></g>
+  <g class="barg"><title>Together answered 2 auto-routed calls.</title>
+    <text class="barname" x="172" y="192" text-anchor="end">Together</text>
+    <rect class="bar" x="180" y="180" width="10" height="16" rx="4" fill="var(--muted)"/>
+    <text class="barlab" x="202" y="193">2</text></g>
+  <g class="barg"><title>Morph answered 1 auto-routed call.</title>
+    <text class="barname" x="172" y="222" text-anchor="end">Morph</text>
+    <rect class="bar" x="180" y="210" width="5" height="16" rx="4" fill="var(--muted)"/>
+    <text class="barlab" x="197" y="223">1</text></g>
+</svg>
+</div>
+<figcaption>The router spread one workload across seven hosts and sent the fewest calls to the
+one that turned out cheapest and most reliable. Every pinned arm stayed on its host: of the 814 pinned calls that
+returned a provider echo, none was served by the wrong host. The 688 that hung returned no echo.</figcaption>
+</figure>
+
+<h2>Every number</h2>
+<div class="tablewrap">
+<table>
+  <thead><tr>
+    <th>Arm</th><th>Calls</th><th>Stall %</th><th>95% CI</th><th>Abandoned</th>
+    <th>$/1M ptok</th><th>Cache %</th><th>p50 s</th><th>p90 s</th><th>Hosts</th>
+  </tr></thead>
+  <tbody>
+    <tr class="hi"><td>deepinfra</td><td>492</td><td>24.0</td><td>20.4–27.9</td><td>147</td>
+      <td>0.038</td><td>69.4</td><td>18</td><td>131</td><td>1</td></tr>
+    <tr><td>parasail</td><td>324</td><td>39.8</td><td>34.6–45.2</td><td>171</td>
+      <td>0.126</td><td>71.8</td><td>20</td><td>207</td><td>1</td></tr>
+    <tr class="baseline"><td>auto</td><td>299</td><td>41.5</td><td>36.0–47.1</td><td>149</td>
+      <td>0.067</td><td>63.8</td><td>31</td><td>173</td><td>7</td></tr>
+    <tr><td>z-ai</td><td>376</td><td>42.0</td><td>37.1–47.1</td><td>186</td>
+      <td>0.038</td><td>88.8</td><td>79</td><td>232</td><td>1</td></tr>
+    <tr><td>novita</td><td>310</td><td>51.9</td><td>46.4–57.4</td><td>174</td>
+      <td>0.044</td><td>85.0</td><td>64</td><td>249</td><td>1</td></tr>
+  </tbody>
+</table>
+</div>
+<figcaption>Stall rate vs auto, Holm-corrected over four tests:
+deepinfra <span class="tag sig">z −5.18 · p &lt; 0.0001</span>
+novita <span class="tag sig">z +2.59 · p = 0.010</span>
+parasail <span class="tag ns">p = 0.674</span>
+z-ai <span class="tag ns">p = 0.886</span></figcaption>
+
+<h2>Trial level</h2>
+<p class="sub">Ten trials per arm. Errored means the trial died before a verdict.</p>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Arm</th><th>Trials</th><th>Resolved</th><th>Errored</th>
+    <th>Input tok</th><th>Cached tok</th><th>Output tok</th></tr></thead>
+  <tbody>
+    <tr class="hi"><td>deepinfra</td><td>10</td><td>1</td><td>2</td>
+      <td>17,022,674</td><td>11,653,760</td><td>459,375</td></tr>
+    <tr><td>parasail</td><td>10</td><td>1</td><td>8</td>
+      <td>5,040,250</td><td>3,561,984</td><td>828,842</td></tr>
+    <tr class="baseline"><td>auto</td><td>10</td><td>0</td><td>7</td>
+      <td>5,329,660</td><td>3,319,808</td><td>530,215</td></tr>
+    <tr><td>z-ai</td><td>9</td><td>0</td><td>8</td>
+      <td>6,881,728</td><td>5,936,256</td><td>525,060</td></tr>
+    <tr><td>novita</td><td>9</td><td>0</td><td>9</td>
+      <td>749,119</td><td>514,496</td><td>188,919</td></tr>
+  </tbody>
+</table>
+</div>
+<figcaption>DeepInfra pushed 3.3× the prompt tokens auto did in the same wall-clock window, and
+lost 2 trials to errors where auto lost 7. Fewer stalls means more turns actually complete.</figcaption>
+
+<h2>What this does not show</h2>
+<div class="caveats">
+<ul>
+  <li><b>Not a quality comparison.</b> One trial resolved in each of two arms and none in the
+  other three. GLM 5.3 Flash does not solve Terminal-Bench 4.0 tasks at any meaningful rate, so
+  this run says nothing about which host produces better answers. It compares reliability, cost
+  and throughput only.</li>
+  <li><b>The cache column is not trustworthy.</b> Those are self-reported
+  <code>cached_tokens</code> ratios. In a separate controlled probe, one host reported ~100%
+  cached on a freshly nonced prompt it had never seen. Read cost, which is what we are billed;
+  treat the cache figure as the host's claim about itself.</li>
+  <li><b>Costs are lower bounds.</b> 30–56% of calls per arm were abandoned before their usage
+  block arrived. Those tokens were billed and are invisible here.</li>
+  <li><b>One model, one night, five tasks.</b> Absolute stall rates moved a lot with congestion , 
+  an earlier sequential run of the same setup showed 14.6% for auto in a quiet window and 36% in
+  a busy one. That is exactly why every arm here ran at the same time. The <em>comparison</em>
+  holds; the absolute numbers are a property of this window.</li>
+  <li><b>Routing is not stable.</b> An earlier run sent 41 of 41 auto calls to a single host.
+  This one spread across seven. Anyone reproducing it should expect a different mix.</li>
+</ul>
+</div>
+
+<h2>Method</h2>
+<p>Five Google Cloud VMs, one per arm, all started within the same minute in
+<code>us-central1-a</code>, each running the benchmark through
+<a href="https://harborframework.com">Harbor</a> against
+<code>terminal-bench/terminal-bench@4.0.0</code>. Model calls were routed through a local
+pinning proxy that injects the host selection and records every call. Arms differ in one
+variable: the provider token.</p>
+<pre>compound-bench harbor \
+  --providers openrouter/deepinfra/fp8 \
+  --model z-ai/glm-5.3-flash \
+  --tasks html-js-filter,photonic-waveguide-routing,music-harmony,\
+bun-sourcemap-leak,foodstuff-beta-activity \
+  --attempts 2 --n-concurrent 5 --ak max_turns=100 \
+  --ledger-dir artifacts/ledger --go</pre>
+<p>Stall rates are compared with a two-proportion z-test over calls, corrected across the four
+arm-vs-router tests with Holm–Bonferroni. Intervals are Wilson score intervals, which behave
+properly at rates far from 50% with a few hundred observations.</p>
+
+<footer>
+Run 2026-08-31 23:36 – 2026-09-01 06:20 UTC · 1,801 calls · 48 trials ·
+GLM 5.3 Flash on Terminal-Bench 4.0.0 via Harbor · measured with Compound.
+</footer>
+</div>
+
+</body>
+</html>

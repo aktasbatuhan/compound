@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Examples · Compound</title>
+<meta name="description" content="Two runs made with Compound, published with every per-call record behind them.
+They are small: one model each, a handful of hosts, and within-mode host
+differences that mostly do not reach significance. Read them as worked
+examples of what a report looks like, not as a leaderboard. The point of the
+">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../docs/">docs</a>
+      <a href="../examples/" class="cur">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+
+  <article class="docs-body">
+<h1 id="examples">Examples</h1>
+<p>Two runs made with Compound, published with every per-call record behind them.
+They are small: one model each, a handful of hosts, and within-mode host
+differences that mostly do not reach significance. Read them as worked
+examples of what a report looks like, not as a leaderboard. The point of the
+tool is that you run your own.</p>
+<h2 id="same-model-eight-hosts">Same model, eight hosts</h2>
+<p><code>deepseek-v4-flash</code> on terminal-bench: eight serving configurations, two
+pinned reasoning modes, 588 scored episodes, task time limits tripled so no
+host fails only for being slow. Quality tied across hosts with reasoning off;
+cost per resolved task did not. Whether reasoning helped depended on the host's
+decode speed. Includes a streamed timing harness and a cache-behavior replay.</p>
+<p><a href="../report/">Read the report</a></p>
+<h2 id="pinned-host-vs-router">Pinned host vs router</h2>
+<p><code>glm-5.3-flash</code> on Terminal-Bench 4.0: five OpenRouter routes (auto plus four
+pinned hosts) run at the same time on separate VMs, five tasks, two attempts,
+1,801 traced calls. Compares how often each route's calls stalled, what each
+paid per prompt token, and where the router actually sent traffic. Quality is
+not compared: at five tasks almost nothing resolved on any arm.</p>
+<p><a href="../report/tb4/">Read the report</a></p>
+<h2 id="reproduce-either">Reproduce either</h2>
+<p>Both reports were produced by the commands in the <a href="../docs/">docs</a>. The second
+one is a single <code>compound-bench harbor</code> invocation per arm; the first is a
+<code>compound-bench run terminal_bench --providers ...</code> sweep followed by
+<code>bench_report</code>.</p>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../docs/">docs</a> <a href="../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,70 @@
+title: Configuration
+order: 80
+
+# Configuration
+
+`compound.yaml` at the repo root is shared by both halves. `compound-bench` reads
+the `providers`, `budget`, and `models` sections; the trace pipeline reads the
+rest. `bun run compound init` writes a starter file and `compound validate`
+checks it.
+
+## Providers
+
+```yaml
+providers:
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    type: openai_compatible
+  doubleword:
+    base_url: https://api.doubleword.ai/v1
+    api_key_env: DOUBLEWORD_API_KEY
+    type: flex
+  myhost:                                   # any OpenAI-compatible server
+    base_url: http://localhost:8000/v1
+    api_key_env: MYHOST_API_KEY
+    type: openai_compatible
+    cache_strategy: none                    # implicit | explicit_marker | none
+```
+
+A block named `myhost` is addressable as the provider token `direct/myhost` in
+any `--providers` list, and sits in the same report as the OpenRouter routes.
+
+## Budget
+
+```yaml
+budget:
+  paid_runs_enabled: true
+  hard_limit_usd: 25.00
+  smoke_cases_per_benchmark: 2
+```
+
+`bfcl` and `ds1000` enforce this limit and the per-run `--cap`. `tau2` bills
+whatever the episodes cost, so size the subset with a dry run first. Note the
+[known gaps](../traces/#known-gaps) in how the limit is enforced under
+concurrency.
+
+## Models
+
+```yaml
+models:
+  candidates:
+    - id: gpt-4o-mini
+      provider: openai
+      provider_ids:                # same weights, different id per host
+        openrouter: openai/gpt-4o-mini
+```
+
+`provider_ids` lets one logical model keep a single identity in storage while
+each host receives the id it expects.
+
+## Environment variables
+
+| Variable | Effect |
+|---|---|
+| `OPENROUTER_API_KEY`, `DOUBLEWORD_API_KEY` | credentials, read from `.env` |
+| `COMPOUND_REASONING` (`on` or `off`) | pin reasoning mode for terminal-bench runs; the `--reasoning` flag wins when given |
+| `COMPOUND_DW_CACHE=1` | force prompt-cache markers on for opt-in hosts |
+| `COMPOUND_TB_TIMEOUT_MULT=N` | extended-limits mode for terminal-bench; wins over the flag |
+| `COMPOUND_CALL_TIMEOUT` | the proxy's hang ceiling per call in seconds, default 300; 0 disables it |
+| `COMPOUND_CALL_LEDGER` | ledger path; set by the CLI when you pass `--call-ledger` or `--ledger-dir` |

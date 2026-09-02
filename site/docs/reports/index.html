@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reports and ledgers · Compound</title>
+<meta name="description" content="A run leaves two kinds of evidence: episode results from the harness, and, when
+enabled, one row per model call. Episode results tell you who passed. The
+ledger tells you what each call cost, how long it took, whether the cache hit,
+and which host actually answered.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../../docs/" class="cur">docs</a>
+      <a href="../../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../../docs/">Overview</a>
+    <a href="../../docs/providers/">Providers</a>
+    <a href="../../docs/benchmarks/">Benchmarks</a>
+    <a href="../../docs/harbor/">Terminal-Bench 4.0</a>
+    <a href="../../docs/reports/" class="cur">Reports and ledgers</a>
+    <a href="../../docs/serving/">Serving metrics</a>
+    <a href="../../docs/traces/">Your own traces</a>
+    <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="reports-and-ledgers">Reports and ledgers</h1>
+<p>A run leaves two kinds of evidence: episode results from the harness, and, when
+enabled, one row per model call. Episode results tell you who passed. The
+ledger tells you what each call cost, how long it took, whether the cache hit,
+and which host actually answered.</p>
+<h2 id="bench_report"><code>bench_report</code></h2>
+<pre><code class="language-bash">PYTHONPATH=src python -m compound.bench_report artifacts/dsflash \
+    --prices doubleword-flex=0.70,2.25 --prices doubleword-realtime=0.93,3.00
+</code></pre>
+<p>Reads the per-host episode dumps a <code>--providers</code> sweep writes and emits, under
+<code>&lt;run&gt;/report/</code>:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>episodes.csv</code></td>
+<td>one row per episode: host, task, trial, reward, tokens, cost, latency, served-by</td>
+</tr>
+<tr>
+<td><code>per_task.csv</code></td>
+<td>per host per task: context size, trials, solved, rate</td>
+</tr>
+<tr>
+<td><code>summary.json</code></td>
+<td>per host: accuracy, cost per task, latency, tokens per second, served-by</td>
+</tr>
+<tr>
+<td><code>transcripts.jsonl</code></td>
+<td>full ordered messages per episode</td>
+</tr>
+<tr>
+<td><code>charts.html</code></td>
+<td>success vs context size, cost vs quality</td>
+</tr>
+</tbody>
+</table>
+<h3 id="where-cost-comes-from">Where cost comes from</h3>
+<ul>
+<li>OpenRouter routes: the per-call <code>usage.cost</code> OpenRouter reports. Measured.</li>
+<li>Doubleword: either the billed amount from the <code>dw</code> CLI for the run window (<code>--dw-model</code>, <code>--dw-usage-since</code>), or token counts times the <code>--prices</code> rate card you pass. Derived, and the report labels it so.</li>
+<li>Direct hosts: <code>--prices label=in,out</code> in USD per million tokens.</li>
+</ul>
+<h2 id="the-call-ledger">The call ledger</h2>
+<p><code>--call-ledger PATH</code> on <code>run</code>, or <code>--ledger-dir</code> on <code>harbor</code>, records one JSON
+line per model call:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>route</code> / <code>upstream</code></td>
+<td>the token you asked for, and the host that answered (<code>provider_echo</code>)</td>
+</tr>
+<tr>
+<td><code>pin_honored</code></td>
+<td>whether the echo matches the pin; <code>null</code> when the call returned no echo</td>
+</tr>
+<tr>
+<td><code>status</code>, <code>error</code>, <code>latency_ms</code></td>
+<td>HTTP status, error class (<code>hang_timeout</code>, ...), wall time</td>
+</tr>
+<tr>
+<td><code>prompt_tokens</code>, <code>completion_tokens</code>, <code>cached_tokens</code>, <code>reasoning_tokens</code></td>
+<td>from the usage block; <code>null</code> when the host did not report it</td>
+</tr>
+<tr>
+<td><code>cost_usd</code></td>
+<td>the host's own accounting; <code>null</code> when not reported</td>
+</tr>
+<tr>
+<td><code>abandoned</code></td>
+<td>true when the call returned 200 but no usage block arrived, so its tokens were billed but are not counted</td>
+</tr>
+<tr>
+<td><code>reasoning_pin</code>, <code>cache_marked</code></td>
+<td>what the proxy injected</td>
+</tr>
+</tbody>
+</table>
+<p>A <code>null</code> means the host did not tell us. It is not the same claim as a measured
+zero, and the tooling keeps the two apart.</p>
+<pre><code class="language-bash">compound-bench ledger artifacts/tb/calls.jsonl           # per-route rollup
+compound-bench ledger artifacts/tb/calls.jsonl --hosts   # plus which upstreams answered
+</code></pre>
+<h2 id="comparing-arms">Comparing arms</h2>
+<p><code>scripts/analyze_arms.py &lt;dir&gt;</code> reads every ledger under a directory and prints,
+per arm: calls, the share that never completed (with a Wilson 95% interval),
+abandoned calls, cost, cost per prompt token, cache-hit share, p50 and p90
+latency, and the number of distinct hosts that answered. It then tests each
+arm against <code>openrouter/auto</code> with a two-proportion z-test, Holm-corrected
+across the arms.</p>
+<p>It also says whether the arms ran concurrently or one after another. When they
+ran sequentially, it prints a warning: differences are then confounded with
+time of day.</p>
+<p>Cost figures are lower bounds on any arm with abandoned calls. The cache column
+is the host's self-reported ratio; read it next to cost per token, not instead
+of it.</p>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../../docs/">docs</a> <a href="../../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>

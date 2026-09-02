@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Configuration · Compound</title>
+<meta name="description" content="compound.yaml at the repo root is shared by both halves. compound-bench reads
+the providers, budget, and models sections; the trace pipeline reads the
+rest. bun run compound init writes a starter file and compound validate
+checks it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../../docs/" class="cur">docs</a>
+      <a href="../../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../../docs/">Overview</a>
+    <a href="../../docs/providers/">Providers</a>
+    <a href="../../docs/benchmarks/">Benchmarks</a>
+    <a href="../../docs/harbor/">Terminal-Bench 4.0</a>
+    <a href="../../docs/reports/">Reports and ledgers</a>
+    <a href="../../docs/serving/">Serving metrics</a>
+    <a href="../../docs/traces/">Your own traces</a>
+    <a href="../../docs/config/" class="cur">Configuration</a>
+    <a href="../../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="configuration">Configuration</h1>
+<p><code>compound.yaml</code> at the repo root is shared by both halves. <code>compound-bench</code> reads
+the <code>providers</code>, <code>budget</code>, and <code>models</code> sections; the trace pipeline reads the
+rest. <code>bun run compound init</code> writes a starter file and <code>compound validate</code>
+checks it.</p>
+<h2 id="providers">Providers</h2>
+<pre><code class="language-yaml">providers:
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    type: openai_compatible
+  doubleword:
+    base_url: https://api.doubleword.ai/v1
+    api_key_env: DOUBLEWORD_API_KEY
+    type: flex
+  myhost:                                   # any OpenAI-compatible server
+    base_url: http://localhost:8000/v1
+    api_key_env: MYHOST_API_KEY
+    type: openai_compatible
+    cache_strategy: none                    # implicit | explicit_marker | none
+</code></pre>
+<p>A block named <code>myhost</code> is addressable as the provider token <code>direct/myhost</code> in
+any <code>--providers</code> list, and sits in the same report as the OpenRouter routes.</p>
+<h2 id="budget">Budget</h2>
+<pre><code class="language-yaml">budget:
+  paid_runs_enabled: true
+  hard_limit_usd: 25.00
+  smoke_cases_per_benchmark: 2
+</code></pre>
+<p><code>bfcl</code> and <code>ds1000</code> enforce this limit and the per-run <code>--cap</code>. <code>tau2</code> bills
+whatever the episodes cost, so size the subset with a dry run first. Note the
+<a href="../traces/#known-gaps">known gaps</a> in how the limit is enforced under
+concurrency.</p>
+<h2 id="models">Models</h2>
+<pre><code class="language-yaml">models:
+  candidates:
+    - id: gpt-4o-mini
+      provider: openai
+      provider_ids:                # same weights, different id per host
+        openrouter: openai/gpt-4o-mini
+</code></pre>
+<p><code>provider_ids</code> lets one logical model keep a single identity in storage while
+each host receives the id it expects.</p>
+<h2 id="environment-variables">Environment variables</h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OPENROUTER_API_KEY</code>, <code>DOUBLEWORD_API_KEY</code></td>
+<td>credentials, read from <code>.env</code></td>
+</tr>
+<tr>
+<td><code>COMPOUND_REASONING</code> (<code>on</code> or <code>off</code>)</td>
+<td>pin reasoning mode for terminal-bench runs; the <code>--reasoning</code> flag wins when given</td>
+</tr>
+<tr>
+<td><code>COMPOUND_DW_CACHE=1</code></td>
+<td>force prompt-cache markers on for opt-in hosts</td>
+</tr>
+<tr>
+<td><code>COMPOUND_TB_TIMEOUT_MULT=N</code></td>
+<td>extended-limits mode for terminal-bench; wins over the flag</td>
+</tr>
+<tr>
+<td><code>COMPOUND_CALL_TIMEOUT</code></td>
+<td>the proxy's hang ceiling per call in seconds, default 300; 0 disables it</td>
+</tr>
+<tr>
+<td><code>COMPOUND_CALL_LEDGER</code></td>
+<td>ledger path; set by the CLI when you pass <code>--call-ledger</code> or <code>--ledger-dir</code></td>
+</tr>
+</tbody>
+</table>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../../docs/">docs</a> <a href="../../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>

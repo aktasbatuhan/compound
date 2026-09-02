@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview · Compound</title>
+<meta name="description" content="Compound measures how the hosts that serve an open model differ on your workload.
+You name a model and a list of hosts, pick a benchmark or bring your own traces,
+and get one table per host: task success, cost, latency, tokens per second, and
+cache-hit rate, with confidence intervals and a record of">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../docs/" class="cur">docs</a>
+      <a href="../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../docs/" class="cur">Overview</a>
+    <a href="../docs/providers/">Providers</a>
+    <a href="../docs/benchmarks/">Benchmarks</a>
+    <a href="../docs/harbor/">Terminal-Bench 4.0</a>
+    <a href="../docs/reports/">Reports and ledgers</a>
+    <a href="../docs/serving/">Serving metrics</a>
+    <a href="../docs/traces/">Your own traces</a>
+    <a href="../docs/config/">Configuration</a>
+    <a href="../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="compound-documentation">Compound documentation</h1>
+<p>Compound measures how the hosts that serve an open model differ on your workload.
+You name a model and a list of hosts, pick a benchmark or bring your own traces,
+and get one table per host: task success, cost, latency, tokens per second, and
+cache-hit rate, with confidence intervals and a record of every model call.</p>
+<p>Two halves, two languages:</p>
+<table>
+<thead>
+<tr>
+<th>Half</th>
+<th>Language</th>
+<th>Entry point</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Benchmark sweeps</td>
+<td>Python</td>
+<td><code>compound-bench</code></td>
+<td>Run public benchmarks across pinned hosts and report per host</td>
+</tr>
+<tr>
+<td>Trace backtesting</td>
+<td>TypeScript</td>
+<td><code>bun run compound</code></td>
+<td>Turn your production traces into graded cases and gate a model or host switch on them</td>
+</tr>
+</tbody>
+</table>
+<p>Most people start with the sweep. The trace pipeline is earlier stage and has
+<a href="traces/#known-gaps">known gaps</a> in its money controls.</p>
+<h2 id="install">Install</h2>
+<pre><code class="language-bash">git clone https://github.com/aktasbatuhan/compound
+cd compound
+uv sync --extra dev          # Python half, installs compound-bench
+bun install                  # TypeScript half, optional
+</code></pre>
+<p>Keys go in a git-ignored <code>.env</code> at the repo root:</p>
+<pre><code class="language-env">OPENROUTER_API_KEY=
+DOUBLEWORD_API_KEY=          # only if you use doubleword/* tokens
+</code></pre>
+<p><code>compound-bench</code> reads <code>.env</code> itself. Do not <code>source</code> it into your shell.</p>
+<h2 id="first-run">First run</h2>
+<pre><code class="language-bash"># who serves this model, with quantization, price, and live status
+compound-bench providers z-ai/glm-5.3-flash
+
+# a dry run prints the plan and spends nothing
+compound-bench run terminal_bench --model z-ai/glm-5.3-flash \
+    --providers openrouter/deepinfra/fp8,openrouter/z-ai/fp8 \
+    --tasks hello-world --trials 1
+
+# add --go to execute
+</code></pre>
+<p>Every <code>run</code> and <code>harbor</code> invocation is a dry run until you add <code>--go</code>. A <code>--go</code>
+run checks that every credential the chosen hosts need is present before it
+sends a request.</p>
+<h2 id="where-things-land">Where things land</h2>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>artifacts/&lt;run&gt;/&lt;host&gt;/</code></td>
+<td>per-host episode output from the harness</td>
+</tr>
+<tr>
+<td><code>artifacts/&lt;run&gt;/report/</code></td>
+<td><code>summary.json</code>, <code>episodes.csv</code>, <code>per_task.csv</code>, <code>charts.html</code></td>
+</tr>
+<tr>
+<td><code>&lt;ledger-dir&gt;/&lt;host&gt;.jsonl</code></td>
+<td>one row per model call when a ledger is enabled</td>
+</tr>
+</tbody>
+</table>
+<h2 id="pages">Pages</h2>
+<ul>
+<li><a href="providers/">Providers</a>: provider tokens, pinning, verification, the proxy</li>
+<li><a href="benchmarks/">Benchmarks</a>: the five shipped benchmarks and how to run subsets</li>
+<li><a href="harbor/">Terminal-Bench 4.0</a>: running TB4 through Harbor, and on a cloud VM</li>
+<li><a href="reports/">Reports and ledgers</a>: what a run writes and how to compare arms</li>
+<li><a href="serving/">Serving metrics</a>: first-token and decode speed per host over time</li>
+<li><a href="traces/">Your own traces</a>: the TypeScript pipeline</li>
+<li><a href="config/">Configuration</a>: <code>compound.yaml</code> and direct hosts</li>
+<li><a href="reference/">CLI reference</a>: every flag, generated from <code>--help</code></li>
+</ul>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../docs/">docs</a> <a href="../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Serving metrics · Compound</title>
+<meta name="description" content="Task success is one axis. compound-bench serving measures the others
+directly: time to first token, decode speed, and cost per route, repeated on a
+schedule so you can see how a host moves through the day.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../../docs/" class="cur">docs</a>
+      <a href="../../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../../docs/">Overview</a>
+    <a href="../../docs/providers/">Providers</a>
+    <a href="../../docs/benchmarks/">Benchmarks</a>
+    <a href="../../docs/harbor/">Terminal-Bench 4.0</a>
+    <a href="../../docs/reports/">Reports and ledgers</a>
+    <a href="../../docs/serving/" class="cur">Serving metrics</a>
+    <a href="../../docs/traces/">Your own traces</a>
+    <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="serving-metrics">Serving metrics</h1>
+<p>Task success is one axis. <code>compound-bench serving</code> measures the others
+directly: time to first token, decode speed, and cost per route, repeated on a
+schedule so you can see how a host moves through the day.</p>
+<pre><code class="language-bash">compound-bench serving \
+    --providers openrouter/deepinfra,doubleword/realtime,doubleword/flex,openrouter/auto \
+    --model-or deepseek/deepseek-v4-flash-0731 \
+    --model deepseek-ai/DeepSeek-V4-Flash-0731 \
+    --shapes shapes.json --rounds 8 --interval 3600 --reps 3 \
+    --out artifacts/serving
+</code></pre>
+<ul>
+<li><code>--model-or</code> is the OpenRouter slug; <code>--model</code> is the id Doubleword or a direct host uses for the same weights. Hosts name models differently.</li>
+<li><code>--shapes</code> is a JSON file mapping a name to <code>{messages, response_format}</code>, so you measure the request shapes your workload actually sends, including structured output.</li>
+<li><code>--rounds</code> and <code>--interval</code> schedule repeated measurements. <code>--reps</code> repeats each (route, mode, shape) cell within a round.</li>
+</ul>
+<p>Every call is streamed so first-token and decode time are measured, not
+inferred. Results land in <code>results.jsonl</code> under <code>--out</code>, one row per call, and
+feed the per-host profile in the sweep report.</p>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../../docs/">docs</a> <a href="../../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>

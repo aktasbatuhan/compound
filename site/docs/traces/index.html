@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your own traces · Compound</title>
+<meta name="description" content="The benchmark sweep compares hosts on a public task set. The TypeScript half of
+Compound compares them on your own traffic instead: it imports the traces you
+already produce, turns them into graded cases, replays candidates against them,
+and decides a switch under a rule fixed before anyone looks.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../../docs/" class="cur">docs</a>
+      <a href="../../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../../docs/">Overview</a>
+    <a href="../../docs/providers/">Providers</a>
+    <a href="../../docs/benchmarks/">Benchmarks</a>
+    <a href="../../docs/harbor/">Terminal-Bench 4.0</a>
+    <a href="../../docs/reports/">Reports and ledgers</a>
+    <a href="../../docs/serving/">Serving metrics</a>
+    <a href="../../docs/traces/" class="cur">Your own traces</a>
+    <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="backtest-on-your-own-traces">Backtest on your own traces</h1>
+<p>The benchmark sweep compares hosts on a public task set. The TypeScript half of
+Compound compares them on your own traffic instead: it imports the traces you
+already produce, turns them into graded cases, replays candidates against them,
+and decides a switch under a rule fixed before anyone looks.</p>
+<p>This half is earlier stage than the sweep. Read <a href="#known-gaps">Known gaps</a>
+before relying on its money controls.</p>
+<pre><code class="language-bash">bun install
+bun run compound init                                       # writes compound.yaml
+bun run compound import export.jsonl --importer langfuse    # or json, otel
+bun run compound curate support                             # traces -&gt; cases, partitions
+bun run compound experiment support kimi-k3                 # dry run, cost estimate
+bun run compound experiment support kimi-k3 --paid --cap 2.00
+bun run compound gate support --candidate kimi-k3 --reference opus-5 \
+    --reason &quot;quarterly cost review&quot;
+</code></pre>
+<h2 id="pipeline">Pipeline</h2>
+<ol>
+<li><strong>Import.</strong> Langfuse export, portable JSON, or OTel GenAI spans. Redaction rules from <code>compound.yaml</code> run before anything is stored.</li>
+<li><strong>Curate.</strong> Traces become provenance-typed cases split into train, validation, calibration, and a sealed decision partition. <code>suggest-assertions</code> proposes deterministic checks from the traces.</li>
+<li><strong>Experiment.</strong> A model or host replays the cases. Every completion is content-addressed and cached, so a re-run of the same fingerprint is free.</li>
+<li><strong>Judge.</strong> Assertions grade first, at no cost. An LLM judge is used only after <code>judge calibrate</code> shows it agrees with human labels (Cohen's kappa with a bootstrap interval). Until then it abstains.</li>
+<li><strong>Gate.</strong> Candidate and reference are compared on the sealed set with paired-bootstrap intervals under a non-inferiority rule declared up front. Opening the sealed set requires a <code>--reason</code>.</li>
+<li><strong>Optimize.</strong> Optionally, GEPA evolves the candidate's prompt on train and validation cases only. The result is re-gated as a new declaration.</li>
+</ol>
+<p>The gate returns exactly one of five verdicts: meets gate, fails, insufficient
+data, judge abstained, no reliable improvement. <code>compound eval</code> is the CI form
+and exits 0, 1, or 2.</p>
+<p><code>compound view compare &lt;task&gt;</code> prints cost, latency, throughput, and quality per
+route, with an optional priority vector for a weighted ranking and Pareto
+frontier. <code>compound serve</code> exposes the same data on a local API, and
+<code>packages/dashboard</code> renders it.</p>
+<h2 id="data-handling">Data handling</h2>
+<p>Storage is local SQLite. Keys stay in <code>.env</code>. Redacted case inputs are sent to
+the providers you explicitly run, and nowhere else.</p>
+<h2 id="known-gaps">Known gaps</h2>
+<p>These were found in review and confirmed in the code. Until they are closed,
+treat the budget controls as guard rails for one sequential run, not a hard
+wall.</p>
+<ul>
+<li><a href="https://github.com/aktasbatuhan/compound/issues/51">#51</a> The hard USD limit is checked before a call and recorded after it, with no reservation. Concurrent runs can overshoot it.</li>
+<li><a href="https://github.com/aktasbatuhan/compound/issues/52">#52</a> <code>compound optimize</code> calls providers from Python outside the completion cache and spend ledger, and records its cost as $0.</li>
+<li><a href="https://github.com/aktasbatuhan/compound/issues/53">#53</a> A <code>compound.yaml</code> that fails to load imports traces with no redaction after only a warning.</li>
+<li><a href="https://github.com/aktasbatuhan/compound/issues/54">#54</a> The sealed-set repeat guard is warn-only by default and not atomic.</li>
+</ul>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../../docs/">docs</a> <a href="../../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>

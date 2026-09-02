@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terminal-Bench 4.0 · Compound</title>
+<meta name="description" content="Terminal-Bench 4.0 is distributed as a Harbor
+dataset. compound-bench harbor runs it across pinned hosts: one Harbor job per
+host, each behind its own proxy, with a call ledger per host.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../../docs/" class="cur">docs</a>
+      <a href="../../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../../docs/">Overview</a>
+    <a href="../../docs/providers/">Providers</a>
+    <a href="../../docs/benchmarks/">Benchmarks</a>
+    <a href="../../docs/harbor/" class="cur">Terminal-Bench 4.0</a>
+    <a href="../../docs/reports/">Reports and ledgers</a>
+    <a href="../../docs/serving/">Serving metrics</a>
+    <a href="../../docs/traces/">Your own traces</a>
+    <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="terminal-bench-40-through-harbor">Terminal-Bench 4.0 through Harbor</h1>
+<p>Terminal-Bench 4.0 is distributed as a <a href="https://harborframework.com">Harbor</a>
+dataset. <code>compound-bench harbor</code> runs it across pinned hosts: one Harbor job per
+host, each behind its own proxy, with a call ledger per host.</p>
+<pre><code class="language-bash">compound-bench harbor \
+    --model z-ai/glm-5.3-flash \
+    --providers openrouter/auto,openrouter/deepinfra/fp8,doubleword/realtime,doubleword/flex \
+    --host-model doubleword=zai-org/GLM-5.3-Flash --reasoning on \
+    --dataset terminal-bench@4.0.0 \
+    --n-tasks 10 --attempts 2 --n-concurrent 4 \
+    --ak max_turns=100 \
+    --ledger-dir artifacts/tb4/ledger --go
+</code></pre>
+<p>Without <code>--go</code> it prints the grid and the exact Harbor command per host.</p>
+<h2 id="flags-that-matter">Flags that matter</h2>
+<ul>
+<li><code>--dataset name@version</code>. Pin a version, never <code>@latest</code>, so the task set cannot shift between arms of one experiment.</li>
+<li><code>--agent</code>. Defaults to <code>terminus-2</code>. Must be a terminus-family agent when pinning: those run in the harness process and can reach the proxy. In-sandbox agents cannot, and the CLI refuses to pin them.</li>
+<li><code>--tasks</code> accepts glob patterns. Harbor namespaces task names (<code>terminal-bench/hello-world</code>), so a bare name is widened to <code>*/name</code>.</li>
+<li><code>--ak max_turns=N</code>. Give every host the same amount of work. An equal wall clock hands a faster host more turns and records a slower host's truncation as a failure.</li>
+<li><code>--agent-timeout-multiplier</code>. Scales only how long the agent may work. TB4 allows 8 hours per task by default.</li>
+<li><code>--timeout-multiplier</code>. Scales every phase, including environment build. Usually not what you want: a small value can kill containers before they finish building.</li>
+<li><code>--host-model HOST=MODEL</code>, repeatable. Hosts name the same weights differently: OpenRouter serves <code>z-ai/glm-5.3-flash</code>, Doubleword serves <code>zai-org/GLM-5.3-Flash</code>. The proxy rewrites the model id for that host; <code>HOST</code> is a provider token, label, or kind (<code>doubleword=zai-org/GLM-5.3-Flash</code>).</li>
+<li><code>--reasoning on|off</code>. Pin the reasoning mode on every arm. Hosts disagree on the default, and an unpinned comparison mixes modes.</li>
+<li><code>--env docker|modal|daytona</code>. Harbor's sandbox backend.</li>
+</ul>
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>Docker with Compose v2. On Ubuntu the <code>docker.io</code> package lacks Compose; install from <code>get.docker.com</code>.</li>
+<li>Disk. TB4 task images are large and several run at once. Budget 100 GB for a five-task grid.</li>
+<li>Python 3.12 or newer for Harbor itself (<code>uvx --from harbor</code>).</li>
+</ul>
+<h2 id="running-on-a-cloud-vm">Running on a cloud VM</h2>
+<p>TB4 grids are a poor fit for a laptop. <code>scripts/cloud/gcp-harbor.sh</code> provisions a
+GCP VM, installs Docker, runs one arm, copies results back, and deletes the VM.
+It bounds cost three ways: a standard VM type, a server-side maximum run
+duration with delete-on-termination, and a cleanup trap.</p>
+<pre><code class="language-bash">GCP_PROJECT=&lt;project&gt; bash scripts/cloud/gcp-harbor.sh   # one arm per VM
+gcloud compute instances list                            # verify nothing is left
+</code></pre>
+<p>To compare hosts fairly, run every arm at the same time on separate VMs.
+Serving-host congestion moves by the hour, so arms run one after another
+confound host with time of day.</p>
+<h2 id="reading-the-results">Reading the results</h2>
+<p>Harbor writes a job directory per arm with a <code>result.json</code> per trial. The
+ledger directory gets <code>&lt;host&gt;.jsonl</code>. Then:</p>
+<pre><code class="language-bash">compound-bench ledger artifacts/tb4/ledger/deepinfra-fp8.jsonl --hosts
+python3 scripts/analyze_arms.py artifacts/tb4          # arms side by side
+</code></pre>
+<p>See <a href="../reports/">Reports and ledgers</a> for what each column means.</p>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../../docs/">docs</a> <a href="../../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>
