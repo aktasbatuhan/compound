@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+
 import pytest
 
 from compound.providers_registry import (
@@ -173,3 +175,21 @@ def test_apply_host_models_rejects_a_misspelled_kind():
 
     with pytest.raises(ValueError, match="no known provider"):
         apply_host_models(parse_providers("openrouter/auto"), {"doubelword": "x"})
+
+
+def test_probe_endpoint_reports_a_rate_limited_host_as_not_answering(monkeypatch):
+    """OpenRouter's "up" is its own belief; only a real call settles it."""
+    import urllib.error
+
+    from compound import openrouter_discovery as disc
+
+    def raise_429(*_args, **_kwargs):
+        raise urllib.error.HTTPError(
+            "url", 429, "Too Many Requests", {}, io.BytesIO(b'{"error":"rate-limited upstream"}')
+        )
+
+    monkeypatch.setattr(disc.urllib.request, "urlopen", raise_429, raising=False)
+    status, seconds, detail = disc.probe_endpoint("deepinfra/fp8", "z-ai/glm-5.3-flash", "k")
+    assert status == 429
+    assert seconds >= 0
+    assert "rate-limited" in detail

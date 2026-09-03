@@ -146,9 +146,12 @@ def select_case_ids(
     return ids
 
 
-def cmd_providers(model: str, as_json: bool) -> int:
+def cmd_providers(model: str, as_json: bool, probe: bool = False) -> int:
     """List the OpenRouter upstreams that serve a model, as --providers tokens."""
-    from compound.openrouter_discovery import fetch_endpoints, format_table
+    import os
+    from dataclasses import asdict
+
+    from compound.openrouter_discovery import fetch_endpoints, format_table, probe_endpoints
 
     try:
         endpoints = fetch_endpoints(model)
@@ -156,12 +159,43 @@ def cmd_providers(model: str, as_json: bool) -> int:
         raise SystemExit(
             f"error: could not fetch endpoints for {model!r}: {exc}"
         ) from exc
-    if as_json:
-        from dataclasses import asdict
 
-        print(json.dumps([asdict(e) for e in endpoints], indent=2))
+    probed: dict[str, tuple[int | str, float, str]] = {}
+    if probe:
+        _require_keys({"OPENROUTER_API_KEY"})
+        probed = probe_endpoints(endpoints, model, os.environ["OPENROUTER_API_KEY"])
+
+    if as_json:
+        rows = []
+        for endpoint in endpoints:
+            row = asdict(endpoint)
+            if endpoint.tag in probed:
+                status, seconds, detail = probed[endpoint.tag]
+                row["probe"] = {
+                    "status": status,
+                    "seconds": round(seconds, 2),
+                    "answered": status == 200,
+                    "detail": detail,
+                }
+            rows.append(row)
+        print(json.dumps(rows, indent=2))
         return 0
+
     print(format_table(endpoints))
+    if probe:
+        # OpenRouter's own "up" is its belief about the endpoint; this column is
+        # one real pinned call. They disagree often enough to matter: a host can
+        # be listed up and 429 every call for one model while serving another.
+        print("\nPROBE: one pinned call per host, just now")
+        print(f"{'PROVIDER TOKEN':<30s} {'STATUS':>7s} {'SECONDS':>8s}  DETAIL")
+        answered = 0
+        for endpoint in endpoints:
+            if endpoint.tag not in probed:
+                continue
+            status, seconds, detail = probed[endpoint.tag]
+            answered += status == 200
+            print(f"{endpoint.token:<30s} {str(status):>7s} {seconds:>8.1f}  {detail[:60]}")
+        print(f"\n{answered} of {len(probed)} answered. Only these can carry an arm right now.")
     return 0
 
 
@@ -714,6 +748,13 @@ def main() -> int:
     providers.add_argument(
         "--json", action="store_true", dest="as_json", help="machine-readable output"
     )
+    providers.add_argument(
+        "--probe",
+        action="store_true",
+        help="send one tiny pinned call to every host and report what it actually did. "
+             "OpenRouter's 'up' is its own belief; without your own upstream key you sit "
+             "on its shared rate-limit pool, where a listed-up host can 429 every call.",
+    )
 
     tasks = sub.add_parser("tasks", help="print case ids for a benchmark")
     tasks.add_argument("benchmark", choices=sorted(BENCHMARKS))
@@ -902,7 +943,7 @@ def main() -> int:
     if args.command == "prepare":
         return cmd_prepare(args)
     if args.command == "providers":
-        return cmd_providers(args.model, args.as_json)
+        return cmd_providers(args.model, args.as_json, args.probe)
     if args.command == "tasks":
         return cmd_tasks(args.benchmark, args.partition, args.contains)
     if args.command == "serving":

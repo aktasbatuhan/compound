@@ -135,3 +135,70 @@ def format_table(endpoints: list[Endpoint]) -> str:
     lines.append("# sweep the ones that are up:")
     lines.append("#   --providers " + ",".join(up))
     return "\n".join(lines)
+
+
+#: A probe asks for almost nothing: the question is whether the host answers at
+#: all, not what it says.
+PROBE_MAX_TOKENS = 8
+PROBE_TIMEOUT_S = 90.0
+
+
+def probe_endpoint(
+    tag: str,
+    model: str,
+    api_key: str,
+    *,
+    timeout: float = PROBE_TIMEOUT_S,
+) -> tuple[int | str, float, str]:
+    """Send one tiny pinned call and report what the host actually did.
+
+    OpenRouter's own ``status`` field says whether it believes an endpoint is
+    up, which is not the same claim as "will serve me right now": without our
+    own upstream key we sit on OpenRouter's shared rate-limit pool for that
+    upstream, and a host listed as up can return 429 on every call for one
+    model while serving another fine. Only a real call distinguishes the two.
+
+    Returns ``(status, seconds, detail)`` where status is an HTTP code or
+    ``"ERR"``, and detail is the served provider on success or the start of the
+    error body otherwise.
+    """
+    import json as _json
+    import time as _time
+    import urllib.error
+    import urllib.request
+
+    body = {
+        "model": model,
+        "messages": [{"role": "user", "content": "Say ok."}],
+        "max_tokens": PROBE_MAX_TOKENS,
+        "provider": {"only": [tag.split("/")[0]], "allow_fallbacks": False},
+    }
+    request = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=_json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+    )
+    started = _time.monotonic()
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = _json.load(response)
+            return response.status, _time.monotonic() - started, str(payload.get("provider") or "")
+    except urllib.error.HTTPError as exc:
+        return exc.code, _time.monotonic() - started, exc.read()[:160].decode(errors="replace")
+    except Exception as exc:  # network, timeout, malformed body
+        return "ERR", _time.monotonic() - started, str(exc)[:160]
+
+
+def probe_endpoints(
+    endpoints: list[Endpoint],
+    model: str,
+    api_key: str,
+    *,
+    workers: int = 8,
+) -> dict[str, tuple[int | str, float, str]]:
+    """Probe every endpoint concurrently, keyed by tag."""
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        results = pool.map(lambda e: (e.tag, probe_endpoint(e.tag, model, api_key)), endpoints)
+        return dict(results)
