@@ -106,6 +106,57 @@ def holm(arms: list[dict[str, Any]]) -> None:
         print(f"    {a['arm']:<22s} {a['hang_rate'] * 100:>5.1f}%  z={z:+6.2f}  p={p:.4f}  {mark}")
 
 
+def detail(
+    data: dict[tuple[str, str], dict[str, list[dict[str, Any]]]], models: list[str]
+) -> None:
+    """The per-call fields the rollup table has no column for.
+
+    Routing spread answers what the unpinned arm actually did; pin verification
+    answers whether a pinned arm stayed put, which is the claim a pinned run
+    rests on; reasoning share and finish reasons explain cost and truncation
+    that the token totals alone do not.
+    """
+    for model in models:
+        print(f"\n\nROUTING AND VERIFICATION — {model}")
+        header = (
+            f"{'route':<22s} {'served by':<46s} {'pin ok':>7s} "
+            f"{'reason tok%':>11s} {'finish reasons':<28s}"
+        )
+        print(header)
+        print("-" * len(header))
+        for (m, route), tasks in sorted(data.items()):
+            if m != model:
+                continue
+            rows = [r for rs in tasks.values() for r in rs]
+            upstreams: dict[str, int] = defaultdict(int)
+            finishes: dict[str, int] = defaultdict(int)
+            honored = violated = 0
+            ctok = rtok = 0
+            for r in rows:
+                echo = r.get("provider_echo")
+                if echo:
+                    upstreams[str(echo)] += 1
+                fin = r.get("finish_reason")
+                if fin:
+                    finishes[str(fin)] += 1
+                if r.get("pin_honored") is True:
+                    honored += 1
+                elif r.get("pin_honored") is False:
+                    violated += 1
+                ctok += r.get("completion_tokens") or 0
+                rtok += r.get("reasoning_tokens") or 0
+            served = ", ".join(
+                f"{k} {v}" for k, v in sorted(upstreams.items(), key=lambda kv: -kv[1])[:4]
+            ) or "(no echo)"
+            pin = "--" if honored + violated == 0 else (
+                "OK" if violated == 0 else f"{violated} BAD"
+            )
+            share = f"{rtok / ctok * 100:.1f}" if ctok else "--"
+            top_fins = sorted(finishes.items(), key=lambda kv: -kv[1])[:3]
+            fins = ", ".join(f"{k}:{v}" for k, v in top_fins)
+            print(f"{route:<22s} {served[:46]:<46s} {pin:>7s} {share:>11s} {fins[:28]:<28s}")
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "artifacts")
     data = collect(root)
@@ -167,6 +218,7 @@ def main() -> int:
                 line += f"{cell:>22s}"
             print(line)
 
+    detail(data, models)
     print(
         "\nCost is a LOWER BOUND on any arm with abandoned calls: those tokens were "
         "billed but their usage block never arrived. '--' in a cost column means the "
