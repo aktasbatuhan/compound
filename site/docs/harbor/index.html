@@ -60,6 +60,7 @@ host, each behind its own proxy, with a call ledger per host.</p>
 <li><code>--timeout-multiplier</code>. Scales every phase, including environment build. Usually not what you want: a small value can kill containers before they finish building.</li>
 <li><code>--host-model HOST=MODEL</code>, repeatable. Hosts name the same weights differently: OpenRouter serves <code>z-ai/glm-5.3-flash</code>, Doubleword serves <code>zai-org/GLM-5.3-Flash</code>. The proxy rewrites the model id for that host; <code>HOST</code> is a provider token, label, or kind (<code>doubleword=zai-org/GLM-5.3-Flash</code>).</li>
 <li><code>--reasoning on|off</code>. Pin the reasoning mode on every arm. Hosts disagree on the default, and an unpinned comparison mixes modes.</li>
+<li><code>--task-path &lt;dir&gt;</code>. Run a Harbor task or dataset directory that sits on disk instead of one resolved from the hub. A benchmark that ships Harbor-schema tasks but no runner of its own is still runnable this way: clone it, pin a commit, and point at a task directory. Mutually exclusive with <code>--dataset</code>.</li>
 <li><code>--env docker|modal|daytona</code>. Harbor's sandbox backend.</li>
 </ul>
 <h2 id="requirements">Requirements</h2>

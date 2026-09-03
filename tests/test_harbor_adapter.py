@@ -362,3 +362,33 @@ class TestAgentKwargs:
 
     def test_no_kwargs_adds_nothing(self):
         assert "--agent-kwarg" not in cmd()
+
+
+def test_build_command_runs_a_local_task_directory():
+    """A benchmark whose own runner is unreleased still runs from a checkout."""
+    command = build_command(
+        task_path="repo/tasks/crash-proof-flash-filesystem",
+        dataset=None,
+        model="openai/z-ai/glm-5.3-flash",
+        jobs_dir="jobs",
+        job_name="arm",
+    )
+    assert "--path" in command
+    assert command[command.index("--path") + 1] == "repo/tasks/crash-proof-flash-filesystem"
+    assert "--dataset" not in command
+
+
+def test_build_command_refuses_both_sources():
+    with pytest.raises(ValueError, match="not both"):
+        build_command(
+            task_path="repo/tasks/x",
+            dataset="some/other@1.0",
+            model="m",
+            jobs_dir="jobs",
+            job_name="arm",
+        )
+
+
+def test_build_command_refuses_no_source():
+    with pytest.raises(ValueError, match="one of dataset or task_path"):
+        build_command(dataset=None, model="m", jobs_dir="jobs", job_name="arm")

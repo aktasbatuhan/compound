@@ -131,8 +131,9 @@ def sweep_harbor(
     *,
     model: str,
     jobs_dir: Path,
-    dataset: str,
-    agent: str,
+    dataset: str | None = None,
+    task_path: str | Path | None = None,
+    agent: str = "terminus-2",
     include_tasks: list[str] | None = None,
     n_tasks: int | None = None,
     attempts: int = 1,
@@ -172,6 +173,7 @@ def sweep_harbor(
         print(f"[harbor] {spec.label}: pin -> {spec.forward_base_url} (job {job_name})")
         command = harbor.build_command(
             dataset=dataset,
+            task_path=task_path,
             model=f"openai/{model}",
             agent=agent,
             jobs_dir=jobs_dir,

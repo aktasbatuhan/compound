@@ -146,9 +146,12 @@ def select_case_ids(
     return ids
 
 
-def cmd_providers(model: str, as_json: bool) -> int:
+def cmd_providers(model: str, as_json: bool, probe: bool = False) -> int:
     """List the OpenRouter upstreams that serve a model, as --providers tokens."""
-    from compound.openrouter_discovery import fetch_endpoints, format_table
+    import os
+    from dataclasses import asdict
+
+    from compound.openrouter_discovery import fetch_endpoints, format_table, probe_endpoints
 
     try:
         endpoints = fetch_endpoints(model)
@@ -156,12 +159,43 @@ def cmd_providers(model: str, as_json: bool) -> int:
         raise SystemExit(
             f"error: could not fetch endpoints for {model!r}: {exc}"
         ) from exc
-    if as_json:
-        from dataclasses import asdict
 
-        print(json.dumps([asdict(e) for e in endpoints], indent=2))
+    probed: dict[str, tuple[int | str, float, str]] = {}
+    if probe:
+        _require_keys({"OPENROUTER_API_KEY"})
+        probed = probe_endpoints(endpoints, model, os.environ["OPENROUTER_API_KEY"])
+
+    if as_json:
+        rows = []
+        for endpoint in endpoints:
+            row = asdict(endpoint)
+            if endpoint.tag in probed:
+                status, seconds, detail = probed[endpoint.tag]
+                row["probe"] = {
+                    "status": status,
+                    "seconds": round(seconds, 2),
+                    "answered": status == 200,
+                    "detail": detail,
+                }
+            rows.append(row)
+        print(json.dumps(rows, indent=2))
         return 0
+
     print(format_table(endpoints))
+    if probe:
+        # OpenRouter's own "up" is its belief about the endpoint; this column is
+        # one real pinned call. They disagree often enough to matter: a host can
+        # be listed up and 429 every call for one model while serving another.
+        print("\nPROBE: one pinned call per host, just now")
+        print(f"{'PROVIDER TOKEN':<30s} {'STATUS':>7s} {'SECONDS':>8s}  DETAIL")
+        answered = 0
+        for endpoint in endpoints:
+            if endpoint.tag not in probed:
+                continue
+            status, seconds, detail = probed[endpoint.tag]
+            answered += status == 200
+            print(f"{endpoint.token:<30s} {str(status):>7s} {seconds:>8.1f}  {detail[:60]}")
+        print(f"\n{answered} of {len(probed)} answered. Only these can carry an arm right now.")
     return 0
 
 
@@ -515,7 +549,11 @@ def cmd_harbor(args: argparse.Namespace) -> int:
     specs = apply_host_models(specs, host_models)
     tasks = args.tasks.split(",") if args.tasks else None
     agent_kwargs = _parse_agent_kwargs(args.agent_kwargs)
-    print(f"harbor: dataset {args.dataset}, agent {args.agent}, model {args.model}")
+    # An on-disk task tree and a hub dataset are alternative sources; naming a
+    # path means the pinned-version default no longer describes the run.
+    dataset = None if args.task_path else args.dataset
+    source = f"path {args.task_path}" if args.task_path else f"dataset {args.dataset}"
+    print(f"harbor: {source}, agent {args.agent}, model {args.model}")
     for line in provider_sweep.plan(specs, args.model):
         print(line)
     # Report the pinning this run will apply, not the ambient env: the flags are
@@ -536,7 +574,8 @@ def cmd_harbor(args: argparse.Namespace) -> int:
         # Show the exact argv rather than describing it: a dry run should let a
         # reviewer check the command that money would be spent on.
         example = harbor.build_command(
-            dataset=args.dataset,
+            dataset=dataset,
+            task_path=args.task_path,
             model=f"openai/{args.model}",
             agent=args.agent,
             jobs_dir=args.jobs_dir,
@@ -558,7 +597,8 @@ def cmd_harbor(args: argparse.Namespace) -> int:
         specs,
         model=args.model,
         jobs_dir=Path(args.jobs_dir),
-        dataset=args.dataset,
+        dataset=dataset,
+        task_path=args.task_path,
         agent=args.agent,
         include_tasks=tasks,
         n_tasks=args.n_tasks,
@@ -708,6 +748,13 @@ def main() -> int:
     providers.add_argument(
         "--json", action="store_true", dest="as_json", help="machine-readable output"
     )
+    providers.add_argument(
+        "--probe",
+        action="store_true",
+        help="send one tiny pinned call to every host and report what it actually did. "
+             "OpenRouter's 'up' is its own belief; without your own upstream key you sit "
+             "on its shared rate-limit pool, where a listed-up host can 429 every call.",
+    )
 
     tasks = sub.add_parser("tasks", help="print case ids for a benchmark")
     tasks.add_argument("benchmark", choices=sorted(BENCHMARKS))
@@ -758,6 +805,13 @@ def main() -> int:
         help="comma-separated provider tokens, e.g. openrouter/auto,openrouter/deepinfra",
     )
     harbor_p.add_argument("--model", required=True, help="model id as the upstream knows it")
+    harbor_p.add_argument(
+        "--task-path",
+        default=None,
+        help="run a Harbor task or dataset DIRECTORY on disk instead of a hub dataset "
+             "(harbor --path). Lets a benchmark whose own runner is unreleased still run, "
+             "as long as its tasks carry a Harbor task.toml.",
+    )
     harbor_p.add_argument(
         "--host-model", action="append", default=[], metavar="HOST=MODEL",
         help="model id to send to one host when it names the weights differently, "
@@ -889,7 +943,7 @@ def main() -> int:
     if args.command == "prepare":
         return cmd_prepare(args)
     if args.command == "providers":
-        return cmd_providers(args.model, args.as_json)
+        return cmd_providers(args.model, args.as_json, args.probe)
     if args.command == "tasks":
         return cmd_tasks(args.benchmark, args.partition, args.contains)
     if args.command == "serving":

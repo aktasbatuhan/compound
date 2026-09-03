@@ -32,7 +32,7 @@ options:
 ## compound-bench providers
 
 ```text
-usage: compound.bench providers [-h] [--json] model
+usage: compound.bench providers [-h] [--json] [--probe] model
 
 positional arguments:
   model       OpenRouter model slug, e.g. deepseek/deepseek-v4-flash-0731
@@ -40,6 +40,10 @@ positional arguments:
 options:
   -h, --help  show this help message and exit
   --json      machine-readable output
+  --probe     send one tiny pinned call to every host and report what it
+              actually did. OpenRouter's 'up' is its own belief; without your
+              own upstream key you sit on its shared rate-limit pool, where a
+              listed-up host can 429 every call.
 ```
 
 ## compound-bench tasks
@@ -132,9 +136,10 @@ options:
 
 ```text
 usage: compound.bench harbor [-h] --providers PROVIDERS --model MODEL
-                             [--host-model HOST=MODEL] [--dataset DATASET]
-                             [--agent AGENT] [--tasks TASKS]
-                             [--n-tasks N_TASKS] [--attempts ATTEMPTS]
+                             [--task-path TASK_PATH] [--host-model HOST=MODEL]
+                             [--dataset DATASET] [--agent AGENT]
+                             [--tasks TASKS] [--n-tasks N_TASKS]
+                             [--attempts ATTEMPTS]
                              [--n-concurrent N_CONCURRENT]
                              [--timeout-multiplier TIMEOUT_MULTIPLIER]
                              [--agent-timeout-multiplier AGENT_TIMEOUT_MULTIPLIER]
@@ -149,6 +154,11 @@ options:
                         comma-separated provider tokens, e.g.
                         openrouter/auto,openrouter/deepinfra
   --model MODEL         model id as the upstream knows it
+  --task-path TASK_PATH
+                        run a Harbor task or dataset DIRECTORY on disk instead
+                        of a hub dataset (harbor --path). Lets a benchmark
+                        whose own runner is unreleased still run, as long as
+                        its tasks carry a Harbor task.toml.
   --host-model HOST=MODEL
                         model id to send to one host when it names the weights
                         differently, repeatable; HOST is a provider token,
