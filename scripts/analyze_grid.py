@@ -74,7 +74,7 @@ def table(title: str, arms: list[dict[str, Any]]) -> None:
         cache = "--" if a["cache_ratio"] is None else f"{a['cache_ratio'] * 100:.1f}"
         # A host that reports no cost per call (Doubleword) must print as
         # unreported, never as $0.0000: a null is not a measured zero, and a
-        # zero here would read as "this host is free". See dw_tier_cost.py.
+        # zero here would read as "this host is free". See dw_snapshot.py.
         priced = a["priced_calls"] > 0
         cost = f"{a['cost_usd']:.4f}" if priced else "--"
         # Per MILLION prompt tokens: these runs move millions of tokens, and a
@@ -322,7 +322,7 @@ def main() -> int:
     print(
         "\nCost is a LOWER BOUND on any arm with abandoned calls: those tokens were "
         "billed but their usage block never arrived. '--' in a cost column means the "
-        "host reports no cost per call (Doubleword); run scripts/dw_tier_cost.py "
+        "host reports no cost per call (Doubleword); run scripts/dw_snapshot.py "
         "for its billed total. cache% is the host's own reported cached/prompt ratio; "
         "read it beside $/1M ptok, not instead of it."
     )
