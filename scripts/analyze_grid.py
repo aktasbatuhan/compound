@@ -25,6 +25,7 @@ Usage:  python3 scripts/analyze_grid.py artifacts/fswe-<stamp>
 
 from __future__ import annotations
 
+import json
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -73,7 +74,7 @@ def table(title: str, arms: list[dict[str, Any]]) -> None:
         cache = "--" if a["cache_ratio"] is None else f"{a['cache_ratio'] * 100:.1f}"
         # A host that reports no cost per call (Doubleword) must print as
         # unreported, never as $0.0000: a null is not a measured zero, and a
-        # zero here would read as "this host is free". See dw_cost_attribution.
+        # zero here would read as "this host is free". See dw_tier_cost.py.
         priced = a["priced_calls"] > 0
         cost = f"{a['cost_usd']:.4f}" if priced else "--"
         # Per MILLION prompt tokens: these runs move millions of tokens, and a
@@ -163,6 +164,77 @@ def detail(
             print(f"{route:<22s} {served[:46]:<46s} {pin:>7s} {share:>11s} {fins[:28]:<28s}")
 
 
+def route_of(root: Path, arm_dir: str, model: str, task: str) -> str | None:
+    """The route label for an arm's (model, task) cell, read off its ledger name.
+
+    An arm's *directory* is named for the host it was created for, which stops
+    being true the moment a host is swapped out mid-grid (a rate-limited upstream
+    replaced by a healthy one keeps the old directory). The ledger file inside is
+    named for the host that actually served, so quality rows key off the same
+    label as the cost and reliability rows.
+    """
+    ledgers = sorted((root / arm_dir / "out" / model / task / "ledger").glob("*.jsonl"))
+    return ledgers[0].stem if ledgers else None
+
+
+def collect_rewards(root: Path) -> tuple[dict[tuple[str, str], dict[str, list[dict[str, Any]]]],
+                                          dict[str, int]]:
+    """(model, route) -> task -> trial rows, plus a count of why trials went unscored.
+
+    Harbor writes one ``result.json`` per trial. ``verifier_result.rewards`` is
+    the grader's own output; for FrontierSWE that is ``reward`` in [0, 1] and a
+    ``valid`` flag, where ``valid = 0`` marks an infrastructure failure the task
+    itself wants retried rather than scored as a zero.
+    """
+    out: dict[tuple[str, str], dict[str, list[dict[str, Any]]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    unscored: dict[str, int] = defaultdict(int)
+    for result in sorted(root.glob("*/out/*/*/jobs/*/*/result.json")):
+        parts = result.parts
+        arm_dir, model, task = parts[-8], parts[-6], parts[-5]
+        route = route_of(root, arm_dir, model, task) or arm_dir
+        try:
+            payload = json.loads(result.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        verifier = payload.get("verifier_result") or {}
+        rewards = verifier.get("rewards") or {}
+        row: dict[str, Any] = {"reward": rewards.get("reward"), "valid": rewards.get("valid")}
+        if row["reward"] is None:
+            info = payload.get("exception_info") or {}
+            row["failure"] = info.get("exception_type") or "NoReward"
+            unscored[row["failure"]] += 1
+        out[(model, route)][task].append(row)
+    return out, dict(unscored)
+
+
+def quality_table(title: str, rows: dict[str, list[dict[str, Any]]]) -> None:
+    """Per-host quality for one model. Scored trials only drive the mean."""
+    print(f"\n{title}")
+    header = (f"  {'route':<24s}{'trials':>7s}{'scored':>7s}{'mean':>8s}"
+              f"{'>0':>5s}{'best':>7s}   {'unscored reason':<34s}")
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+    for route in sorted(rows):
+        trials = rows[route]
+        scored = [t for t in trials if t["reward"] is not None]
+        # valid = 0 is the task saying "infrastructure broke, do not score this".
+        good = [t for t in scored if t.get("valid") != 0]
+        mean = sum(t["reward"] for t in good) / len(good) if good else None
+        nonzero = sum(1 for t in good if (t["reward"] or 0) > 0)
+        best = max((t["reward"] for t in good), default=None)
+        reasons = defaultdict(int)
+        for t in trials:
+            if t["reward"] is None:
+                reasons[t.get("failure", "NoReward")] += 1
+        why = ", ".join(f"{k} x{v}" for k, v in sorted(reasons.items())) or "-"
+        print(f"  {route:<24s}{len(trials):>7d}{len(good):>7d}"
+              f"{'--' if mean is None else format(mean, '.3f'):>8s}"
+              f"{nonzero:>5d}{'--' if best is None else format(best, '.3f'):>7s}"
+              f"   {why[:34]:<34s}")
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "artifacts")
     data = collect(root)
@@ -183,6 +255,28 @@ def main() -> int:
         n_tasks = len({t for (m, _), ts in data.items() if m == model for t in ts})
         table(f"MODEL {model} — pooled over {n_tasks} task(s)", arms)
         holm(arms)
+
+    rewards, unscored = collect_rewards(root)
+    if rewards:
+        print("\n\nQUALITY — grader reward per host")
+        print("FrontierSWE scores a continuous reward in [0, 1]; a trial the grader "
+              "marked\nvalid=0 is an infrastructure failure and is excluded rather "
+              "than counted as zero.")
+        for model in models:
+            rows = {route: [t for ts in tasks.values() for t in ts]
+                    for (m, route), tasks in rewards.items() if m == model}
+            if rows:
+                quality_table(f"MODEL {model}", rows)
+        if unscored:
+            total = sum(unscored.values())
+            print(f"\n  {total} trial(s) produced no reward at all:")
+            for reason, n in sorted(unscored.items(), key=lambda kv: -kv[1]):
+                print(f"    {n:4d}  {reason}")
+            print("  FileNotFoundError on a task's tests/ dir means the verifier "
+                  "environment was\n  never built: run scripts/fswe_prepare.py "
+                  "against the task tree first.")
+    else:
+        print("\n\nQUALITY — none available: no trial recorded a verifier reward.")
 
     if len(models) > 1:
         print("\n\nHOST RANKING ACROSS MODELS (by rate of calls that never completed)")
@@ -228,7 +322,7 @@ def main() -> int:
     print(
         "\nCost is a LOWER BOUND on any arm with abandoned calls: those tokens were "
         "billed but their usage block never arrived. '--' in a cost column means the "
-        "host reports no cost per call (Doubleword); run scripts/dw_cost_attribution.py "
+        "host reports no cost per call (Doubleword); run scripts/dw_tier_cost.py "
         "for its billed total. cache% is the host's own reported cached/prompt ratio; "
         "read it beside $/1M ptok, not instead of it."
     )

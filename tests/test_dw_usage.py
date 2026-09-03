@@ -96,3 +96,43 @@ def test_fetch_usage_uses_injected_runner():
     assert calls["argv"][:2] == ["dw", "usage"]
     assert "--since" in calls["argv"] and "2026-08-09" in calls["argv"]
     assert "--until" in calls["argv"] and "2026-08-11" in calls["argv"]
+
+
+# A window that covers two models: `dw usage` still reports one window-level
+# estimated_realtime_cost, which is their SUM and belongs to neither row.
+TWO_MODEL_PAYLOAD = {
+    "total_input_tokens": 16326089,
+    "total_output_tokens": 689552,
+    "total_cost": "1.990764900000000",
+    "estimated_realtime_cost": "2.27913817",
+    "by_model": [
+        {
+            "model": "zai-org/GLM-5.3-Flash",
+            "input_tokens": 9734460,
+            "output_tokens": 317510,
+            "cost": "1.405318320000000",
+            "request_count": 370,
+        },
+        {
+            "model": MODEL,
+            "input_tokens": 6591629,
+            "output_tokens": 372042,
+            "cost": "0.585446580000000",
+            "request_count": 262,
+        },
+    ],
+}
+
+
+def test_parse_usage_refuses_to_attribute_a_shared_realtime_estimate():
+    # Charging the window's estimate to one of two models inflates its derived
+    # realtime rate, which silently inverts a per-tier cost comparison.
+    usage = parse_usage(TWO_MODEL_PAYLOAD, MODEL)
+    assert usage.total_cost == pytest.approx(0.58544658)
+    assert usage.estimated_realtime_cost is None
+
+
+def test_derive_tier_rates_refuses_without_a_per_model_estimate():
+    usage = parse_usage(TWO_MODEL_PAYLOAD, MODEL)
+    with pytest.raises(ValueError, match="cannot be separated"):
+        derive_tier_rates(usage, realtime_tokens=1_000_000, flex_tokens=1_000_000)

@@ -41,12 +41,26 @@ TASKS="${FSWE_TASKS:-crash-proof-flash-filesystem,qubit-routing,verilog-simulato
 # "<label>:<openrouter id>:<doubleword id>" per model, space separated.
 MODELS="${FSWE_MODELS:-glm53flash:z-ai/glm-5.3-flash:zai-org/GLM-5.3-Flash deepseekv4flash:deepseek/deepseek-v4-flash-0731:deepseek-ai/DeepSeek-V4-Flash-0731}"
 ARMS="${FSWE_ARMS:-openrouter/auto openrouter/deepinfra/fp8 openrouter/parasail/fp8 openrouter/novita/fp8 openrouter/baseten/fp8 openrouter/together doubleword/realtime doubleword/flex}"
+# Which models the DOUBLEWORD arms may run. `dw usage` reports billed cost by
+# model but never by tier, and it truncates its window to the calendar day, so
+# the realtime/flex split is only recoverable when a UTC day's Doubleword traffic
+# involves ONE model: then the window's estimated_realtime_cost is attributable
+# and scripts/dw_tier_cost.py can separate the tiers. Defaults to the first model;
+# run the grid again the next UTC day with the second to price both.
+# The OpenRouter arms are unaffected and still run every model.
+DW_MODELS="${FSWE_DW_MODELS:-$(echo "$MODELS" | awk '{print $1}')}"
 ATTEMPTS="${FSWE_ATTEMPTS:-1}"
 MAX_TURNS="${FSWE_TURNS:-40}"
-# Tasks declare a 20-hour agent budget. 0.02 of that is ~24 minutes, which is
-# the ceiling per task; max_turns is the real control, and equal turns rather
-# than an equal clock is what keeps a fast host from being handed more work.
-AGENT_MULT="${FSWE_AGENT_MULT:-0.02}"
+# Tasks declare a 20-hour agent budget, so this multiplier is the per-task
+# ceiling: 0.05 is 60 minutes on every task in the CPU-only tier.
+#
+# It was 0.02 (24 minutes) on the first grid, and that turned out to bind: 24 of
+# 64 trials on the working tasks ended in AgentTimeoutError rather than finishing
+# their turns. A truncated agent cannot be scored, so the clock has to sit above
+# what max_turns needs. max_turns stays the real control, because an equal turn
+# budget gives every host the same work while an equal clock quietly hands the
+# faster host more of it.
+AGENT_MULT="${FSWE_AGENT_MULT:-0.05}"
 STAMP="$(date +%s)"
 OUT_ROOT="${FSWE_OUT:-artifacts/fswe-$STAMP}"
 
@@ -57,6 +71,7 @@ if [ -f .env ]; then set -a; . ./.env; set +a; fi
 mkdir -p "$OUT_ROOT"
 echo "== grid: $(echo "$ARMS" | wc -w | tr -d ' ') arms x $(echo "$MODELS" | wc -w | tr -d ' ') models x $(echo "$TASKS" | tr ',' ' ' | wc -w | tr -d ' ') tasks"
 echo "== tasks: $TASKS"
+echo "== doubleword arms run only: $(echo "$DW_MODELS" | tr ' ' ',' )"
 echo "== out:   $OUT_ROOT"
 
 vm_name() { echo "fswe-$(echo "$1" | tr '/' '-' | tr '[:upper:]' '[:lower:]')-$STAMP"; }
@@ -119,6 +134,12 @@ for entry in "${VMS[@]}"; do
   VM="${entry%%:*}"; ARM="${entry#*:}"
   (
     gcloud compute scp "$SRC_TGZ" "$VM":/opt/compound/src.tgz --zone="$ZONE" --project="$PROJECT" >/dev/null 2>&1
+    # Doubleword arms run a single model so the day's billing window stays
+    # attributable; every other arm runs the full model list.
+    case "$ARM" in
+      doubleword/*) ARM_MODELS="$DW_MODELS" ;;
+      *)            ARM_MODELS="$MODELS" ;;
+    esac
     RUNNER="$(mktemp)"
     cat > "$RUNNER" <<EOF
 #!/bin/bash
@@ -131,7 +152,13 @@ rm -f RUN_DONE RUN_FAIL
   if [ -n "$REPO_COMMIT" ]; then (cd repo && git fetch --depth 1 origin "$REPO_COMMIT" && git checkout "$REPO_COMMIT"); fi
   (cd repo && git rev-parse HEAD > /opt/compound/REPO_COMMIT.txt)
   uv sync --extra dev
-  for MODELSPEC in $MODELS; do
+  # Give Harbor the separate-verifier build context FrontierSWE ships no
+  # equivalent of. Without this the agent phase runs fine and every task then
+  # fails at scoring, which is how the first grid produced no quality signal.
+  for TASK in \$(echo "$TASKS" | tr ',' ' '); do
+    python3 scripts/fswe_prepare.py repo --task "\$TASK" || touch /opt/compound/RUN_FAIL
+  done
+  for MODELSPEC in $ARM_MODELS; do
     MKEY="\${MODELSPEC%%:*}"; REST="\${MODELSPEC#*:}"
     ORID="\${REST%%:*}"; DWID="\${REST#*:}"
     for TASK in \$(echo "$TASKS" | tr ',' ' '); do

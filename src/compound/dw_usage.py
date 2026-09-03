@@ -43,7 +43,11 @@ class DWUsage:
     input_tokens: int
     output_tokens: int
     total_cost: float
-    estimated_realtime_cost: float
+    #: What these tokens would have cost entirely at the realtime tier. ``dw
+    #: usage`` reports it only for the whole window, never per model, so this is
+    #: ``None`` whenever the window covered more than one model and the figure
+    #: therefore cannot be attributed to this row.
+    estimated_realtime_cost: float | None
     request_count: int
 
     @property
@@ -57,19 +61,25 @@ def parse_usage(payload: dict, model: str) -> DWUsage:
     Raises ``KeyError`` if the model is absent from the window (a clear signal
     that the ``--since``/``--until`` window does not cover the run).
     """
-    for row in payload.get("by_model", []):
+    rows = payload.get("by_model", [])
+    for row in rows:
         if row.get("model") == model:
+            # Per-model rows omit the realtime estimate. Falling back to the
+            # window total is only sound when the window covers this model
+            # alone; with two models in the window that total is their SUM, and
+            # charging it to one of them inflates its derived realtime rate. In
+            # that case report None so a caller cannot quietly compute a wrong
+            # rate -- scope the window to one model, or price the tiers from
+            # disjoint per-tier windows instead.
+            estimate = row.get("estimated_realtime_cost")
+            if estimate is None and len(rows) == 1:
+                estimate = payload.get("estimated_realtime_cost")
             return DWUsage(
                 model=model,
                 input_tokens=int(row.get("input_tokens", 0)),
                 output_tokens=int(row.get("output_tokens", 0)),
                 total_cost=float(row.get("cost", 0.0)),
-                # per-model rows omit the realtime estimate; fall back to the
-                # window total, which equals the row when the window is scoped.
-                estimated_realtime_cost=float(
-                    row.get("estimated_realtime_cost")
-                    or payload.get("estimated_realtime_cost", 0.0)
-                ),
+                estimated_realtime_cost=None if estimate is None else float(estimate),
                 request_count=int(row.get("request_count", 0)),
             )
     raise KeyError(f"model {model!r} not found in dw usage window")
@@ -123,6 +133,13 @@ def derive_tier_rates(
     rates: dict[str, float] = {}
     if tot <= 0:
         return rates
+    if usage.estimated_realtime_cost is None:
+        raise ValueError(
+            f"dw usage reported no per-model realtime estimate for {usage.model!r}, "
+            "so the two tiers cannot be separated from this window. Scope the "
+            "window to a single model, or bill each tier in its own window and "
+            "read the per-tier cost directly (scripts/dw_tier_cost.py)."
+        )
     rt_rate = usage.estimated_realtime_cost / tot  # $/report-token, calibrated
     if realtime_tokens > 0:
         rates[REALTIME_LABEL] = rt_rate * 1e6

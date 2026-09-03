@@ -55,6 +55,51 @@ To compare hosts fairly, run every arm at the same time on separate VMs.
 Serving-host congestion moves by the hour, so arms run one after another
 confound host with time of day.
 
+## Task trees that ship no runner
+
+`--task-path` runs a Harbor-schema task directory straight from a git checkout,
+which is how a benchmark that publishes tasks but not its runner can still be
+run. FrontierSWE v2 is the case that motivated it.
+
+One thing to check before trusting such a run: whether the tasks can actually be
+**graded**. A task whose `[verifier]` sets `environment_mode = "separate"` has
+Harbor build the verifier in its own container, using `<task>/tests` as the build
+context, and in that mode Harbor uploads nothing into the container, so the image
+must already contain `/tests/test.sh`. Benchmarks whose own uploader performs that
+step ship no `<task>/tests` at all, and the failure surfaces only at scoring
+time:
+
+```
+FileNotFoundError: Task environment directory <task>/tests has no environment definition.
+```
+
+The agent phase is unaffected, so the run looks healthy and yields no reward on
+any task. `scripts/fswe_prepare.py` closes the gap for FrontierSWE v2 by
+materializing `<task>/tests` as a copy of `<task>/environment` plus a shim that
+forwards to the grader the image already carries. It changes no scoring code.
+
+```bash
+python3 scripts/fswe_prepare.py /path/to/frontier-swe-v2 --all-cpu-tasks
+```
+
+Validate before spending model tokens. Each task ships a reference solution and
+an `oracle_reward_threshold`, and Harbor's `oracle` agent runs that solution
+instead of a model, so one VM tells you whether grading works end to end:
+
+```bash
+GCP_PROJECT=<project> bash scripts/cloud/gcp-fswe-oracle.sh
+```
+
+Two other things to size up front, both of which silently produce zero graded
+trials:
+
+- **The agent clock.** `--agent-timeout-multiplier` is a fraction of the task's
+  own budget. FrontierSWE tasks declare 20 hours, so `0.02` is 24 minutes, and
+  an agent cut off mid-task cannot be scored at all. Keep the clock above what
+  `max_turns` needs and let turns be the binding control.
+- **Resources.** 11 of FrontierSWE v2's 34 tasks require a GPU and two ask for
+  128 GB of RAM. `--all-cpu-tasks` selects the ones a normal VM can hold.
+
 ## Reading the results
 
 Harbor writes a job directory per arm with a `result.json` per trial. The

@@ -25,6 +25,7 @@ from typing import Any
 import yaml
 
 from compound.adapters.mmlu import stable_partition
+from compound.orproxy import cache_optin_enabled
 
 TB_VERSION = "terminal-bench@0.2.18"
 # 0.2.18 resolves to a litellm whose native extension fails to build on macOS;
@@ -147,7 +148,7 @@ def write_run_metadata(
     """
     reasoning = os.getenv("COMPOUND_REASONING", "").lower()
     reasoning_mode = reasoning if reasoning in ("on", "off") else "default"
-    cache_optin = os.getenv("COMPOUND_DW_CACHE", "").lower() in ("1", "true", "on")
+    cache_optin = cache_optin_enabled()
     mult = timeout_mult if timeout_mult else 1.0
     meta = {
         "model": model,

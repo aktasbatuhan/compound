@@ -72,7 +72,8 @@ Flags specific to it:
 - `--tb-agent` picks the harness agent (default `terminus`); `--tb-concurrent` sets tasks per host.
 - `--tb-timeout-mult N` multiplies every task's agent time limit. Results are labeled non-official when set. Use it when a slow host would otherwise fail only for being slow.
 - `--reasoning on|off` pins the model's reasoning mode through the proxy. Hosts disagree on the default, so an unpinned comparison mixes modes.
-- `--cache-optin` injects prompt-cache markers for hosts whose cache is opt-in.
+- `--no-cache-optin` turns off the prompt-cache markers injected for hosts whose
+  cache is opt-in. They are injected by default.
 - `--call-ledger PATH` records every model call. Cache-hit and routing claims need this; episode results only carry totals.
 
 ## Adding a benchmark

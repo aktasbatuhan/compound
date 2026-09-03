@@ -80,6 +80,40 @@ gcloud compute instances list                            # verify nothing is lef
 <p>To compare hosts fairly, run every arm at the same time on separate VMs.
 Serving-host congestion moves by the hour, so arms run one after another
 confound host with time of day.</p>
+<h2 id="task-trees-that-ship-no-runner">Task trees that ship no runner</h2>
+<p><code>--task-path</code> runs a Harbor-schema task directory straight from a git checkout,
+which is how a benchmark that publishes tasks but not its runner can still be
+run. FrontierSWE v2 is the case that motivated it.</p>
+<p>One thing to check before trusting such a run: whether the tasks can actually be
+<strong>graded</strong>. A task whose <code>[verifier]</code> sets <code>environment_mode = "separate"</code> has
+Harbor build the verifier in its own container, using <code>&lt;task&gt;/tests</code> as the build
+context, and in that mode Harbor uploads nothing into the container, so the image
+must already contain <code>/tests/test.sh</code>. Benchmarks whose own uploader performs that
+step ship no <code>&lt;task&gt;/tests</code> at all, and the failure surfaces only at scoring
+time:</p>
+<pre><code>FileNotFoundError: Task environment directory &lt;task&gt;/tests has no environment definition.
+</code></pre>
+<p>The agent phase is unaffected, so the run looks healthy and yields no reward on
+any task. <code>scripts/fswe_prepare.py</code> closes the gap for FrontierSWE v2 by
+materializing <code>&lt;task&gt;/tests</code> as a copy of <code>&lt;task&gt;/environment</code> plus a shim that
+forwards to the grader the image already carries. It changes no scoring code.</p>
+<pre><code class="language-bash">python3 scripts/fswe_prepare.py /path/to/frontier-swe-v2 --all-cpu-tasks
+</code></pre>
+<p>Validate before spending model tokens. Each task ships a reference solution and
+an <code>oracle_reward_threshold</code>, and Harbor's <code>oracle</code> agent runs that solution
+instead of a model, so one VM tells you whether grading works end to end:</p>
+<pre><code class="language-bash">GCP_PROJECT=&lt;project&gt; bash scripts/cloud/gcp-fswe-oracle.sh
+</code></pre>
+<p>Two other things to size up front, both of which silently produce zero graded
+trials:</p>
+<ul>
+<li><strong>The agent clock.</strong> <code>--agent-timeout-multiplier</code> is a fraction of the task's
+  own budget. FrontierSWE tasks declare 20 hours, so <code>0.02</code> is 24 minutes, and
+  an agent cut off mid-task cannot be scored at all. Keep the clock above what
+  <code>max_turns</code> needs and let turns be the binding control.</li>
+<li><strong>Resources.</strong> 11 of FrontierSWE v2's 34 tasks require a GPU and two ask for
+  128 GB of RAM. <code>--all-cpu-tasks</code> selects the ones a normal VM can hold.</li>
+</ul>
 <h2 id="reading-the-results">Reading the results</h2>
 <p>Harbor writes a job directory per arm with a <code>result.json</code> per trial. The
 ledger directory gets <code>&lt;host&gt;.jsonl</code>. Then:</p>

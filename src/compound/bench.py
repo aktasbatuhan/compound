@@ -663,7 +663,9 @@ def _apply_tb_env(args: argparse.Namespace) -> None:
 
     * ``--reasoning`` wins over a pre-set ``COMPOUND_REASONING``; ``default``
       clears it so nothing is injected. Omitted, the env var is left untouched.
-    * ``--cache-optin`` sets ``COMPOUND_DW_CACHE``; an existing value stays on.
+    * ``--cache-optin`` / ``--no-cache-optin`` set ``COMPOUND_DW_CACHE`` to ``1``/``0``.
+      Neither given, the env var is left alone and markers default to ON
+      (see :func:`compound.orproxy.cache_optin_enabled`).
     * ``--call-ledger PATH`` sets ``COMPOUND_CALL_LEDGER``, turning on the
       per-call record; unset, the proxy does no extra work.
     * ``--tb-timeout-mult`` sets ``COMPOUND_TB_TIMEOUT_MULT`` only when it is not
@@ -676,8 +678,8 @@ def _apply_tb_env(args: argparse.Namespace) -> None:
             os.environ.pop("COMPOUND_REASONING", None)
         else:
             os.environ["COMPOUND_REASONING"] = args.reasoning
-    if args.cache_optin:
-        os.environ["COMPOUND_DW_CACHE"] = "1"
+    if args.cache_optin is not None:
+        os.environ["COMPOUND_DW_CACHE"] = "1" if args.cache_optin else "0"
     if args.call_ledger:
         os.environ["COMPOUND_CALL_LEDGER"] = args.call_ledger
     if args.tb_timeout_mult is not None and "COMPOUND_TB_TIMEOUT_MULT" not in os.environ:
@@ -688,9 +690,11 @@ def _tb_pin_line() -> str:
     """One line naming the effective reasoning / cache / timeout pinning."""
     import os
 
+    from compound.orproxy import cache_optin_enabled
+
     reasoning = os.getenv("COMPOUND_REASONING", "").lower()
     reasoning = reasoning if reasoning in ("on", "off") else "default"
-    cache = os.getenv("COMPOUND_DW_CACHE", "").lower() in ("1", "true", "on")
+    cache = cache_optin_enabled()
     mult = os.getenv("COMPOUND_TB_TIMEOUT_MULT", "").strip() or "1"
     extended = " (extended limits, non-official)" if mult not in ("", "1", "1.0") else ""
     ledger = os.getenv("COMPOUND_CALL_LEDGER", "").strip() or "off"
@@ -854,7 +858,11 @@ def main() -> int:
     harbor_p.add_argument("--ledger-dir", default=None, help="per-host call ledger directory")
     harbor_p.add_argument("--reasoning", choices=("on", "off", "default"), default=None,
                           help="pin the model's reasoning mode via the proxy")
-    harbor_p.add_argument("--cache-optin", action="store_true", help="enable prompt-cache markers")
+    harbor_p.add_argument(
+        "--cache-optin", action=argparse.BooleanOptionalAction, default=None,
+        help="inject explicit prompt-cache markers for explicit_marker providers "
+        "(e.g. doubleword). ON by default; --no-cache-optin measures the unmarked path.",
+    )
     harbor_p.add_argument("--call-ledger", default=None, help=argparse.SUPPRESS)
     harbor_p.add_argument("--tb-timeout-mult", default=None, help=argparse.SUPPRESS)
     harbor_p.add_argument("--go", action="store_true", help="execute (default is a dry run)")
@@ -915,10 +923,13 @@ def main() -> int:
     )
     run.add_argument(
         "--cache-optin",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="terminal_bench: inject explicit prompt-cache markers for "
-        "explicit_marker providers (e.g. doubleword). COMPOUND_DW_CACHE still "
-        "forces it on at the harness level.",
+        "explicit_marker providers (e.g. doubleword). ON by default, because a "
+        "marker-gated host otherwise re-bills the whole transcript every turn; "
+        "pass --no-cache-optin to measure that unmarked path on purpose. "
+        "COMPOUND_DW_CACHE overrides when neither flag is given.",
     )
     run.add_argument(
         "--call-ledger",
