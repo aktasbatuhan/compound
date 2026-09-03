@@ -405,3 +405,53 @@ def test_parse_defaults():
     assert args.reps == 2
     assert args.out == "artifacts/bench/serving-metrics"
     assert args.model_or is None and args.model is None
+
+
+def test_warm_cell_sends_the_prompt_unchanged_and_cold_nonces_it():
+    # The cold/warm distinction is the cache measurement: a nonce makes a warm
+    # hit impossible, so a warm cell must send byte-identical bytes every rep.
+    from compound.providers_registry import parse_provider
+    from compound.serving_metrics import CACHE_COLD, CACHE_WARM, REASONING_OFF, build_body
+
+    spec = parse_provider("openrouter/novita")
+    shape = {"messages": [{"role": "user", "content": "hello"}]}
+
+    warm_a = build_body(spec, "m", REASONING_OFF, shape, nonce="")
+    warm_b = build_body(spec, "m", REASONING_OFF, shape, nonce="")
+    assert warm_a["messages"] == warm_b["messages"] == shape["messages"]
+
+    cold_a = build_body(spec, "m", REASONING_OFF, shape)
+    cold_b = build_body(spec, "m", REASONING_OFF, shape)
+    assert cold_a["messages"] != cold_b["messages"]
+    assert cold_a["messages"][0]["content"].endswith("hello")
+    assert CACHE_COLD != CACHE_WARM  # the labels the records carry
+
+
+def test_temperature_and_per_shape_max_tokens_reach_the_body():
+    from compound.providers_registry import parse_provider
+    from compound.serving_metrics import REASONING_OFF, build_body
+
+    spec = parse_provider("openrouter/novita")
+    shape = {"messages": [{"role": "user", "content": "x"}], "max_tokens": 100}
+    body = build_body(spec, "m", REASONING_OFF, shape, max_tokens=8192, temperature=0.0)
+    assert body["temperature"] == 0.0
+    # The shape's own budget wins: a profile grid varies output length per cell.
+    assert body["max_tokens"] == 100
+
+    no_shape_cap = {"messages": [{"role": "user", "content": "x"}]}
+    assert build_body(spec, "m", REASONING_OFF, no_shape_cap, max_tokens=64)["max_tokens"] == 64
+
+
+def test_measure_stream_accumulates_the_generated_text():
+    from compound.serving_metrics import measure_stream
+
+    lines = [
+        'data: {"choices":[{"delta":{"content":"Hel"}}]}',
+        'data: {"choices":[{"delta":{"content":"lo"}}]}',
+        'data: {"choices":[{"finish_reason":"stop"}]}',
+        "data: [DONE]",
+    ]
+    ticks = iter([1.0, 2.0, 3.0, 4.0])
+    m = measure_stream(lines, lambda: next(ticks))
+    assert m["text"] == "Hello"
+    assert m["n_content_chunks"] == 2

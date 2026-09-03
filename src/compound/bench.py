@@ -503,10 +503,17 @@ def cmd_serving(args: argparse.Namespace) -> int:
     except ValueError as exc:
         raise SystemExit(f"error: {exc}") from exc
     _require_keys({s.required_key_env() for s in specs})
-    cells = len(specs) * len(shapes) * len(sm.MODES) * args.reps * args.rounds
+    modes = (sm.REASONING_ON, sm.REASONING_OFF) if args.reasoning_modes == "both" else (
+        sm.REASONING_ON if args.reasoning_modes == "on" else sm.REASONING_OFF,
+    )
+    cache_modes = sm.CACHE_MODES if args.cache_mode == "both" else (args.cache_mode,)
+    cells = (
+        len(specs) * len(shapes) * len(modes) * len(cache_modes) * args.reps * args.rounds
+    )
     print(
-        f"serving: {len(specs)} route(s) x {len(shapes)} shape(s) x {len(sm.MODES)} mode(s) "
-        f"x {args.reps} rep(s) x {args.rounds} round(s) = {cells} calls"
+        f"serving: {len(specs)} route(s) x {len(shapes)} shape(s) x {len(modes)} mode(s) "
+        f"x {len(cache_modes)} cache mode(s) x {args.reps} rep(s) x {args.rounds} round(s) "
+        f"= {cells} calls at temperature {args.temperature}"
     )
     out = sm.run_serving(
         specs,
@@ -517,6 +524,9 @@ def cmd_serving(args: argparse.Namespace) -> int:
         rounds=args.rounds,
         interval=args.interval,
         reps=args.reps,
+        modes=modes,
+        cache_modes=cache_modes,
+        temperature=args.temperature,
     )
     print(f"results -> {out}")
     return 0
@@ -792,6 +802,31 @@ def main() -> int:
     )
     serving.add_argument(
         "--reps", type=int, default=2, help="repetitions per (route, mode, shape) cell"
+    )
+    serving.add_argument(
+        "--cache-mode",
+        choices=("cold", "warm", "both"),
+        default="cold",
+        help="cold prepends a per-call nonce so no prefix is ever served warm, "
+        "isolating raw serving speed; warm sends a byte-identical prompt every "
+        "rep so the host's prompt cache can hit. The cold/warm delta is the "
+        "cache measurement, and warm cells run serially so rep 0 can populate "
+        "the cache the rest read.",
+    )
+    serving.add_argument(
+        "--reasoning-modes",
+        choices=("on", "off", "both"),
+        default="both",
+        help="which reasoning pinning to sweep; 'off' matches a vendor latency "
+        "benchmark that disables reasoning",
+    )
+    serving.add_argument(
+        "--temperature",
+        type=float,
+        default=0.7,
+        help="sampling temperature. Use 0 to compare hosts token for token: at "
+        "temperature 0 a divergence between two hosts serving the same weights "
+        "is a difference in numerics, not in sampling.",
     )
     serving.add_argument(
         "--out",
