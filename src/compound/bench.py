@@ -515,7 +515,11 @@ def cmd_harbor(args: argparse.Namespace) -> int:
     specs = apply_host_models(specs, host_models)
     tasks = args.tasks.split(",") if args.tasks else None
     agent_kwargs = _parse_agent_kwargs(args.agent_kwargs)
-    print(f"harbor: dataset {args.dataset}, agent {args.agent}, model {args.model}")
+    # An on-disk task tree and a hub dataset are alternative sources; naming a
+    # path means the pinned-version default no longer describes the run.
+    dataset = None if args.task_path else args.dataset
+    source = f"path {args.task_path}" if args.task_path else f"dataset {args.dataset}"
+    print(f"harbor: {source}, agent {args.agent}, model {args.model}")
     for line in provider_sweep.plan(specs, args.model):
         print(line)
     # Report the pinning this run will apply, not the ambient env: the flags are
@@ -536,7 +540,8 @@ def cmd_harbor(args: argparse.Namespace) -> int:
         # Show the exact argv rather than describing it: a dry run should let a
         # reviewer check the command that money would be spent on.
         example = harbor.build_command(
-            dataset=args.dataset,
+            dataset=dataset,
+            task_path=args.task_path,
             model=f"openai/{args.model}",
             agent=args.agent,
             jobs_dir=args.jobs_dir,
@@ -558,7 +563,8 @@ def cmd_harbor(args: argparse.Namespace) -> int:
         specs,
         model=args.model,
         jobs_dir=Path(args.jobs_dir),
-        dataset=args.dataset,
+        dataset=dataset,
+        task_path=args.task_path,
         agent=args.agent,
         include_tasks=tasks,
         n_tasks=args.n_tasks,
@@ -758,6 +764,13 @@ def main() -> int:
         help="comma-separated provider tokens, e.g. openrouter/auto,openrouter/deepinfra",
     )
     harbor_p.add_argument("--model", required=True, help="model id as the upstream knows it")
+    harbor_p.add_argument(
+        "--task-path",
+        default=None,
+        help="run a Harbor task or dataset DIRECTORY on disk instead of a hub dataset "
+             "(harbor --path). Lets a benchmark whose own runner is unreleased still run, "
+             "as long as its tasks carry a Harbor task.toml.",
+    )
     harbor_p.add_argument(
         "--host-model", action="append", default=[], metavar="HOST=MODEL",
         help="model id to send to one host when it names the weights differently, "

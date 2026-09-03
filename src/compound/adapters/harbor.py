@@ -71,7 +71,8 @@ IN_SANDBOX_AGENTS = frozenset(
 
 def build_command(
     *,
-    dataset: str = DEFAULT_DATASET,
+    dataset: str | None = DEFAULT_DATASET,
+    task_path: str | Path | None = None,
     model: str,
     agent: str = DEFAULT_AGENT,
     jobs_dir: str | Path,
@@ -97,7 +98,19 @@ def build_command(
     Combined with an agent that calls the model from inside the sandbox, that
     is unsatisfiable, so it raises rather than producing a run whose "pinned"
     arm quietly reaches the public endpoint and reports a host we never chose.
+
+    ``task_path`` runs a task or dataset directory that sits on disk instead of
+    one resolved from the hub (``harbor run --path``). That is how a benchmark
+    whose own runner is unreleased still runs here: a repository of
+    Harbor-schema tasks is a dataset directory, so the arm is defined by a
+    checkout plus a commit rather than by a registry version. Exactly one of
+    ``dataset`` and ``task_path`` is used; passing both is a contradiction
+    about where the tasks come from, so it raises.
     """
+    if task_path is not None and dataset is not None and dataset != DEFAULT_DATASET:
+        raise ValueError("pass either dataset or task_path, not both")
+    if task_path is None and dataset is None:
+        raise ValueError("one of dataset or task_path is required")
     if proxied and agent in IN_SANDBOX_AGENTS:
         raise ValueError(
             f"agent {agent!r} calls the model from inside the sandbox, where a "
@@ -107,10 +120,11 @@ def build_command(
     if attempts < 1:
         raise ValueError("attempts must be at least 1")
 
+    source = ["--path", str(task_path)] if task_path is not None else ["--dataset", str(dataset)]
     command = [
         *HARBOR_UVX,
         "run",
-        "--dataset", dataset,
+        *source,
         "--agent", agent,
         "--model", model,
         "--jobs-dir", str(jobs_dir),
