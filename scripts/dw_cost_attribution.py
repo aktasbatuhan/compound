@@ -112,11 +112,17 @@ def main() -> int:
             )
 
     print(
-        "\nThe billed total is measured by Doubleword's own meters. The split "
-        "between tiers is derived from the prompt tokens our ledger recorded, "
-        "because dw usage reports by model and not by tier. The window may also "
-        "include calls made outside this grid; check request counts against the "
-        "ledger's call counts before quoting a per-tier figure."
+        "\nThe billed total is MEASURED by Doubleword's own meters. The split "
+        "between tiers is DERIVED from the prompt tokens our ledger recorded, "
+        "because dw usage reports by model and not by tier."
+        "\n\nRead the per-tier $/1M column with care: dividing one billed total by "
+        "token share necessarily hands both tiers the same rate, so equal figures "
+        "there are an artifact of the method and NOT evidence that the tiers cost "
+        "the same. Doubleword's published flex rate is below its realtime rate. To "
+        "separate them, bill one tier at a time in its own window, or use "
+        "compound.dw_usage.derive_tier_rates. The window may also include calls "
+        "made outside this grid; check request counts against the ledger's call "
+        "counts before quoting anything."
     )
     return 0
 
