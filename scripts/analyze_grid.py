@@ -65,13 +65,22 @@ def table(title: str, arms: list[dict[str, Any]]) -> None:
     for a in sorted(arms, key=lambda x: x["hang_rate"]):
         lo, hi = a["hang_ci"]
         cache = "--" if a["cache_ratio"] is None else f"{a['cache_ratio'] * 100:.1f}"
+        # A host that reports no cost per call (Doubleword) must print as
+        # unreported, never as $0.0000: a null is not a measured zero, and a
+        # zero here would read as "this host is free". See dw_cost_attribution.
+        priced = a["priced_calls"] > 0
+        cost = f"{a['cost_usd']:.4f}" if priced else "--"
         # Per MILLION prompt tokens: these runs move millions of tokens, and a
         # per-1k figure prints as a wall of zeroes.
-        cpm = "--" if a["cost_per_1k_prompt"] is None else f"{a['cost_per_1k_prompt'] * 1000:.4f}"
+        cpm = (
+            f"{a['cost_per_1k_prompt'] * 1000:.4f}"
+            if priced and a["cost_per_1k_prompt"] is not None
+            else "--"
+        )
         print(
             f"{a['arm']:<22s} {a['calls']:>6d} {a['hang_rate'] * 100:>6.1f}% "
             f"{f'{lo * 100:.1f}-{hi * 100:.1f}':>13s} {a['abandoned']:>6d} "
-            f"{a['cost_usd']:>9.4f} {cpm:>10s} {cache:>7s} "
+            f"{cost:>9s} {cpm:>10s} {cache:>7s} "
             f"{(a['p50_s'] or 0):>6.0f} {(a['p90_s'] or 0):>6.0f} {len(a['hosts']):>5d}"
         )
 
@@ -160,9 +169,10 @@ def main() -> int:
 
     print(
         "\nCost is a LOWER BOUND on any arm with abandoned calls: those tokens were "
-        "billed but their usage block never arrived. cache% is the host's own "
-        "reported cached/prompt ratio; read it beside $/1M ptok, not instead of it. "
-        "Doubleword cost is derived from its token meters, not measured per call."
+        "billed but their usage block never arrived. '--' in a cost column means the "
+        "host reports no cost per call (Doubleword); run scripts/dw_cost_attribution.py "
+        "for its billed total. cache% is the host's own reported cached/prompt ratio; "
+        "read it beside $/1M ptok, not instead of it."
     )
     return 0
 
