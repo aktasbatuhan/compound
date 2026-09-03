@@ -43,6 +43,7 @@ from typing import Any
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
+from compound.orproxy import cache_optin_enabled, mark_cache_prefix
 from compound.providers_registry import (
     ProviderSpec,
     openrouter_provider_block,
@@ -152,6 +153,13 @@ def build_body(
     }
     if shape.get("response_format"):
         body["response_format"] = shape["response_format"]
+    # Mirror the pinning proxy exactly. A host whose cache is opt-in
+    # (Doubleword) serves nothing warm without an explicit marker, so a harness
+    # that skips the marker measures that host at its worst case while every
+    # implicit-cache host is measured at its best. That is not a fair comparison,
+    # it is the opt-in trap with our name on it.
+    if spec.cache_strategy == "explicit_marker" and cache_optin_enabled():
+        body["messages"] = mark_cache_prefix(body["messages"])
     if spec.kind == "openrouter":
         body["reasoning"] = {"enabled": mode == REASONING_ON}
         body["usage"] = {"include": True}
@@ -259,6 +267,7 @@ def one_call(
         "rep": rep,
         "cache_mode": cache_mode,
         "temperature": temperature,
+        "cache_marked": spec.cache_strategy == "explicit_marker" and cache_optin_enabled(),
     }
     req = urlrequest.Request(
         spec.forward_base_url.rstrip("/") + "/chat/completions",

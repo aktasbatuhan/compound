@@ -154,7 +154,7 @@ def inject(body: dict[str, Any], spec: ProviderSpec) -> dict[str, Any]:
     if spec.wire_model:
         merged["model"] = spec.wire_model
     if spec.cache_strategy == "explicit_marker" and cache_optin_enabled():
-        merged["messages"] = _mark_cache_prefix(merged.get("messages"))
+        merged["messages"] = mark_cache_prefix(merged.get("messages"))
     if spec.kind == "openrouter":
         merged = _request_usage_accounting(merged)
     # The cache-hit-rate source for #43 is the call ledger, not results.json:
@@ -217,7 +217,7 @@ def cache_optin_enabled() -> bool:
     return os.getenv("COMPOUND_DW_CACHE", "").strip().lower() not in _CACHE_OFF
 
 
-def _mark_cache_prefix(messages: Any) -> Any:
+def mark_cache_prefix(messages: Any) -> Any:
     """Attach ``cache_control`` to the last content block of the last message."""
     if not isinstance(messages, list) or not messages:
         return messages

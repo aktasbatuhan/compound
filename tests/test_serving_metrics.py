@@ -105,10 +105,19 @@ def test_make_nonce_is_unique_and_each_body_gets_a_fresh_one():
     assert c1.endswith("hi") and c2.endswith("hi")
 
 
-def test_build_body_accepts_an_explicit_nonce():
-    spec = parse_provider("doubleword/realtime")
+def test_build_body_accepts_an_explicit_nonce(monkeypatch):
+    monkeypatch.delenv("COMPOUND_DW_CACHE", raising=False)
+    # OpenRouter caches implicitly, so its body carries the nonce and nothing else.
+    spec = parse_provider("openrouter/novita")
     body = sm.build_body(spec, "m", sm.REASONING_OFF, SHAPE_NO_RF, nonce="FIXED\n")
     assert body["messages"][0]["content"] == "FIXED\nhi"
+
+    # Doubleword's cache is opt-in, so the same nonce arrives inside the marked
+    # content block the proxy would have added.
+    dw = sm.build_body(
+        parse_provider("doubleword/realtime"), "m", sm.REASONING_OFF, SHAPE_NO_RF, nonce="FIXED\n"
+    )
+    assert dw["messages"][0]["content"][-1]["text"] == "FIXED\nhi"
 
 
 # --- model resolution --------------------------------------------------------
@@ -455,3 +464,31 @@ def test_measure_stream_accumulates_the_generated_text():
     m = measure_stream(lines, lambda: next(ticks))
     assert m["text"] == "Hello"
     assert m["n_content_chunks"] == 2
+
+
+def test_marker_hosts_get_the_marker_the_proxy_would_inject(monkeypatch):
+    # A serving comparison that skips the marker measures an opt-in cache host at
+    # its worst case while every implicit-cache host is measured at its best.
+    from compound.providers_registry import parse_provider
+    from compound.serving_metrics import REASONING_OFF, build_body
+
+    monkeypatch.delenv("COMPOUND_DW_CACHE", raising=False)  # markers default on
+    shape = {"messages": [{"role": "user", "content": "hi"}]}
+
+    dw = build_body(parse_provider("doubleword/realtime"), "m", REASONING_OFF, shape, nonce="")
+    last = dw["messages"][-1]["content"]
+    assert isinstance(last, list) and last[-1]["cache_control"]["type"] == "ephemeral"
+
+    # OpenRouter caches prefixes on its own; marking it would be a no-op at best.
+    orr = build_body(parse_provider("openrouter/novita"), "m", REASONING_OFF, shape, nonce="")
+    assert orr["messages"][-1]["content"] == "hi"
+
+
+def test_marker_can_be_turned_off_for_the_unmarked_path(monkeypatch):
+    from compound.providers_registry import parse_provider
+    from compound.serving_metrics import REASONING_OFF, build_body
+
+    monkeypatch.setenv("COMPOUND_DW_CACHE", "0")
+    shape = {"messages": [{"role": "user", "content": "hi"}]}
+    dw = build_body(parse_provider("doubleword/realtime"), "m", REASONING_OFF, shape, nonce="")
+    assert dw["messages"][-1]["content"] == "hi"
