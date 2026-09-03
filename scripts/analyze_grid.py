@@ -43,6 +43,12 @@ def collect(root: Path) -> dict[tuple[str, str], dict[str, list[dict[str, Any]]]
     for led in sorted(root.glob("**/ledger/*.jsonl")):
         # .../out/<model>/<task>/ledger/<route>.jsonl
         parts = led.parts
+        if len(parts) < 5 or parts[-5] != "out":
+            # An arm directory can also hold sibling trees kept as evidence, such
+            # as the rate-limited ledgers of a host that was swapped out. Those
+            # are not results: pooled into this table a fully 429'd host reads as
+            # a well-behaved arm with a 0% incomplete rate.
+            continue
         try:
             task = parts[-3]
             model = parts[-4]
