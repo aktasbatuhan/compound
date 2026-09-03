@@ -37,10 +37,18 @@ REPO_URL="${FSWE_REPO:-https://github.com/Proximal-Labs/frontier-swe-v2.git}"
 # Pin the commit: the repo is days old and "work in progress", so an arm that
 # cloned an hour later must not silently run different tasks.
 REPO_COMMIT="${FSWE_COMMIT:-}"
-TASKS="${FSWE_TASKS:-crash-proof-flash-filesystem,qubit-routing,verilog-simulator-in-swift}"
+# Three tasks that built and ran on every arm of the 2026-09-03 grid, all in the
+# CPU-only tier. lean-4-kernel-type-checker-in-pascal fails its compose build on
+# every arm; qubit-routing declares exactly 16 GB, leaving a 16 GB VM none.
+TASKS="${FSWE_TASKS:-crash-proof-flash-filesystem,verilog-simulator-in-swift,libexpat-optimization}"
 # "<label>:<openrouter id>:<doubleword id>" per model, space separated.
 MODELS="${FSWE_MODELS:-glm53flash:z-ai/glm-5.3-flash:zai-org/GLM-5.3-Flash deepseekv4flash:deepseek/deepseek-v4-flash-0731:deepseek-ai/DeepSeek-V4-Flash-0731}"
-ARMS="${FSWE_ARMS:-openrouter/auto openrouter/deepinfra/fp8 openrouter/parasail/fp8 openrouter/novita/fp8 openrouter/baseten/fp8 openrouter/together doubleword/realtime doubleword/flex}"
+# Probe before trusting this list: without our own upstream keys these arms sit
+# on OpenRouter's shared rate-limit pool, which moves hourly and is per
+# (upstream, model). On 2026-09-03 deepinfra and baseten were listed as up and
+# returned 429 on every call for one model while serving the other, which cost
+# two arms mid-grid. `compound-bench providers <model> --probe` settles it.
+ARMS="${FSWE_ARMS:-openrouter/auto openrouter/novita/fp8 openrouter/siliconflow/fp8 openrouter/gmicloud/fp8 openrouter/parasail/fp8 openrouter/together doubleword/realtime doubleword/flex}"
 # Which models the DOUBLEWORD arms may run. `dw usage` reports billed cost by
 # model but never by tier, and it truncates its window to the calendar day, so
 # the realtime/flex split is only recoverable when a UTC day's Doubleword traffic
