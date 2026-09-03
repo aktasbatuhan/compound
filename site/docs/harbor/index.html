@@ -104,6 +104,13 @@ an <code>oracle_reward_threshold</code>, and Harbor's <code>oracle</code> agent 
 instead of a model, so one VM tells you whether grading works end to end:</p>
 <pre><code class="language-bash">GCP_PROJECT=&lt;project&gt; bash scripts/cloud/gcp-fswe-oracle.sh
 </code></pre>
+<p>One catch specific to FrontierSWE: its <code>solve.sh</code> and its verifier both key off
+<code>HARBOR_ORACLE_FLAG</code>, which is px-eval's variable and appears nowhere in Harbor.
+Without it <code>solve.sh</code> exits immediately and the oracle scores 0 however healthy
+the pipeline is, so the script generates a random flag per run and passes it to
+both phases with <code>--ae</code> and <code>--ve</code>. Never set that variable for a scored model
+run: an agent can read its own environment, and the verifier treats a marker
+matching the flag as proof of an oracle rollout.</p>
 <p>Two other things to size up front, both of which silently produce zero graded
 trials:</p>
 <ul>

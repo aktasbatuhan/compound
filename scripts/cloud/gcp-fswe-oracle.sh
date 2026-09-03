@@ -14,6 +14,18 @@
 # threshold. A task that scores 0 with valid=1 is a broken solution; valid=0 is
 # an infrastructure error; no reward file at all means grading never ran.
 #
+# HARBOR_ORACLE_FLAG is px-eval's, not Harbor's: the string does not appear
+# anywhere in Harbor 0.22.0. FrontierSWE's solve.sh exits immediately without it
+# ("this script only runs in the oracle stage") and its verifier uses it to tell
+# an oracle rollout from a candidate, so a stock `harbor run --agent oracle`
+# scores 0 no matter how healthy the pipeline is. This script generates a fresh
+# random flag per run and passes it to both phases with --ae/--ve.
+#
+# NEVER set that variable for a scored model run. The agent can read its own
+# environment, and the verifier treats a marker file matching the flag as proof
+# of an oracle rollout, so an agent handed the flag could forge that marker and
+# be scored as the reference solution.
+#
 #   GCP_PROJECT=... bash scripts/cloud/gcp-fswe-oracle.sh
 #   GCP_PROJECT=... FSWE_TASKS=verilog-simulator-in-swift bash scripts/cloud/gcp-fswe-oracle.sh
 #
@@ -111,9 +123,11 @@ rm -f RUN_DONE
 
   for TASK in \$(echo "$TASKS" | tr ',' ' '); do
     echo "===== ORACLE \$TASK \$(date -u +%H:%M:%S) ====="
+    FLAG="oracle-\$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
     timeout 14400 uvx --from harbor harbor run \
       --path "repo/tasks/\$TASK" \
       --agent oracle \
+      --ae "HARBOR_ORACLE_FLAG=\$FLAG" --ve "HARBOR_ORACLE_FLAG=\$FLAG" \
       --n-attempts 1 --n-concurrent 1 \
       --jobs-dir "out/\$TASK"
     echo "===== exit \$? \$(date -u +%H:%M:%S) ====="
