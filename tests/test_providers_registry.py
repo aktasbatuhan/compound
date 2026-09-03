@@ -157,10 +157,19 @@ def test_apply_host_models_matches_kind_label_and_token():
     assert out[2].wire_model == "other"
 
 
-def test_apply_host_models_rejects_unknown_key():
+def test_apply_host_models_ignores_a_kind_this_arm_does_not_use():
+    """One grid fans the same mapping to every arm; only some arms are Doubleword."""
+    from compound.providers_registry import apply_host_models, parse_providers
+
+    specs = parse_providers("openrouter/deepinfra")
+    out = apply_host_models(specs, {"doubleword": "zai-org/GLM-5.3-Flash"})
+    assert out[0].wire_model is None
+
+
+def test_apply_host_models_rejects_a_misspelled_kind():
     import pytest
 
     from compound.providers_registry import apply_host_models, parse_providers
 
-    with pytest.raises(ValueError):
-        apply_host_models(parse_providers("openrouter/auto"), {"fireworks": "x"})
+    with pytest.raises(ValueError, match="no known provider"):
+        apply_host_models(parse_providers("openrouter/auto"), {"doubelword": "x"})

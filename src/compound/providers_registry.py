@@ -287,8 +287,12 @@ def apply_host_models(specs: list[ProviderSpec], mapping: dict[str, str]) -> lis
 
     A mapping key matches a spec by exact token (``doubleword/flex``), by label
     (``doubleword-flex``), or by kind (``doubleword``), most specific first.
-    Keys that match nothing raise, so a typo cannot silently leave an arm on
-    the wrong model id.
+
+    A key naming a provider *kind* that this arm happens not to use is a no-op,
+    not an error: one grid fans the same mapping out to every arm, and only the
+    Doubleword arms of that grid have a Doubleword provider. A key that names
+    no known kind is still a typo and raises, so a misspelling cannot silently
+    leave an arm on the wrong model id.
     """
     from dataclasses import replace
 
@@ -305,6 +309,10 @@ def apply_host_models(specs: list[ProviderSpec], mapping: dict[str, str]) -> lis
             continue
         unused.discard(chosen)
         out.append(replace(spec, wire_model=mapping[chosen]))
-    if unused:
-        raise ValueError(f"--host-model keys match no provider: {sorted(unused)}")
+    typos = sorted(k for k in unused if k not in _KNOWN and "/" not in k and "-" not in k)
+    if typos:
+        raise ValueError(
+            f"--host-model keys name no known provider: {typos} "
+            f"(known kinds: {sorted(_KNOWN)})"
+        )
     return out

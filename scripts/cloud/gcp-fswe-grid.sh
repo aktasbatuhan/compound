@@ -127,7 +127,7 @@ rm -f RUN_DONE RUN_FAIL
 {
   set -x
   tar xzf src.tgz
-  git clone --depth 1 "$REPO_URL" repo || { echo CLONE_FAIL; touch /opt/compound/RUN_FAIL; }
+  [ -d repo ] || git clone --depth 1 "$REPO_URL" repo || { echo CLONE_FAIL; touch /opt/compound/RUN_FAIL; }
   if [ -n "$REPO_COMMIT" ]; then (cd repo && git fetch --depth 1 origin "$REPO_COMMIT" && git checkout "$REPO_COMMIT"); fi
   (cd repo && git rev-parse HEAD > /opt/compound/REPO_COMMIT.txt)
   uv sync --extra dev
