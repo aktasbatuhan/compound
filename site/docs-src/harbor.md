@@ -105,6 +105,15 @@ trials:
   own budget. FrontierSWE tasks declare 20 hours, so `0.02` is 24 minutes, and
   an agent cut off mid-task cannot be scored at all. Keep the clock above what
   `max_turns` needs and let turns be the binding control.
+- **The turn budget, and whether the score can discriminate at all.** A reward
+  that is 0 for every host is real but useless for ranking them, and a turn
+  budget too small for the task guarantees exactly that. Measured on
+  2026-09-03: a terminus-2 agent spends `max_turns=40` in about 9 minutes, and
+  every host then scored 0 on all three tasks, with the Verilog task reporting
+  `build: 0.0` and the libexpat optimization task `unit_pass_rate: 0.0` even
+  though it starts from working code. Before reading anything into a quality
+  column, check that the scores vary; if they do not, the budget or the
+  benchmark is wrong for the question, not the hosts.
 - **Resources.** 11 of FrontierSWE v2's 34 tasks require a GPU and two ask for
   128 GB of RAM. `--all-cpu-tasks` selects the ones a normal VM can hold.
 
