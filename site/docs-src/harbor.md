@@ -30,6 +30,7 @@ Without `--go` it prints the grid and the exact Harbor command per host.
 - `--timeout-multiplier`. Scales every phase, including environment build. Usually not what you want: a small value can kill containers before they finish building.
 - `--host-model HOST=MODEL`, repeatable. Hosts name the same weights differently: OpenRouter serves `z-ai/glm-5.3-flash`, Doubleword serves `zai-org/GLM-5.3-Flash`. The proxy rewrites the model id for that host; `HOST` is a provider token, label, or kind (`doubleword=zai-org/GLM-5.3-Flash`).
 - `--reasoning on|off`. Pin the reasoning mode on every arm. Hosts disagree on the default, and an unpinned comparison mixes modes.
+- `--task-path <dir>`. Run a Harbor task or dataset directory that sits on disk instead of one resolved from the hub. A benchmark that ships Harbor-schema tasks but no runner of its own is still runnable this way: clone it, pin a commit, and point at a task directory. Mutually exclusive with `--dataset`.
 - `--env docker|modal|daytona`. Harbor's sandbox backend.
 
 ## Requirements

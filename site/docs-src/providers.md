@@ -32,6 +32,24 @@ compound-bench providers z-ai/glm-5.3-flash
 
 `--json` gives the same list as machine-readable output.
 
+The `STATUS` column is OpenRouter's own belief about the endpoint, which is not
+the same claim as "will serve me right now". Without your own upstream key you
+sit on OpenRouter's shared rate-limit pool for that host, where an endpoint
+listed as up can return 429 on every call for one model while serving another
+fine. `--probe` settles it by sending one small pinned call to each host:
+
+```bash
+compound-bench providers z-ai/glm-5.3-flash --probe
+# PROVIDER TOKEN                  STATUS  SECONDS  DETAIL
+# openrouter/z-ai/fp8                200      1.4  Z.AI
+# openrouter/deepinfra/fp8           429      0.5  {"error":{"message":"Provider returned error"...
+# ...
+# 17 of 23 answered. Only these can carry an arm right now.
+```
+
+Measured on 2026-09-03, six of the twenty-three hosts listed as up for that
+model returned 429. Probe before committing a sweep to a host list.
+
 ## What pinning does
 
 For an `openrouter/<upstream>` token every request carries
