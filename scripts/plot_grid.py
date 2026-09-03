@@ -53,6 +53,11 @@ def main() -> int:
 
     panels = [
         (
+            "$ per 1M prompt tokens",
+            lambda a: (a["cost_per_1k_prompt"] or 0) * 1000 if a["priced_calls"] else 0,
+            "measured per call; blank where the host reports none",
+        ),
+        (
             "cache %",
             lambda a: (a["cache_ratio"] or 0) * 100,
             "share of prompt tokens served from cache",
@@ -60,7 +65,7 @@ def main() -> int:
         ("incomplete %", lambda a: a["hang_rate"] * 100, "calls that never returned within 300s"),
         ("p50 latency (s)", lambda a: a["p50_s"] or 0, "median call latency"),
     ]
-    fig, axes = plt.subplots(1, len(panels), figsize=(16, 6.4), dpi=200)
+    fig, axes = plt.subplots(1, len(panels), figsize=(20, 6.4), dpi=200)
     fig.patch.set_facecolor(PAPER)
 
     height = 0.36
@@ -76,10 +81,16 @@ def main() -> int:
             )
             for bar, value in zip(bars, values, strict=True):
                 if value > 0:
+                    # Precision follows the panel's scale: dollars per million
+                    # tokens are sub-unit and would all read "0", while a
+                    # percentage does not want three decimals.
+                    top = max(values)
+                    digits = 3 if top < 1 else (1 if top < 10 else 0)
+                    text = f"{value:.{digits}f}"
                     ax.text(
                         bar.get_width() + max(values) * 0.02,
                         bar.get_y() + bar.get_height() / 2,
-                        f"{value:.0f}", va="center", fontsize=8, color=INK,
+                        text, va="center", fontsize=8, color=INK,
                     )
         ax.set_yticks(ypos)
         ax.set_yticklabels(routes, fontsize=10, color=INK)
@@ -110,7 +121,7 @@ def main() -> int:
         "comparisons; its billed total comes from its own meters.",
         fontsize=8, color=INK2, va="bottom",
     )
-    plt.subplots_adjust(left=0.11, right=0.98, top=0.80, bottom=0.12, wspace=0.55)
+    plt.subplots_adjust(left=0.09, right=0.98, top=0.80, bottom=0.12, wspace=0.62)
     fig.savefig(args.out, facecolor=fig.get_facecolor())
     print(args.out)
     return 0
