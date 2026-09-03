@@ -25,6 +25,27 @@ providers:
     base_url: https://api.openai.com/v1
     api_key_env: OPENAI_API_KEY
     type: openai_compatible
+    # OpenAI caches prompt prefixes on its own; no marker to inject.
+    cache_strategy: implicit
+  # Same endpoint and weights, billed on the queued discount tier. Kept as its
+  # own provider so a grid can run both tiers as separate arms and the request
+  # body carries service_tier on every call. OpenAI echoes the tier back in the
+  # response, so tier compliance is checkable per call the way a provider pin is.
+  openai-flex:
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    type: openai_compatible
+    service_tier: flex
+    cache_strategy: implicit
+  # Z.ai serves GLM first-party. Its id for the weights is bare (glm-5.3-flash)
+  # where OpenRouter namespaces them (z-ai/glm-5.3-flash), so an arm needs
+  # --host-model zai=glm-5.3-flash. Reports prompt_tokens_details.cached_tokens,
+  # so its cache is measurable the same way as the OpenRouter majors'.
+  zai:
+    base_url: https://api.z.ai/api/paas/v4
+    api_key_env: ZAI_API_KEY
+    type: openai_compatible
+    cache_strategy: implicit
 
 models:
   frontier:

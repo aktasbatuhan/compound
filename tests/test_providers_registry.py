@@ -193,3 +193,30 @@ def test_probe_endpoint_reports_a_rate_limited_host_as_not_answering(monkeypatch
     assert status == 429
     assert seconds >= 0
     assert "rate-limited" in detail
+
+
+def test_apply_host_models_accepts_a_configured_direct_host_this_arm_lacks():
+    # A mixed grid fans one mapping across every arm, so `zai` is the target on
+    # the z.ai arm and unused on all the others. Without known_names the typo
+    # guard would reject it and kill those arms, which is how six arms died on
+    # the 2026-09-03 grid via the `doubleword` key.
+    from compound.providers_registry import apply_host_models, parse_providers
+
+    config = {"zai": {"base_url": "https://api.z.ai/api/paas/v4", "api_key_env": "ZAI_API_KEY"}}
+    specs = parse_providers("openrouter/novita", providers_config=config)
+    out = apply_host_models(specs, {"zai": "glm-5.3-flash"}, known_names=config)
+    assert out[0].wire_model is None  # no-op on an arm that is not z.ai
+
+    zai = parse_providers("direct/zai", providers_config=config)
+    out = apply_host_models(zai, {"zai": "glm-5.3-flash"}, known_names=config)
+    assert out[0].wire_model == "glm-5.3-flash"
+
+
+def test_apply_host_models_still_rejects_a_typo_among_configured_names():
+    from compound.providers_registry import apply_host_models, parse_providers
+
+    config = {"zai": {"base_url": "https://x", "api_key_env": "K"}}
+    with pytest.raises(ValueError, match="no known provider"):
+        apply_host_models(
+            parse_providers("openrouter/auto"), {"zia": "x"}, known_names=config
+        )

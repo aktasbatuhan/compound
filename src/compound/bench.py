@@ -546,7 +546,7 @@ def cmd_harbor(args: argparse.Namespace) -> int:
             raise SystemExit(f"--host-model expects HOST=MODEL, got {item!r}")
         key, value = item.split("=", 1)
         host_models[key.strip()] = value.strip()
-    specs = apply_host_models(specs, host_models)
+    specs = apply_host_models(specs, host_models, known_names=_load_providers_config())
     tasks = args.tasks.split(",") if args.tasks else None
     agent_kwargs = _parse_agent_kwargs(args.agent_kwargs)
     # An on-disk task tree and a hub dataset are alternative sources; naming a
