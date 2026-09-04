@@ -23,9 +23,13 @@ Two properties make this precise rather than approximate:
   billed delta, so every interval carries its own integrity check; over a
   **flex-only** interval the ratio *is* the flex discount, measured directly.
 
-The one requirement: nothing else may bill this Doubleword account during an
-interval, or the delta absorbs it. The report flags an interval whose request
-count does not match what the caller says it ran.
+Two requirements. Nothing else may bill this Doubleword account during an
+interval, or the delta absorbs it. And the meter books a call up to about a
+minute after it completes, so an end snapshot taken the moment a pass finishes
+misses its last calls and hands them to the next interval. Measured 2026-09-04:
+80 calls sent, 68 booked at the end snapshot, the other 12 booked inside the
+following interval. ``snap --expect N --since LABEL`` waits until the model's
+request count has risen by N over the snapshot labelled LABEL before reading.
 
 Usage::
 
@@ -71,6 +75,8 @@ def cmd_snap(args: argparse.Namespace) -> int:
     now = dt.datetime.now(dt.UTC)
     day = args.day or now.strftime("%Y-%m-%d")
     payload = dw_usage(day, args.dw_bin)
+    if args.expect:
+        payload = wait_for_booking(args, day, payload)
     row = {"ts": now.isoformat(), "day": day, "label": args.label, "usage": payload}
     with Path(args.log).open("a") as handle:
         handle.write(json.dumps(row) + "\n")
@@ -79,6 +85,32 @@ def cmd_snap(args: argparse.Namespace) -> int:
           f"cost=${float(payload.get('total_cost', 0)):.6f} "
           f"models={len(by_model)}")
     return 0
+
+
+def wait_for_booking(args: argparse.Namespace, day: str, payload: dict) -> dict:
+    """Poll until the meter has booked ``--expect`` more requests than at ``--since``."""
+    import time
+
+    model_id = MODEL_IDS.get(args.model, args.model)
+    base = None
+    for line in Path(args.log).read_text().splitlines():
+        row = json.loads(line)
+        if row.get("label") == args.since:
+            base = int(model_row(row["usage"], model_id).get("request_count", 0))
+    if base is None:
+        raise SystemExit(f"--since label {args.since!r} not found in {args.log}")
+    target = base + args.expect
+    deadline = time.time() + args.timeout
+    while True:
+        have = int(model_row(payload, model_id).get("request_count", 0))
+        if have >= target:
+            return payload
+        if time.time() > deadline:
+            print(f"  WARNING: meter shows {have} of expected {target} requests after "
+                  f"{args.timeout}s; snapshotting anyway", file=sys.stderr)
+            return payload
+        time.sleep(10)
+        payload = dw_usage(day, args.dw_bin)
 
 
 def model_row(payload: dict, model_id: str) -> dict:
@@ -172,6 +204,11 @@ def main() -> int:
     snap.add_argument("--label", required=True, help="'tier|model|task:start' or ':end'")
     snap.add_argument("--day", default=None, help="UTC date, defaults to today")
     snap.add_argument("--dw-bin", default="dw")
+    snap.add_argument("--expect", type=int, default=0,
+                      help="wait until this many more requests are booked than at --since")
+    snap.add_argument("--since", default=None, help="label of the interval's start snapshot")
+    snap.add_argument("--model", default="deepseekv4flash", help="grid model label for --expect")
+    snap.add_argument("--timeout", type=int, default=600, help="seconds to wait for booking")
     snap.set_defaults(func=cmd_snap)
 
     report = sub.add_parser("report", help="difference the readings into per-interval cost")

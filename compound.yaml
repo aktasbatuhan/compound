@@ -41,6 +41,16 @@ providers:
   # where OpenRouter namespaces them (z-ai/glm-5.3-flash), so an arm needs
   # --host-model zai=glm-5.3-flash. Reports prompt_tokens_details.cached_tokens,
   # so its cache is measurable the same way as the OpenRouter majors'.
+  # Telnyx publishes cross-provider serving comparisons of the models it also
+  # sells, so it belongs in ours as a measured arm rather than a citation. Its
+  # OpenAI-compatible surface returns prompt_tokens_details: null and no cost
+  # field, so latency, throughput and output are measurable here while cache and
+  # per-call cost are not; those have to come from its billing side.
+  telnyx:
+    base_url: https://api.telnyx.com/v2/ai
+    api_key_env: TELNYX_API_KEY
+    type: openai_compatible
+    cache_strategy: implicit
   zai:
     base_url: https://api.z.ai/api/paas/v4
     api_key_env: ZAI_API_KEY
