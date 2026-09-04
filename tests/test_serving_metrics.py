@@ -517,7 +517,6 @@ SHAPE_WITH_SYSTEM = {
         {"role": "system", "content": "be brief"},
         {"role": "user", "content": "hello"},
     ],
-    "response_format": {"type": "json_object"},
     "max_tokens": 64,
 }
 
@@ -531,9 +530,7 @@ def test_messages_body_hoists_system_and_pins_thinking(monkeypatch):
     assert on["thinking"] == {"type": "adaptive"}
     assert on["max_tokens"] == 64
     assert on["stream"] is True
-    # Messages has no response_format, and current Claude models reject
-    # sampling parameters, so neither is sent.
-    assert "response_format" not in on
+    # current Claude models reject sampling parameters, so none is sent
     assert "temperature" not in on
     assert "reasoning_effort" not in on
     # The marker rides on the last message, exactly as it does for Doubleword.
@@ -541,6 +538,19 @@ def test_messages_body_hoists_system_and_pins_thinking(monkeypatch):
     assert last[-1]["cache_control"]["type"] == "ephemeral"
     off = sm.build_body(spec, "claude-sonnet-5", sm.REASONING_OFF, SHAPE_WITH_SYSTEM, nonce="")
     assert off["thinking"] == {"type": "disabled"}
+
+
+def test_messages_body_translates_json_schema_and_refuses_json_object():
+    spec = parse_provider("direct/anthropic", providers_config=ANTHROPIC_CFG)
+    schema = {"type": "object", "properties": {"a": {"type": "string"}}}
+    shape = {"messages": [{"role": "user", "content": "x"}],
+             "response_format": {"type": "json_schema", "json_schema": {"name": "r", "schema": schema}}}
+    body = sm.build_body(spec, "m", sm.REASONING_OFF, shape, nonce="")
+    assert body["output_config"] == {"format": {"type": "json_schema", "schema": schema}}
+    loose = {"messages": [{"role": "user", "content": "x"}],
+             "response_format": {"type": "json_object"}}
+    with pytest.raises(ValueError, match="no Messages API equivalent"):
+        sm.build_body(spec, "m", sm.REASONING_OFF, loose, nonce="")
 
 
 def test_messages_body_cold_cell_still_nonces_the_first_turn():
@@ -603,6 +613,31 @@ def test_measure_messages_stream_records_a_mid_stream_error():
     assert "overloaded_error" in m["error"]
 
 
+def test_measure_messages_stream_treats_eof_without_message_stop_as_failure():
+    lines = [
+        b'data: {"type":"message_start","message":{"usage":{"input_tokens":10}}}',
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"half"}}',
+    ]
+    m = sm.measure_messages_stream(lines, lambda: 0.0)
+    assert m["error"] == "stream ended before message_stop"
+    assert m["usage"] is None  # half a call is never priced as a whole one
+    assert m["text"] == "half"
+
+
+def test_measure_messages_stream_ignores_empty_deltas_for_timing():
+    lines = [
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}}',
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":""}}',
+        b'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"tok"}}',
+        b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}',
+        b'data: {"type":"message_stop"}',
+    ]
+    clock = iter([1.0, 2.0, 10.0, 11.0, 12.0])
+    m = sm.measure_messages_stream(lines, lambda: next(clock))
+    assert m["first_delta"] == 10.0 and m["last_delta"] == 10.0
+    assert m["n_content_chunks"] == 1 and m["error"] is None
+
+
 def test_one_call_anthropic_uses_messages_endpoint_and_key_header(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sekret")
     lines = [
@@ -610,6 +645,7 @@ def test_one_call_anthropic_uses_messages_endpoint_and_key_header(monkeypatch):
         b'"cache_read_input_tokens":90,"cache_creation_input_tokens":0,"service_tier":"standard"}}}',
         b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}',
         b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
+        b'data: {"type":"message_stop"}',
     ]
     captured = {}
 
@@ -746,3 +782,7 @@ def test_derived_cost_uses_the_only_card_when_a_ledger_has_no_model():
     old_ledger = {"route": "telnyx", "prompt_tokens": 1_000_000, "cached_tokens": 0,
                   "completion_tokens": 0}
     assert sm.derived_cost_usd(old_ledger, RATES) == pytest.approx(0.13)
+    # a record that names a model the cards do not know is never priced at
+    # another model's rate
+    other = dict(old_ledger, model="some-other-model")
+    assert sm.derived_cost_usd(other, RATES) is None

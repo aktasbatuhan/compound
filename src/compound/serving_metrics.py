@@ -215,7 +215,12 @@ def build_messages_body(
 
     A cache marker goes on the last message exactly as it does for Doubleword,
     since Anthropic's cache is the same opt-in ``cache_control`` design.
-    ``response_format`` has no Messages equivalent and is dropped.
+
+    A ``response_format`` of type ``json_schema`` is translated to Anthropic's
+    ``output_config.format`` so both dialects decode under the same constraint;
+    dropping it would compare constrained decoding on one arm against free
+    generation on the other. ``json_object`` has no Messages equivalent and
+    raises before any spend rather than run an uncomparable cell.
     """
     system_parts: list[str] = []
     turns: list[dict[str, Any]] = []
@@ -239,6 +244,17 @@ def build_messages_body(
     }
     if system_parts:
         body["system"] = "\n".join(system_parts)
+    rf = shape.get("response_format")
+    if rf:
+        if rf.get("type") != "json_schema":
+            raise ValueError(
+                f"{spec.label}: response_format {rf.get('type')!r} has no Messages "
+                "API equivalent; only json_schema can be compared across dialects"
+            )
+        schema = (rf.get("json_schema") or {}).get("schema") or rf.get("schema")
+        if not schema:
+            raise ValueError(f"{spec.label}: response_format json_schema carries no schema")
+        body["output_config"] = {"format": {"type": "json_schema", "schema": schema}}
     if spec.cache_strategy == "explicit_marker" and cache_optin_enabled():
         body["messages"] = mark_cache_prefix(body["messages"])
     if spec.service_tier:
@@ -265,6 +281,7 @@ def measure_messages_stream(
     usage: dict[str, Any] | None = None
     finish: str | None = None
     error: str | None = None
+    stopped = False
     parts: list[str] = []
     for raw in raw_lines:
         if isinstance(raw, bytes):
@@ -278,7 +295,9 @@ def measure_messages_stream(
             continue
         t = now()
         kind = d.get("type")
-        if kind == "message_start":
+        if kind == "message_stop":
+            stopped = True
+        elif kind == "message_start":
             u = (d.get("message") or {}).get("usage") or {}
             uncached = u.get("input_tokens") or 0
             read = u.get("cache_read_input_tokens") or 0
@@ -292,13 +311,18 @@ def measure_messages_stream(
             }
         elif kind == "content_block_delta":
             delta = d.get("delta") or {}
-            if delta.get("type") in ("text_delta", "thinking_delta"):
+            # Only a delta that carries something starts or advances the clock,
+            # matching measure_stream; an empty delta is not a token served.
+            payload = delta.get("text") if delta.get("type") == "text_delta" else (
+                delta.get("thinking") if delta.get("type") == "thinking_delta" else None
+            )
+            if payload:
                 if first_delta is None:
                     first_delta = t
                 last_delta = t
-                if delta.get("type") == "text_delta" and delta.get("text"):
+                if delta.get("type") == "text_delta":
                     n_content_chunks += 1
-                    parts.append(delta["text"])
+                    parts.append(payload)
         elif kind == "message_delta":
             finish = (d.get("delta") or {}).get("stop_reason") or finish
             out = (d.get("usage") or {}).get("output_tokens")
@@ -307,11 +331,15 @@ def measure_messages_stream(
                 usage["completion_tokens"] = out
         elif kind == "error":
             error = json.dumps(d.get("error") or d)[:500]
+    if error is None and not stopped:
+        # A stream that ends without message_stop is a cut connection, not a
+        # short answer: the call failed, and its half-usage must not be priced.
+        error = "stream ended before message_stop"
     return {
         "first_delta": first_delta,
         "last_delta": last_delta,
         "n_content_chunks": n_content_chunks,
-        "usage": usage,
+        "usage": usage if error is None else None,
         "provider": None,
         "finish": finish,
         "text": "".join(parts),
@@ -702,10 +730,12 @@ def derived_cost_usd(rec: dict[str, Any], rates: dict[str, Any]) -> float | None
     if rec.get("cost_usd") is not None or rec.get("prompt_tokens") is None:
         return None
     per_route = rates.get(rec.get("route") or "") or {}
-    card = per_route.get(rec.get("model") or "")
-    if card is None and len(per_route) == 1:
+    model = rec.get("model")
+    card = per_route.get(model) if model else None
+    if card is None and not model and len(per_route) == 1:
         # Ledgers written before the model was recorded per call: one card for
-        # the route is unambiguous.
+        # the route is unambiguous. A record that names a model the card set
+        # does not know is never priced at some other model's rate.
         card = next(iter(per_route.values()))
     if not card:
         return None

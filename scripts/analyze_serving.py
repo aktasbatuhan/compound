@@ -142,10 +142,15 @@ def speed_table(rows: list[dict[str, Any]], rates: dict[str, Any]) -> None:
             per_m = (sum(costs) / (prompt / 1e6)) if costs and prompt else None
             cost_col = _f(per_m, 4)
             if per_m is None and prompt:
-                derived = [derived_cost_usd(r, rates) for r in good]
-                derived = [d for d in derived if d is not None]
-                if derived:
-                    cost_col = "~" + _f(sum(derived) / (prompt / 1e6), 4)
+                # Rate over the priced calls only, so a call with no rate card
+                # cannot sit in the denominator and understate the figure.
+                priced = [(derived_cost_usd(r, rates), r) for r in good]
+                priced = [(d, r) for d, r in priced if d is not None]
+                priced_prompt = sum(r.get("prompt_tokens") or 0 for _, r in priced)
+                if priced and priced_prompt:
+                    cost_col = "~" + _f(sum(d for d, _ in priced) / (priced_prompt / 1e6), 4)
+                    if len(priced) < len(good):
+                        cost_col += f"*{len(priced)}/{len(good)}"
             print(
                 f"  {route:<22}{len(rs):>5}{fails / len(rs) * 100:>6.0f}%"
                 f"{f'{lo * 100:.0f}-{hi * 100:.0f}':>14}"
@@ -208,17 +213,22 @@ def agreement(rows: list[dict[str, Any]]) -> None:
     print("\n  Step 2: do hosts agree with EACH OTHER?")
     print("  Only hosts that passed step 1 are compared: between two hosts that")
     print("  each vary run to run, a mismatch says nothing about the hosts.")
-    for shape in sorted({s for s, _ in by_cell}):
-        texts: dict[str, list[str]] = defaultdict(list)
-        for (sh, route), rs in by_cell.items():
-            if sh != shape or (sh, route) not in self_consistent:
-                continue
-            for r in rs:
-                texts[route].append(r.get("text") or "")
+    print("  Hosts are grouped by the model id they were sent (vendor prefix and")
+    print("  punctuation ignored), since agreement only means anything for the")
+    print("  same weights; a mixed-model grid yields one group per model.")
+    groups: dict[tuple[str, str], dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+    for (shape, route), rs in by_cell.items():
+        if (shape, route) not in self_consistent:
+            continue
+        ident = _weights_identity(rs[0].get("model"))
+        for r in rs:
+            groups[(shape, ident)][route].append(r.get("text") or "")
+    for (shape, ident) in sorted(groups):
+        texts = groups[(shape, ident)]
+        tag = f"{shape} [{ident}]"
         if len(texts) < 2:
-            n_self = len({rt for sh, rt in self_consistent if sh == shape})
-            print(f"\n  {shape}: {n_self} host(s) reproduce their own output; "
-                  "need 2+ to compare.")
+            print(f"\n  {tag}: {len(texts)} host(s) reproduce their own output; "
+                  "need 2+ on the same weights to compare.")
             continue
         # The reference is the most common first-response across hosts, so no
         # single host is privileged by being listed first.
@@ -227,7 +237,7 @@ def agreement(rows: list[dict[str, Any]]) -> None:
             continue
         reference = Counter(firsts).most_common(1)[0][0]
         agree = sum(1 for f in firsts if f == reference)
-        print(f"\n  {shape}: {agree} of {len(firsts)} hosts match the modal output")
+        print(f"\n  {tag}: {agree} of {len(firsts)} hosts match the modal output")
         print(f"    {'route':<22}{'matches':>9}{'first split':>13}")
         for route in sorted(texts):
             sample = texts[route][0]
@@ -236,6 +246,20 @@ def agreement(rows: list[dict[str, Any]]) -> None:
             else:
                 idx = _first_diff(reference, sample)
                 print(f"    {route:<22}{'no':>9}{idx:>13,}")
+
+
+def _weights_identity(model: Any) -> str:
+    """Collapse a host's model id to the weights it names.
+
+    ``deepseek-ai/DeepSeek-V4-Flash`` (Doubleword), ``deepseek/deepseek-v4-flash``
+    (OpenRouter) and ``deepseek-v4-flash`` (Telnyx) all become
+    ``deepseekv4flash``. Ledgers written before the model was recorded per call
+    fall into one ``unknown`` group, which is the old behaviour.
+    """
+    if not model:
+        return "unknown"
+    tail = str(model).rsplit("/", 1)[-1].lower()
+    return "".join(ch for ch in tail if ch.isalnum()) or "unknown"
 
 
 def _first_diff(a: str, b: str) -> int:
