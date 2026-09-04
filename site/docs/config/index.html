@@ -115,6 +115,37 @@ each host receives the id it expects.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="provider-fields-for-serving-comparisons">Provider fields for serving comparisons</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>openai_compatible</code> (default) or <code>anthropic</code> for a host on the Messages API</td>
+</tr>
+<tr>
+<td><code>service_tier</code></td>
+<td>forwarded in every request body; OpenAI <code>flex</code>, Doubleword <code>flex</code></td>
+</tr>
+<tr>
+<td><code>cache_strategy</code></td>
+<td><code>implicit</code>, <code>explicit_marker</code> or <code>none</code>; decides whether a <code>cache_control</code> marker is injected</td>
+</tr>
+<tr>
+<td><code>timeout_s</code></td>
+<td>per-call timeout this host needs, when longer than the harness default (OpenAI flex: 900)</td>
+</tr>
+</tbody>
+</table>
+<p><code>serving_rates_usd_per_million_tokens</code> maps route label to model id to a rate
+card (<code>input</code>, <code>cached_input</code>, <code>output</code>, optional <code>cache_write</code>). It is only
+consulted for hosts that return no per-call cost, and anything priced from it
+is reported as derived.</p>
   </article>
 </main>
 <footer>

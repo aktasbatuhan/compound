@@ -492,3 +492,257 @@ def test_marker_can_be_turned_off_for_the_unmarked_path(monkeypatch):
     shape = {"messages": [{"role": "user", "content": "hi"}]}
     dw = build_body(parse_provider("doubleword/realtime"), "m", REASONING_OFF, shape, nonce="")
     assert dw["messages"][-1]["content"] == "hi"
+
+
+# --- Anthropic Messages dialect ----------------------------------------------
+
+ANTHROPIC_CFG = {
+    "anthropic": {
+        "base_url": "https://api.anthropic.com/v1",
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "type": "anthropic",
+        "cache_strategy": "explicit_marker",
+    },
+    "openai-flex": {
+        "base_url": "https://api.openai.com/v1",
+        "api_key_env": "OPENAI_API_KEY",
+        "service_tier": "flex",
+        "timeout_s": 900,
+        "max_tokens_field": "max_completion_tokens",
+    },
+}
+
+SHAPE_WITH_SYSTEM = {
+    "messages": [
+        {"role": "system", "content": "be brief"},
+        {"role": "user", "content": "hello"},
+    ],
+    "response_format": {"type": "json_object"},
+    "max_tokens": 64,
+}
+
+
+def test_messages_body_hoists_system_and_pins_thinking(monkeypatch):
+    monkeypatch.delenv("COMPOUND_DW_CACHE", raising=False)
+    spec = parse_provider("direct/anthropic", providers_config=ANTHROPIC_CFG)
+    on = sm.build_body(spec, "claude-sonnet-5", sm.REASONING_ON, SHAPE_WITH_SYSTEM, nonce="")
+    assert on["system"] == "be brief"
+    assert [m["role"] for m in on["messages"]] == ["user"]
+    assert on["thinking"] == {"type": "adaptive"}
+    assert on["max_tokens"] == 64
+    assert on["stream"] is True
+    # Messages has no response_format, and current Claude models reject
+    # sampling parameters, so neither is sent.
+    assert "response_format" not in on
+    assert "temperature" not in on
+    assert "reasoning_effort" not in on
+    # The marker rides on the last message, exactly as it does for Doubleword.
+    last = on["messages"][-1]["content"]
+    assert last[-1]["cache_control"]["type"] == "ephemeral"
+    off = sm.build_body(spec, "claude-sonnet-5", sm.REASONING_OFF, SHAPE_WITH_SYSTEM, nonce="")
+    assert off["thinking"] == {"type": "disabled"}
+
+
+def test_messages_body_cold_cell_still_nonces_the_first_turn():
+    spec = parse_provider("direct/anthropic", providers_config=ANTHROPIC_CFG)
+    a = sm.build_body(spec, "m", sm.REASONING_OFF, SHAPE_WITH_SYSTEM)
+    b = sm.build_body(spec, "m", sm.REASONING_OFF, SHAPE_WITH_SYSTEM)
+    # the nonce lands on the first turn, here the hoisted system text, which is
+    # still the start of the cacheable prefix; the user turn stays byte-stable
+    assert a["system"] != b["system"]
+    assert a["system"].endswith("be brief") and b["system"].endswith("be brief")
+    assert a["messages"] == b["messages"]
+
+
+def test_measure_messages_stream_normalises_usage_and_times_first_delta():
+    lines = [
+        b"event: message_start",
+        b'data: {"type":"message_start","message":{"usage":{"input_tokens":10,'
+        b'"cache_read_input_tokens":90,"cache_creation_input_tokens":5,'
+        b'"output_tokens":1,"service_tier":"standard"}}}',
+        b"event: content_block_start",
+        b'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking"}}',
+        b"event: content_block_delta",
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hm"}}',
+        b"event: ping",
+        b'data: {"type":"ping"}',
+        b"event: content_block_delta",
+        b'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Hel"}}',
+        b"event: content_block_delta",
+        b'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"lo"}}',
+        b"event: message_delta",
+        b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":15}}',
+        b"event: message_stop",
+        b'data: {"type":"message_stop"}',
+    ]
+    # one clock sample per data line: message_start, content_block_start,
+    # thinking delta, ping, text, text, message_delta, message_stop
+    clock = iter([1.0, 2.0, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0])
+    m = sm.measure_messages_stream(lines, lambda: next(clock))
+    # first delta is the thinking delta (the model started answering), the
+    # last is the final text delta
+    assert m["first_delta"] == 3.0
+    assert m["last_delta"] == 5.0
+    assert m["n_content_chunks"] == 2
+    assert m["text"] == "Hello"
+    assert m["finish"] == "end_turn"
+    assert m["usage"]["prompt_tokens"] == 105
+    assert m["usage"]["prompt_tokens_details"] == {"cached_tokens": 90}
+    assert m["usage"]["cache_write_tokens"] == 5
+    assert m["usage"]["completion_tokens"] == 15
+    assert m["usage"]["service_tier"] == "standard"
+    assert m["error"] is None
+
+
+def test_measure_messages_stream_records_a_mid_stream_error():
+    lines = [
+        b'data: {"type":"message_start","message":{"usage":{"input_tokens":1}}}',
+        b'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+    ]
+    m = sm.measure_messages_stream(lines, lambda: 0.0)
+    assert "overloaded_error" in m["error"]
+
+
+def test_one_call_anthropic_uses_messages_endpoint_and_key_header(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sekret")
+    lines = [
+        b'data: {"type":"message_start","message":{"usage":{"input_tokens":10,'
+        b'"cache_read_input_tokens":90,"cache_creation_input_tokens":0,"service_tier":"standard"}}}',
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}',
+        b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
+    ]
+    captured = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["url"] = req.full_url
+        captured["headers"] = dict(req.headers)
+        captured["timeout"] = timeout
+        return _FakeResponse(lines)
+
+    monkeypatch.setattr(sm.urlrequest, "urlopen", fake_urlopen)
+    spec = parse_provider("direct/anthropic", providers_config=ANTHROPIC_CFG)
+    rec = sm.one_call(spec, "claude-sonnet-5", sm.REASONING_OFF, "S", SHAPE_NO_RF, 1, 0,
+                      temperature=0.0)
+
+    assert captured["url"].endswith("/v1/messages")
+    assert captured["headers"]["X-api-key"] == "sekret"
+    assert captured["headers"]["Anthropic-version"] == "2023-06-01"
+    assert "Authorization" not in captured["headers"]
+    assert rec["route"] == "anthropic"
+    assert rec["model"] == "claude-sonnet-5"
+    assert rec["prompt_tokens"] == 100
+    assert rec["cached_tokens"] == 90
+    assert rec["cache_write_tokens"] == 0
+    assert rec["completion_tokens"] == 2
+    assert rec["finish_reason"] == "end_turn"
+    assert rec["service_tier_echo"] == "standard"
+    assert rec["cost_usd"] is None  # Anthropic bills no per-call cost
+    assert rec["temperature"] is None  # what was sent, not what was asked
+    assert "error" not in rec
+
+
+def test_openai_tier_echo_and_declared_timeout_reach_the_record(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sekret")
+    lines = [
+        b'data: {"service_tier":"flex","choices":[{"delta":{"content":"hi"}}]}',
+        b'data: {"service_tier":"flex","choices":[{"delta":{},"finish_reason":"stop"}],'
+        b'"usage":{"prompt_tokens":10,"completion_tokens":1,'
+        b'"prompt_tokens_details":{"cached_tokens":0}}}',
+        b"data: [DONE]",
+    ]
+    captured = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["timeout"] = timeout
+        captured["body"] = json.loads(req.data)
+        return _FakeResponse(lines)
+
+    monkeypatch.setattr(sm.urlrequest, "urlopen", fake_urlopen)
+    spec = parse_provider("direct/openai-flex", providers_config=ANTHROPIC_CFG)
+    rec = sm.one_call(spec, "gpt-5.4-mini", sm.REASONING_OFF, "S", SHAPE_NO_RF, 1, 0)
+    assert captured["body"]["service_tier"] == "flex"
+    assert captured["timeout"] == 900  # the host's declared need beats the default
+    # OpenAI's own field name for the output cap; max_tokens is a 400 there
+    assert "max_tokens" not in captured["body"]
+    assert captured["body"]["max_completion_tokens"] == sm.DEFAULT_MAX_TOKENS
+    assert rec["service_tier_requested"] == "flex"
+    assert rec["service_tier_echo"] == "flex"
+    assert rec["cost_usd"] is None
+
+
+def test_model_for_prefers_a_per_host_wire_model():
+    from compound.providers_registry import apply_host_models, parse_providers
+
+    specs = parse_providers("openrouter/deepinfra,direct/anthropic,direct/openai-flex",
+                            providers_config=ANTHROPIC_CFG)
+    specs = apply_host_models(
+        specs, {"anthropic": "claude-sonnet-5", "openai-flex": "gpt-5.4-mini"},
+        known_names=ANTHROPIC_CFG,
+    )
+    assert sm.model_for(specs[0], "or-slug", None) == "or-slug"
+    assert sm.model_for(specs[1], "or-slug", None) == "claude-sonnet-5"
+    assert sm.model_for(specs[2], "or-slug", None) == "gpt-5.4-mini"
+
+
+def test_cli_serving_accepts_host_model(monkeypatch, tmp_path):
+    shapes = tmp_path / "shapes.json"
+    shapes.write_text(json.dumps({"S": SHAPE_NO_RF}))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "present")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "present")
+    monkeypatch.chdir(tmp_path)
+    import yaml
+
+    (tmp_path / "compound.yaml").write_text(yaml.safe_dump({"providers": ANTHROPIC_CFG}))
+    seen = {}
+
+    def fake_run_serving(specs, model_or, model, shapes_arg, **kw):
+        seen["wire"] = [(s.label, s.wire_model) for s in specs]
+        from pathlib import Path
+
+        return Path(kw["out_dir"]) / "results.jsonl"
+
+    monkeypatch.setattr(sm, "run_serving", fake_run_serving)
+    monkeypatch.setattr("sys.argv", [
+        "compound-bench", "serving",
+        "--providers", "openrouter/deepinfra,direct/anthropic",
+        "--shapes", str(shapes), "--model-or", "or-slug",
+        "--host-model", "anthropic=claude-sonnet-5",
+        "--out", str(tmp_path / "out"),
+    ])
+    from compound.bench import main
+
+    assert main() == 0
+    assert seen["wire"] == [("deepinfra", None), ("anthropic", "claude-sonnet-5")]
+
+
+# --- derived cost ------------------------------------------------------------
+
+RATES = {
+    "anthropic": {"claude-sonnet-5": {"input": 2.0, "cached_input": 0.2,
+                                      "cache_write": 2.5, "output": 10.0}},
+    "telnyx": {"deepseek-v4-flash": {"input": 0.13, "cached_input": 0.03, "output": 0.26}},
+}
+
+
+def test_derived_cost_prices_each_token_class():
+    rec = {"route": "anthropic", "model": "claude-sonnet-5", "prompt_tokens": 1_000_000,
+           "cached_tokens": 500_000, "cache_write_tokens": 100_000,
+           "completion_tokens": 10_000}
+    # 400k uncached @2 + 500k read @0.2 + 100k write @2.5 + 10k out @10
+    assert sm.derived_cost_usd(rec, RATES) == pytest.approx(0.8 + 0.1 + 0.25 + 0.1)
+
+
+def test_derived_cost_defers_to_a_measured_cost_and_to_missing_data():
+    measured = {"route": "anthropic", "model": "claude-sonnet-5", "prompt_tokens": 10,
+                "completion_tokens": 1, "cost_usd": 0.002}
+    assert sm.derived_cost_usd(measured, RATES) is None
+    no_tokens = {"route": "anthropic", "model": "claude-sonnet-5"}
+    assert sm.derived_cost_usd(no_tokens, RATES) is None
+    unknown = {"route": "novita", "model": "x", "prompt_tokens": 10, "completion_tokens": 1}
+    assert sm.derived_cost_usd(unknown, RATES) is None
+
+
+def test_derived_cost_uses_the_only_card_when_a_ledger_has_no_model():
+    old_ledger = {"route": "telnyx", "prompt_tokens": 1_000_000, "cached_tokens": 0,
+                  "completion_tokens": 0}
+    assert sm.derived_cost_usd(old_ledger, RATES) == pytest.approx(0.13)

@@ -71,10 +71,19 @@ many hosts" is one flag.</p>
 </tr>
 <tr>
 <td><code>direct/&lt;name&gt;</code></td>
-<td>any OpenAI-compatible host defined under <code>providers.&lt;name&gt;</code> in <code>compound.yaml</code></td>
+<td>any host defined under <code>providers.&lt;name&gt;</code> in <code>compound.yaml</code>: OpenAI-compatible by default, or Anthropic's Messages API with <code>type: anthropic</code></td>
 </tr>
 </tbody>
 </table>
+<p><code>compound.yaml</code> ships <code>direct/openai</code> (standard tier), <code>direct/openai-flex</code>
+(the queued half-price tier, <code>service_tier: flex</code> on every call), <code>direct/anthropic</code>,
+<code>direct/telnyx</code> and <code>direct/zai</code>. First-party hosts name the same weights
+differently, so a mixed grid passes one id per host:</p>
+<pre><code class="language-bash">compound-bench serving --providers direct/openai,direct/openai-flex,direct/anthropic \
+    --shapes profiles.json \
+    --host-model openai=gpt-5.4-mini --host-model openai-flex=gpt-5.4-mini \
+    --host-model anthropic=claude-sonnet-5
+</code></pre>
 <p>You do not need to know the upstream slugs. <code>providers &lt;model&gt;</code> reads them off
 OpenRouter and prints paste-ready tokens:</p>
 <pre><code class="language-bash">compound-bench providers z-ai/glm-5.3-flash
@@ -107,7 +116,42 @@ model returned 429. Probe before committing a sweep to a host list.</p>
 honor a request parameter (a JSON schema, say) fails fast instead of being
 swapped out. For <code>doubleword/flex</code> the request carries <code>service_tier: flex</code>.</p>
 <p>The served host is recorded on every call from the provider echo in the
-response, so a pinned run can be checked after the fact rather than trusted.</p>
+response, so a pinned run can be checked after the fact rather than trusted.
+OpenAI echoes the tier that served each call the same way (<code>service_tier_echo</code>
+in the ledger, next to <code>service_tier_requested</code>), so a flex arm that was quietly
+served on the default tier shows up as such. When flex has no capacity it
+returns a 429 and does not charge; the harness records that as a failure rather
+than retrying, because that rate is the tier's reliability. Flex can also queue
+longer than the harness timeout before its first byte, so the provider block
+declares <code>timeout_s: 900</code>, OpenAI's own recommendation.</p>
+<h2 id="anthropic-is-measured-on-its-native-api">Anthropic is measured on its native API</h2>
+<p>Anthropic offers an OpenAI-compatible endpoint, and the harness deliberately
+does not use it. That layer has no prompt caching, returns empty token details,
+ignores <code>service_tier</code> and caps temperature at 1. A comparison run through it
+would score Anthropic at 0% cache for the same reason an unmarked call scores
+Doubleword at 0%: the measurement, not the host. <code>type: anthropic</code> switches the
+serving harness to <code>/v1/messages</code>, where cache reads and writes come back per
+call and the same <code>cache_control</code> marker Doubleword needs is the one Anthropic
+needs. Two consequences to read the numbers with:</p>
+<ul>
+<li>Current Claude models reject sampling parameters, so no temperature is sent
+  and the ledger records <code>temperature: null</code> for that route. The agreement
+  analysis sets such a route aside instead of counting it as a host that
+  failed to reproduce itself.</li>
+<li>The pinning proxy speaks chat completions only and refuses this host rather
+  than forward it through the lossy layer, so Anthropic runs in
+  <code>compound-bench serving</code> and not behind a third-party harness.</li>
+</ul>
+<h2 id="cost-measured-or-derived">Cost: measured or derived</h2>
+<p>OpenRouter returns the cost of every call, and that number is used as is.
+OpenAI, Anthropic and Telnyx return none, so their cost is priced from the
+rate cards under <code>serving_rates_usd_per_million_tokens</code> in <code>compound.yaml</code>
+(input, cached input, cache write where billed, output) and shown with a <code>~</code>
+prefix wherever it appears. Doubleword's cost comes from differencing its
+billing meter. A derived figure is only as good as its rate card: the Telnyx
+card was checked against a bill (920 calls priced at it summed to within 0.2%
+of the dashboard), the OpenAI and Anthropic cards carry the date they were
+copied from the vendor's pricing page.</p>
 <h2 id="your-own-host">Your own host</h2>
 <p>Any OpenAI-compatible endpoint works without adapter code. For tau2 it is three
 flags:</p>

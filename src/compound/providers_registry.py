@@ -10,8 +10,10 @@ sweep iterates. Three forms, all model-agnostic:
                             ``openrouter/baseten/fp8``.
     doubleword/<tier>       Doubleword, addressed directly. tier is ``realtime``
                             or ``flex`` (flex is forwarded as service_tier).
-    direct/<name>           any OpenAI-compatible host declared in compound.yaml
-                            ``providers.<name>`` (base_url + api_key_env).
+    direct/<name>           any host declared in compound.yaml ``providers.<name>``
+                            (base_url + api_key_env). ``type: anthropic`` marks a
+                            host that speaks the Messages API instead of chat
+                            completions; everything else is OpenAI-compatible.
 
 The same ``ProviderSpec`` drives two consumers:
 
@@ -106,6 +108,24 @@ class ProviderSpec:
     #: ``zai-org/GLM-5.3-Flash`` where OpenRouter serves ``z-ai/glm-5.3-flash``).
     #: ``None`` sends the caller's id unchanged.
     wire_model: str | None = None
+    #: Wire protocol. ``"openai"`` is chat completions, which every host but one
+    #: speaks. ``"anthropic"`` is the Messages API, used for Anthropic's own
+    #: endpoint because its OpenAI-compatible layer drops what a comparison
+    #: needs: no prompt caching, empty ``prompt_tokens_details``, ``service_tier``
+    #: ignored, temperature capped at 1. Measuring Anthropic through that layer
+    #: would score it at 0% cache the way an unmarked Doubleword call does.
+    dialect: str = "openai"
+    #: Per-call timeout this host needs, seconds. A queued tier (OpenAI flex)
+    #: can legitimately wait longer than the harness default before the first
+    #: byte, and a timeout that fires first records the host as failed when it
+    #: was only slow. ``None`` uses the caller's default.
+    timeout_s: int | None = None
+    #: Name of the output-cap field this host accepts. OpenAI's current models
+    #: reject ``max_tokens`` outright ("use max_completion_tokens instead"),
+    #: while OpenRouter, Doubleword and most OpenAI-compatible servers take
+    #: ``max_tokens``. Declared per host in compound.yaml; the wrong name is a
+    #: 400 on every call, which a smoke run surfaced before a grid did.
+    max_tokens_field: str = "max_tokens"
 
     def __post_init__(self) -> None:
         if self.cache_strategy is None:
@@ -184,6 +204,10 @@ class ProviderSpec:
                 service_tier=self.service_tier,
                 **kwargs,
             )
+        if self.dialect == "anthropic":
+            # litellm speaks the Messages API natively under the ``anthropic/``
+            # prefix and reads ANTHROPIC_API_KEY itself; no api_base needed.
+            return TauModel(provider="anthropic", model=model, **kwargs)
         return TauModel(
             provider=self.name or "direct",
             model=model,
@@ -248,6 +272,8 @@ def parse_provider(
                 f"direct/{target}: no providers.{target} block in compound.yaml"
             )
         entry = config[target]
+        dialect = "anthropic" if str(entry.get("type", "")).lower() == "anthropic" else "openai"
+        timeout = entry.get("timeout_s")
         return ProviderSpec(
             token=token,
             kind="direct",
@@ -258,6 +284,9 @@ def parse_provider(
             # A direct host declares its own cache behavior; absent, it defaults
             # to "none" (no assumed prompt cache) in __post_init__.
             cache_strategy=entry.get("cache_strategy"),
+            dialect=dialect,
+            timeout_s=int(timeout) if timeout is not None else None,
+            max_tokens_field=str(entry.get("max_tokens_field") or "max_tokens"),
         )
 
     raise ValueError(

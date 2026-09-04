@@ -38,6 +38,9 @@ class TauModel:
     def litellm_name(self) -> str:
         if self.provider == "openrouter":
             return f"openrouter/{self.model}"
+        if self.provider == "anthropic":
+            # Messages API, natively in litellm; ANTHROPIC_API_KEY is read by it.
+            return f"anthropic/{self.model}"
         # Every other provider is an OpenAI-compatible host addressed by api_base.
         if self.provider != "doubleword" and not self.api_base:
             raise ValueError(
@@ -52,7 +55,7 @@ class TauModel:
         needs no override; every OpenAI-compatible host authenticates through
         the OPENAI_API_KEY litellm sends to api_base.
         """
-        if self.provider == "openrouter":
+        if self.provider in ("openrouter", "anthropic"):
             return None
         if self.api_key_env:
             return self.api_key_env

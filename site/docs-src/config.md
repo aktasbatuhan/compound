@@ -68,3 +68,17 @@ each host receives the id it expects.
 | `COMPOUND_TB_TIMEOUT_MULT=N` | extended-limits mode for terminal-bench; wins over the flag |
 | `COMPOUND_CALL_TIMEOUT` | the proxy's hang ceiling per call in seconds, default 300; 0 disables it |
 | `COMPOUND_CALL_LEDGER` | ledger path; set by the CLI when you pass `--call-ledger` or `--ledger-dir` |
+
+## Provider fields for serving comparisons
+
+| Field | Meaning |
+|---|---|
+| `type` | `openai_compatible` (default) or `anthropic` for a host on the Messages API |
+| `service_tier` | forwarded in every request body; OpenAI `flex`, Doubleword `flex` |
+| `cache_strategy` | `implicit`, `explicit_marker` or `none`; decides whether a `cache_control` marker is injected |
+| `timeout_s` | per-call timeout this host needs, when longer than the harness default (OpenAI flex: 900) |
+
+`serving_rates_usd_per_million_tokens` maps route label to model id to a rate
+card (`input`, `cached_input`, `output`, optional `cache_write`). It is only
+consulted for hosts that return no per-call cost, and anything priced from it
+is reported as derived.

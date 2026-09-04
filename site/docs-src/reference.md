@@ -211,8 +211,9 @@ options:
 ```text
 usage: compound.bench serving [-h] --providers PROVIDERS --shapes SHAPES
                               [--model-or MODEL_OR] [--model MODEL]
-                              [--rounds ROUNDS] [--interval INTERVAL]
-                              [--reps REPS] [--cache-mode {cold,warm,both}]
+                              [--host-model HOST=MODEL] [--rounds ROUNDS]
+                              [--interval INTERVAL] [--reps REPS]
+                              [--cache-mode {cold,warm,both}]
                               [--reasoning-modes {on,off,both}]
                               [--temperature TEMPERATURE] [--out OUT]
 
@@ -224,6 +225,13 @@ options:
   --shapes SHAPES       JSON file mapping name -> {messages, response_format}
   --model-or MODEL_OR   model slug for OpenRouter routes
   --model MODEL         model slug for Doubleword/direct routes
+  --host-model HOST=MODEL
+                        model id one host should receive instead of --model /
+                        --model-or, keyed by token, label or kind
+                        (openai=gpt-5.4-mini, anthropic=claude-sonnet-5).
+                        Repeatable; a first-party grid needs one per host
+                        since no single slug names the same weights
+                        everywhere.
   --rounds ROUNDS       scheduled rounds (time-of-day variance)
   --interval INTERVAL   seconds between rounds
   --reps REPS           repetitions per (route, mode, shape) cell

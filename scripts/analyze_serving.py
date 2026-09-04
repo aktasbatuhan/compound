@@ -15,7 +15,12 @@ with a Wilson interval, and the latency columns say how many calls they cover.
 
 **Cost is per profile.** A host's effective rate moves with context length,
 because what gets cached moves with context length, so one $/1M figure for a
-host is a rate card rather than a bill.
+host is a rate card rather than a bill. Hosts that return a per-call cost
+(OpenRouter) are measured; hosts that return none (OpenAI, Anthropic, Telnyx)
+are priced from the rate cards in ``compound.yaml`` and shown with a ``~``
+prefix, because a derived number and a billed number must never sit in one
+column looking alike. Doubleword's cost comes from its billing meter, see
+``scripts/dw_snapshot.py``.
 
 **Cache is the cold/warm delta.** Cold cells carry a per-call nonce so nothing
 can be served warm; warm cells repeat a byte-identical prompt. The difference
@@ -40,6 +45,7 @@ does not prove quantization specifically. Batching, kernel choice, speculative
 decoding and attention implementation all produce it too.
 
     python3 scripts/analyze_serving.py artifacts/serving/results.jsonl
+    python3 scripts/analyze_serving.py results.jsonl --rates compound.yaml
 """
 
 from __future__ import annotations
@@ -91,7 +97,22 @@ def ok(row: dict[str, Any]) -> bool:
     return row.get("status") == 200 and not row.get("error")
 
 
-def speed_table(rows: list[dict[str, Any]]) -> None:
+def load_rates(path: Path | None) -> dict[str, Any]:
+    """The ``serving_rates_usd_per_million_tokens`` block, or ``{}``."""
+    if path is None or not path.exists():
+        return {}
+    try:
+        import yaml
+    except ImportError:
+        print("rates need pyyaml; derived cost skipped")
+        return {}
+    data = yaml.safe_load(path.read_text()) or {}
+    return data.get("serving_rates_usd_per_million_tokens") or {}
+
+
+def speed_table(rows: list[dict[str, Any]], rates: dict[str, Any]) -> None:
+    from compound.serving_metrics import derived_cost_usd
+
     cells: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     for r in rows:
         cells[(r.get("shape", "?"), r.get("cache_mode", "?"), r.get("route", "?"))].append(r)
@@ -119,11 +140,17 @@ def speed_table(rows: list[dict[str, Any]]) -> None:
             costs = [r["cost_usd"] for r in good if r.get("cost_usd") is not None]
             cache_pct = (cached / prompt * 100) if prompt else None
             per_m = (sum(costs) / (prompt / 1e6)) if costs and prompt else None
+            cost_col = _f(per_m, 4)
+            if per_m is None and prompt:
+                derived = [derived_cost_usd(r, rates) for r in good]
+                derived = [d for d in derived if d is not None]
+                if derived:
+                    cost_col = "~" + _f(sum(derived) / (prompt / 1e6), 4)
             print(
                 f"  {route:<22}{len(rs):>5}{fails / len(rs) * 100:>6.0f}%"
                 f"{f'{lo * 100:.0f}-{hi * 100:.0f}':>14}"
                 f"{_f(ttft50):>8}{_f(ttft90):>8}{_f(dec50, 0):>8}{_f(tot50):>8}"
-                f"{_f(cache_pct, 0):>8}{_f(per_m, 4):>9}"
+                f"{_f(cache_pct, 0):>8}{cost_col:>9}"
             )
 
 
@@ -133,6 +160,11 @@ def _f(v: float | None, nd: int = 2) -> str:
 
 def agreement(rows: list[dict[str, Any]]) -> None:
     """Self-consistency per host, then which hosts agree with each other."""
+    # A route recorded with temperature None could not be pinned (Anthropic's
+    # current models reject sampling parameters). It is set aside here, not
+    # counted as a host that failed to reproduce itself.
+    unpinnable = sorted({str(r.get("route")) for r in rows if r.get("temperature") is None})
+    rows = [r for r in rows if r.get("temperature") is not None]
     temps = {r.get("temperature") for r in rows}
     if temps - {0}:
         print(f"\n\nAGREEMENT: skipped, this run used temperature {sorted(temps)}.")
@@ -141,6 +173,8 @@ def agreement(rows: list[dict[str, Any]]) -> None:
 
     print("\n\nAGREEMENT AT TEMPERATURE 0")
     print("Same weights, same bytes, deterministic decode: hosts should match.")
+    if unpinnable:
+        print(f"  Not compared, temperature cannot be pinned: {', '.join(unpinnable)}")
 
     # Only warm cells can be compared. A cold cell carries a fresh per-call
     # nonce, so its prompts differ by construction and any "divergence" there is
@@ -216,6 +250,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("results", type=Path, help="a results.jsonl from compound-bench serving")
     parser.add_argument("--no-agreement", action="store_true")
+    parser.add_argument(
+        "--rates",
+        type=Path,
+        default=Path("compound.yaml"),
+        help="config carrying serving_rates_usd_per_million_tokens, for hosts "
+        "that bill no per-call cost (shown as ~derived)",
+    )
     args = parser.parse_args()
 
     rows = load(args.results)
@@ -224,13 +265,15 @@ def main() -> int:
         return 1
     routes = sorted({r.get("route") for r in rows})
     print(f"{len(rows)} calls, {len(routes)} routes: {', '.join(map(str, routes))}")
-    speed_table(rows)
+    speed_table(rows, load_rates(args.rates))
     if not args.no_agreement:
         agreement(rows)
     print(
         "\nProvenance: latency and token counts are measured per call from the "
-        "stream.\nCost is the provider-reported figure and is present only for hosts "
-        "that return one\n(OpenRouter does; Doubleword does not, see scripts/dw_snapshot.py).\n"
+        "stream.\nCost without a ~ is the provider-reported figure (OpenRouter). "
+        "A ~ marks cost derived\nfrom the rate cards in compound.yaml (OpenAI, "
+        "Anthropic, Telnyx); Doubleword's comes\nfrom its billing meter, see "
+        "scripts/dw_snapshot.py.\n"
         "Divergence shows hosts are not bit-identical. It does not say which is "
         "correct, and\nit is not by itself evidence of quantization: batching, kernels "
         "and speculative\ndecoding produce it too."

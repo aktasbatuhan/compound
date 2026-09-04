@@ -493,9 +493,20 @@ _HARBOR_DEFAULT_AGENT = "terminus-2"
 def cmd_serving(args: argparse.Namespace) -> int:
     """Serving-metrics harness: TTFT / decode TPS / cost per host per reasoning mode."""
     from compound import serving_metrics as sm
-    from compound.providers_registry import parse_providers
+    from compound.providers_registry import apply_host_models, parse_providers
 
-    specs = parse_providers(args.providers, providers_config=_load_providers_config())
+    providers_config = _load_providers_config()
+    specs = parse_providers(args.providers, providers_config=providers_config)
+    host_models: dict[str, str] = {}
+    for item in args.host_model:
+        if "=" not in item:
+            raise SystemExit(f"--host-model expects HOST=MODEL, got {item!r}")
+        key, value = item.split("=", 1)
+        host_models[key.strip()] = value.strip()
+    try:
+        specs = apply_host_models(specs, host_models, known_names=providers_config)
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from exc
     shapes = sm.load_shapes(Path(args.shapes))
     try:
         for spec in specs:
@@ -794,6 +805,16 @@ def main() -> int:
         "--model-or", dest="model_or", help="model slug for OpenRouter routes"
     )
     serving.add_argument("--model", help="model slug for Doubleword/direct routes")
+    serving.add_argument(
+        "--host-model",
+        action="append",
+        default=[],
+        metavar="HOST=MODEL",
+        help="model id one host should receive instead of --model / --model-or, "
+        "keyed by token, label or kind (openai=gpt-5.4-mini, anthropic=claude-sonnet-5). "
+        "Repeatable; a first-party grid needs one per host since no single slug "
+        "names the same weights everywhere.",
+    )
     serving.add_argument(
         "--rounds", type=int, default=1, help="scheduled rounds (time-of-day variance)"
     )
