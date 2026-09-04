@@ -208,20 +208,48 @@ def job_result_path(jobs_dir: str | Path, job_name: str) -> Path:
     return Path(jobs_dir) / job_name / "result.json"
 
 
-def _resolved(trial: dict[str, Any]) -> bool | None:
-    """Whether one trial passed, or ``None`` when it never produced a verdict.
+def _reward(trial: dict[str, Any]) -> float | None:
+    """A trial's graded reward, or ``None`` when it never produced one.
 
-    Harbor's own pass@k treats a single reward of 0 or 1 as the outcome. A trial
-    that errored before verification has no rewards at all: that is not a
-    failure of the model, it is a missing measurement, and collapsing the two
-    is how infrastructure noise gets reported as a quality difference.
+    Harbor hands the grader's output through verbatim, and graders disagree on
+    shape. Terminal-Bench returns a single binary reward. FrontierSWE v2 returns
+    several keys at once, ``{"reward": 0.83, "valid": 1, "correctness": ...}``,
+    where ``reward`` is the score and ``valid = 0`` means the grader itself hit
+    an infrastructure failure and the task wants the trial retried rather than
+    counted as a zero.
+
+    Reading only single-key payloads reported every one of those multi-key
+    trials as "no verdict", which is the same conflation this module warns about
+    elsewhere, just inverted: a real measured 0.0 becomes a missing measurement,
+    and the run looks like infrastructure noise when the model simply failed.
     """
     verifier = trial.get("verifier_result")
     rewards = verifier.get("rewards") if isinstance(verifier, dict) else None
-    if not isinstance(rewards, dict) or len(rewards) != 1:
+    if not isinstance(rewards, dict) or not rewards:
         return None
-    value = next(iter(rewards.values()))
-    if not isinstance(value, (int, float)) or value not in (0, 1):
+    if rewards.get("valid") == 0:
+        return None  # the grader disowns this trial; not a model failure
+    if "reward" in rewards:
+        value = rewards["reward"]
+    elif len(rewards) == 1:
+        value = next(iter(rewards.values()))
+    else:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _resolved(trial: dict[str, Any]) -> bool | None:
+    """Whether one trial passed, or ``None`` when it never produced a verdict.
+
+    Only a reward that is exactly 0 or 1 is a pass/fail verdict. A continuous
+    score (FrontierSWE grades a fraction of subtests) has no honest binary
+    reading without the task's own threshold, so it is left out of the resolve
+    rate and reported through :func:`summarize`'s mean reward instead.
+    """
+    value = _reward(trial)
+    if value is None or value not in (0.0, 1.0):
         return None
     return bool(value)
 
@@ -243,6 +271,7 @@ def trial_rows(job_result: dict[str, Any]) -> list[dict[str, Any]]:
                 "task_name": trial.get("task_name"),
                 "trial_name": trial.get("trial_name"),
                 "resolved": _resolved(trial),
+                "reward": _reward(trial),
                 "error": exception.get("exception_type"),
                 "agent": agent_info.get("name"),
                 "model": model_info.get("name"),
@@ -261,19 +290,28 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     where a tenth of the trials never reached the verifier is a different claim
     from one where they ran and failed.
     """
-    verdicts = [row["resolved"] for row in rows if row["resolved"] is not None]
-    unverified = [row for row in rows if row["resolved"] is None]
+    scored = [row["reward"] for row in rows if row.get("reward") is not None]
+    ungraded = [row for row in rows if row.get("reward") is None]
     errors: dict[str, int] = {}
-    for row in unverified:
+    for row in ungraded:
         key = row["error"] or "no_verdict"
         errors[key] = errors.get(key, 0) + 1
+
+    # Binary or continuous is a property of the JOB's grader, not of individual
+    # trials. Deciding per trial meant a continuous grader that happened to
+    # output exactly 0.0 was counted as a pass/fail verdict while a 0.5 beside
+    # it was dropped, so the resolve rate was a mean over only the trials that
+    # scored 0 or 1 -- biased toward failure by construction.
+    binary = bool(scored) and all(value in (0.0, 1.0) for value in scored)
     return {
         "trials": len(rows),
-        "verdicts": len(verdicts),
-        "resolved": sum(verdicts),
-        "resolve_rate": (sum(verdicts) / len(verdicts)) if verdicts else None,
-        "unverified": len(unverified),
+        "verdicts": len(scored) if binary else 0,
+        "resolved": int(sum(scored)) if binary else 0,
+        "resolve_rate": (sum(scored) / len(scored)) if binary else None,
+        "unverified": len(ungraded),
         "errors": errors,
+        "scored": len(scored),
+        "mean_reward": (sum(scored) / len(scored)) if scored else None,
     }
 
 

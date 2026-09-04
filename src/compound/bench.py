@@ -503,10 +503,17 @@ def cmd_serving(args: argparse.Namespace) -> int:
     except ValueError as exc:
         raise SystemExit(f"error: {exc}") from exc
     _require_keys({s.required_key_env() for s in specs})
-    cells = len(specs) * len(shapes) * len(sm.MODES) * args.reps * args.rounds
+    modes = (sm.REASONING_ON, sm.REASONING_OFF) if args.reasoning_modes == "both" else (
+        sm.REASONING_ON if args.reasoning_modes == "on" else sm.REASONING_OFF,
+    )
+    cache_modes = sm.CACHE_MODES if args.cache_mode == "both" else (args.cache_mode,)
+    cells = (
+        len(specs) * len(shapes) * len(modes) * len(cache_modes) * args.reps * args.rounds
+    )
     print(
-        f"serving: {len(specs)} route(s) x {len(shapes)} shape(s) x {len(sm.MODES)} mode(s) "
-        f"x {args.reps} rep(s) x {args.rounds} round(s) = {cells} calls"
+        f"serving: {len(specs)} route(s) x {len(shapes)} shape(s) x {len(modes)} mode(s) "
+        f"x {len(cache_modes)} cache mode(s) x {args.reps} rep(s) x {args.rounds} round(s) "
+        f"= {cells} calls at temperature {args.temperature}"
     )
     out = sm.run_serving(
         specs,
@@ -517,6 +524,9 @@ def cmd_serving(args: argparse.Namespace) -> int:
         rounds=args.rounds,
         interval=args.interval,
         reps=args.reps,
+        modes=modes,
+        cache_modes=cache_modes,
+        temperature=args.temperature,
     )
     print(f"results -> {out}")
     return 0
@@ -546,7 +556,7 @@ def cmd_harbor(args: argparse.Namespace) -> int:
             raise SystemExit(f"--host-model expects HOST=MODEL, got {item!r}")
         key, value = item.split("=", 1)
         host_models[key.strip()] = value.strip()
-    specs = apply_host_models(specs, host_models)
+    specs = apply_host_models(specs, host_models, known_names=_load_providers_config())
     tasks = args.tasks.split(",") if args.tasks else None
     agent_kwargs = _parse_agent_kwargs(args.agent_kwargs)
     # An on-disk task tree and a hub dataset are alternative sources; naming a
@@ -663,7 +673,9 @@ def _apply_tb_env(args: argparse.Namespace) -> None:
 
     * ``--reasoning`` wins over a pre-set ``COMPOUND_REASONING``; ``default``
       clears it so nothing is injected. Omitted, the env var is left untouched.
-    * ``--cache-optin`` sets ``COMPOUND_DW_CACHE``; an existing value stays on.
+    * ``--cache-optin`` / ``--no-cache-optin`` set ``COMPOUND_DW_CACHE`` to ``1``/``0``.
+      Neither given, the env var is left alone and markers default to ON
+      (see :func:`compound.orproxy.cache_optin_enabled`).
     * ``--call-ledger PATH`` sets ``COMPOUND_CALL_LEDGER``, turning on the
       per-call record; unset, the proxy does no extra work.
     * ``--tb-timeout-mult`` sets ``COMPOUND_TB_TIMEOUT_MULT`` only when it is not
@@ -676,8 +688,8 @@ def _apply_tb_env(args: argparse.Namespace) -> None:
             os.environ.pop("COMPOUND_REASONING", None)
         else:
             os.environ["COMPOUND_REASONING"] = args.reasoning
-    if args.cache_optin:
-        os.environ["COMPOUND_DW_CACHE"] = "1"
+    if args.cache_optin is not None:
+        os.environ["COMPOUND_DW_CACHE"] = "1" if args.cache_optin else "0"
     if args.call_ledger:
         os.environ["COMPOUND_CALL_LEDGER"] = args.call_ledger
     if args.tb_timeout_mult is not None and "COMPOUND_TB_TIMEOUT_MULT" not in os.environ:
@@ -688,9 +700,11 @@ def _tb_pin_line() -> str:
     """One line naming the effective reasoning / cache / timeout pinning."""
     import os
 
+    from compound.orproxy import cache_optin_enabled
+
     reasoning = os.getenv("COMPOUND_REASONING", "").lower()
     reasoning = reasoning if reasoning in ("on", "off") else "default"
-    cache = os.getenv("COMPOUND_DW_CACHE", "").lower() in ("1", "true", "on")
+    cache = cache_optin_enabled()
     mult = os.getenv("COMPOUND_TB_TIMEOUT_MULT", "").strip() or "1"
     extended = " (extended limits, non-official)" if mult not in ("", "1", "1.0") else ""
     ledger = os.getenv("COMPOUND_CALL_LEDGER", "").strip() or "off"
@@ -790,6 +804,31 @@ def main() -> int:
         "--reps", type=int, default=2, help="repetitions per (route, mode, shape) cell"
     )
     serving.add_argument(
+        "--cache-mode",
+        choices=("cold", "warm", "both"),
+        default="cold",
+        help="cold prepends a per-call nonce so no prefix is ever served warm, "
+        "isolating raw serving speed; warm sends a byte-identical prompt every "
+        "rep so the host's prompt cache can hit. The cold/warm delta is the "
+        "cache measurement, and warm cells run serially so rep 0 can populate "
+        "the cache the rest read.",
+    )
+    serving.add_argument(
+        "--reasoning-modes",
+        choices=("on", "off", "both"),
+        default="both",
+        help="which reasoning pinning to sweep; 'off' matches a vendor latency "
+        "benchmark that disables reasoning",
+    )
+    serving.add_argument(
+        "--temperature",
+        type=float,
+        default=0.7,
+        help="sampling temperature. Use 0 to compare hosts token for token: at "
+        "temperature 0 a divergence between two hosts serving the same weights "
+        "is a difference in numerics, not in sampling.",
+    )
+    serving.add_argument(
         "--out",
         default="artifacts/bench/serving-metrics",
         help="output dir for results.jsonl",
@@ -854,7 +893,11 @@ def main() -> int:
     harbor_p.add_argument("--ledger-dir", default=None, help="per-host call ledger directory")
     harbor_p.add_argument("--reasoning", choices=("on", "off", "default"), default=None,
                           help="pin the model's reasoning mode via the proxy")
-    harbor_p.add_argument("--cache-optin", action="store_true", help="enable prompt-cache markers")
+    harbor_p.add_argument(
+        "--cache-optin", action=argparse.BooleanOptionalAction, default=None,
+        help="inject explicit prompt-cache markers for explicit_marker providers "
+        "(e.g. doubleword). ON by default; --no-cache-optin measures the unmarked path.",
+    )
     harbor_p.add_argument("--call-ledger", default=None, help=argparse.SUPPRESS)
     harbor_p.add_argument("--tb-timeout-mult", default=None, help=argparse.SUPPRESS)
     harbor_p.add_argument("--go", action="store_true", help="execute (default is a dry run)")
@@ -915,10 +958,13 @@ def main() -> int:
     )
     run.add_argument(
         "--cache-optin",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="terminal_bench: inject explicit prompt-cache markers for "
-        "explicit_marker providers (e.g. doubleword). COMPOUND_DW_CACHE still "
-        "forces it on at the harness level.",
+        "explicit_marker providers (e.g. doubleword). ON by default, because a "
+        "marker-gated host otherwise re-bills the whole transcript every turn; "
+        "pass --no-cache-optin to measure that unmarked path on purpose. "
+        "COMPOUND_DW_CACHE overrides when neither flag is given.",
     )
     run.add_argument(
         "--call-ledger",

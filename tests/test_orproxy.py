@@ -65,8 +65,17 @@ def test_inject_cache_marker_never_touches_openrouter(monkeypatch):
     assert out["messages"][-1]["content"] == "hi"
 
 
-def test_inject_no_cache_marker_without_env(monkeypatch):
+def test_inject_marks_cache_by_default_with_no_env(monkeypatch):
+    # Markers are ON by default: a marker-gated host serves nothing from cache
+    # without them, so defaulting to off silently priced it at its worst case.
     monkeypatch.delenv("COMPOUND_DW_CACHE", raising=False)
+    body = {"messages": [{"role": "user", "content": "hi"}]}
+    out = inject(body, parse_provider("doubleword/realtime"))
+    assert out["messages"][-1]["content"][-1]["cache_control"]["type"] == "ephemeral"
+
+
+def test_inject_no_cache_marker_when_explicitly_disabled(monkeypatch):
+    monkeypatch.setenv("COMPOUND_DW_CACHE", "0")
     body = {"messages": [{"role": "user", "content": "hi"}]}
     out = inject(body, parse_provider("doubleword/realtime"))
     assert out["messages"][-1]["content"] == "hi"
@@ -103,10 +112,14 @@ def test_cache_optin_enabled_reads_env(monkeypatch):
 
     monkeypatch.setenv("COMPOUND_DW_CACHE", "on")
     assert cache_optin_enabled() is True
-    monkeypatch.setenv("COMPOUND_DW_CACHE", "0")
-    assert cache_optin_enabled() is False
+    for off in ("0", "false", "off", "no", "OFF"):
+        monkeypatch.setenv("COMPOUND_DW_CACHE", off)
+        assert cache_optin_enabled() is False, off
+    # Unset and empty both mean the default, which is ON.
+    monkeypatch.setenv("COMPOUND_DW_CACHE", "")
+    assert cache_optin_enabled() is True
     monkeypatch.delenv("COMPOUND_DW_CACHE", raising=False)
-    assert cache_optin_enabled() is False
+    assert cache_optin_enabled() is True
 
 
 @pytest.mark.parametrize(

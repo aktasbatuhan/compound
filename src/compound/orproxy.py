@@ -154,7 +154,7 @@ def inject(body: dict[str, Any], spec: ProviderSpec) -> dict[str, Any]:
     if spec.wire_model:
         merged["model"] = spec.wire_model
     if spec.cache_strategy == "explicit_marker" and cache_optin_enabled():
-        merged["messages"] = _mark_cache_prefix(merged.get("messages"))
+        merged["messages"] = mark_cache_prefix(merged.get("messages"))
     if spec.kind == "openrouter":
         merged = _request_usage_accounting(merged)
     # The cache-hit-rate source for #43 is the call ledger, not results.json:
@@ -192,17 +192,32 @@ def _request_usage_accounting(body: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
+#: Values of ``COMPOUND_DW_CACHE`` that turn explicit cache markers **off**.
+_CACHE_OFF = ("0", "false", "off", "no")
+
+
 def cache_optin_enabled() -> bool:
     """Whether explicit prompt-cache markers are turned on for this run.
 
-    Enabled by ``COMPOUND_DW_CACHE`` (1/true/on), which the ``--cache-optin`` run
-    flag also sets so the signal reaches the in-process proxy. Kept as an env var
-    so a harness-level run can force it on without the CLI.
+    **Markers are on by default.** A host with an ``explicit_marker`` cache
+    strategy serves nothing from cache unless the request carries the marker, so
+    defaulting to off meant the honest default re-billed the whole growing
+    transcript every agent turn. Measured on Doubleword, the same workload reads
+    0% cached without markers and up to 97.7% with them, so the old default was
+    not a neutral choice: it silently priced the host at its worst case.
+
+    Set ``COMPOUND_DW_CACHE`` to ``0``/``false``/``off``/``no`` (or pass
+    ``--no-cache-optin``) to turn markers off, which is what you want when the
+    experiment is *about* the unmarked path. Anything else, including unset,
+    leaves them on.
+
+    Hosts whose ``cache_strategy`` is ``implicit`` or ``none`` are unaffected
+    either way: the injection is driven by the provider's declared strategy.
     """
-    return os.getenv("COMPOUND_DW_CACHE", "").lower() in ("1", "true", "on")
+    return os.getenv("COMPOUND_DW_CACHE", "").strip().lower() not in _CACHE_OFF
 
 
-def _mark_cache_prefix(messages: Any) -> Any:
+def mark_cache_prefix(messages: Any) -> Any:
     """Attach ``cache_control`` to the last content block of the last message."""
     if not isinstance(messages, list) or not messages:
         return messages

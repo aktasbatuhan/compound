@@ -392,3 +392,43 @@ def test_build_command_refuses_both_sources():
 def test_build_command_refuses_no_source():
     with pytest.raises(ValueError, match="one of dataset or task_path"):
         build_command(dataset=None, model="m", jobs_dir="jobs", job_name="arm")
+
+
+def test_multi_key_rewards_are_graded_not_discarded():
+    # FrontierSWE returns {"reward", "valid", "correctness", ...}. Reading only
+    # single-key payloads reported every such trial as "no verdict", turning a
+    # measured 0.0 into a missing measurement.
+    from compound.adapters.harbor import summarize, trial_rows
+
+    job = {
+        "trial_results": [
+            {"task_name": "t1", "trial_name": "a",
+             "verifier_result": {"rewards": {"reward": 0.0, "valid": 1, "correctness": 0.0}}},
+            {"task_name": "t2", "trial_name": "b",
+             "verifier_result": {"rewards": {"reward": 0.5, "valid": 1, "correctness": 0.5}}},
+            # valid=0 is the grader disowning the trial: a missing measurement.
+            {"task_name": "t3", "trial_name": "c",
+             "verifier_result": {"rewards": {"reward": 0.0, "valid": 0}}},
+        ]
+    }
+    rows = trial_rows(job)
+    assert [r["reward"] for r in rows] == [0.0, 0.5, None]
+    out = summarize(rows)
+    assert out["scored"] == 2
+    assert out["mean_reward"] == pytest.approx(0.25)
+    # A continuous score has no honest binary reading, so it stays out of pass@k.
+    assert out["resolve_rate"] is None
+
+
+def test_binary_rewards_still_drive_the_resolve_rate():
+    from compound.adapters.harbor import summarize, trial_rows
+
+    job = {
+        "trial_results": [
+            {"task_name": "t1", "trial_name": "a", "verifier_result": {"rewards": {"reward": 1}}},
+            {"task_name": "t2", "trial_name": "b", "verifier_result": {"rewards": {"reward": 0}}},
+        ]
+    }
+    out = summarize(trial_rows(job))
+    assert out["resolve_rate"] == pytest.approx(0.5)
+    assert out["mean_reward"] == pytest.approx(0.5)

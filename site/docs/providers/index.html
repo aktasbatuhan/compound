@@ -126,7 +126,8 @@ cannot. For those, each host gets its own localhost proxy that:</p>
 <li>merges the pin into every request body, overriding any routing the harness set</li>
 <li>asks OpenRouter for usage accounting so cost and cached-token counts come back</li>
 <li>optionally pins the reasoning mode (<code>--reasoning on|off</code>) and injects
-  prompt-cache markers for hosts whose cache is opt-in (<code>--cache-optin</code>)</li>
+  prompt-cache markers for hosts whose cache is opt-in (on by default,
+  <code>--no-cache-optin</code> to disable)</li>
 <li>writes one ledger row per call when a ledger is enabled</li>
 <li>retries 408, 429, and 5xx with backoff, and abandons a call that has not
   completed within 300 seconds so a stalled host cannot hold a trial forever</li>
@@ -139,7 +140,9 @@ CLI refuses to pin such an agent rather than run an unpinned arm by mistake.</p>
 caches only when a request carries an explicit <code>cache_control</code> marker, so a
 stock client re-bills the whole growing transcript every agent turn. Each
 provider spec carries a <code>cache_strategy</code> (<code>implicit</code>, <code>explicit_marker</code>, or
-<code>none</code>); <code>--cache-optin</code> injects the marker for the hosts that need one. The
+<code>none</code>); the marker is injected for the hosts that need one <strong>by default</strong>, because
+the alternative is re-billing the whole growing transcript every agent turn. Pass
+<code>--no-cache-optin</code> when the unmarked path is what you mean to measure. The
 ledger's <code>cached_tokens</code> column is how you check what actually happened.</p>
   </article>
 </main>

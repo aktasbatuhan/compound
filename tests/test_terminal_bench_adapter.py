@@ -94,6 +94,7 @@ def test_write_run_metadata_defaults(tmp_path, monkeypatch) -> None:
         write_run_metadata(tmp_path, model="m", agent="terminus", timeout_mult=None).read_text()
     )
     assert meta["reasoning_mode"] == "default"
-    assert meta["cache_optin"] is False
+    # Cache markers default ON, so an unset env records True.
+    assert meta["cache_optin"] is True
     assert meta["tb_timeout_mult"] == 1.0
     assert meta["extended_limits"] is False and meta["official_limits"] is True

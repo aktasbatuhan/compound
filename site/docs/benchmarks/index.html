@@ -123,7 +123,8 @@ the pinning proxy:</p>
 <li><code>--tb-agent</code> picks the harness agent (default <code>terminus</code>); <code>--tb-concurrent</code> sets tasks per host.</li>
 <li><code>--tb-timeout-mult N</code> multiplies every task's agent time limit. Results are labeled non-official when set. Use it when a slow host would otherwise fail only for being slow.</li>
 <li><code>--reasoning on|off</code> pins the model's reasoning mode through the proxy. Hosts disagree on the default, so an unpinned comparison mixes modes.</li>
-<li><code>--cache-optin</code> injects prompt-cache markers for hosts whose cache is opt-in.</li>
+<li><code>--no-cache-optin</code> turns off the prompt-cache markers injected for hosts whose
+  cache is opt-in. They are injected by default.</li>
 <li><code>--call-ledger PATH</code> records every model call. Cache-hit and routing claims need this; episode results only carry totals.</li>
 </ul>
 <h2 id="adding-a-benchmark">Adding a benchmark</h2>

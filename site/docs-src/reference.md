@@ -75,7 +75,8 @@ usage: compound.bench run [-h] --model MODEL [--tasks TASKS]
                           [--user-model USER_MODEL] [--output OUTPUT]
                           [--cap CAP] [--tb-agent TB_AGENT]
                           [--tb-concurrent TB_CONCURRENT]
-                          [--reasoning {on,off,default}] [--cache-optin]
+                          [--reasoning {on,off,default}]
+                          [--cache-optin | --no-cache-optin]
                           [--call-ledger PATH]
                           [--tb-timeout-mult TB_TIMEOUT_MULT]
                           {bfcl,ds1000,mmlu,tau2,terminal_bench}
@@ -117,10 +118,14 @@ options:
                         proxy (on/off), or 'default' to inject nothing. Given,
                         the flag wins over a pre-set COMPOUND_REASONING;
                         omitted, that env var is honored.
-  --cache-optin         terminal_bench: inject explicit prompt-cache markers
-                        for explicit_marker providers (e.g. doubleword).
-                        COMPOUND_DW_CACHE still forces it on at the harness
-                        level.
+  --cache-optin, --no-cache-optin
+                        terminal_bench: inject explicit prompt-cache markers
+                        for explicit_marker providers (e.g. doubleword). ON by
+                        default, because a marker-gated host otherwise re-
+                        bills the whole transcript every turn; pass --no-
+                        cache-optin to measure that unmarked path on purpose.
+                        COMPOUND_DW_CACHE overrides when neither flag is
+                        given.
   --call-ledger PATH    record one JSONL row per model call (route, provider
                         echo, tokens, cached tokens, cost, status, latency).
                         The per-call record is what supports cache-hit and
@@ -145,8 +150,8 @@ usage: compound.bench harbor [-h] --providers PROVIDERS --model MODEL
                              [--agent-timeout-multiplier AGENT_TIMEOUT_MULTIPLIER]
                              [--ak KEY=VALUE] [--env ENV]
                              [--jobs-dir JOBS_DIR] [--ledger-dir LEDGER_DIR]
-                             [--reasoning {on,off,default}] [--cache-optin]
-                             [--go]
+                             [--reasoning {on,off,default}]
+                             [--cache-optin | --no-cache-optin] [--go]
 
 options:
   -h, --help            show this help message and exit
@@ -194,7 +199,10 @@ options:
                         per-host call ledger directory
   --reasoning {on,off,default}
                         pin the model's reasoning mode via the proxy
-  --cache-optin         enable prompt-cache markers
+  --cache-optin, --no-cache-optin
+                        inject explicit prompt-cache markers for
+                        explicit_marker providers (e.g. doubleword). ON by
+                        default; --no-cache-optin measures the unmarked path.
   --go                  execute (default is a dry run)
 ```
 
@@ -204,7 +212,9 @@ options:
 usage: compound.bench serving [-h] --providers PROVIDERS --shapes SHAPES
                               [--model-or MODEL_OR] [--model MODEL]
                               [--rounds ROUNDS] [--interval INTERVAL]
-                              [--reps REPS] [--out OUT]
+                              [--reps REPS] [--cache-mode {cold,warm,both}]
+                              [--reasoning-modes {on,off,both}]
+                              [--temperature TEMPERATURE] [--out OUT]
 
 options:
   -h, --help            show this help message and exit
@@ -217,6 +227,21 @@ options:
   --rounds ROUNDS       scheduled rounds (time-of-day variance)
   --interval INTERVAL   seconds between rounds
   --reps REPS           repetitions per (route, mode, shape) cell
+  --cache-mode {cold,warm,both}
+                        cold prepends a per-call nonce so no prefix is ever
+                        served warm, isolating raw serving speed; warm sends a
+                        byte-identical prompt every rep so the host's prompt
+                        cache can hit. The cold/warm delta is the cache
+                        measurement, and warm cells run serially so rep 0 can
+                        populate the cache the rest read.
+  --reasoning-modes {on,off,both}
+                        which reasoning pinning to sweep; 'off' matches a
+                        vendor latency benchmark that disables reasoning
+  --temperature TEMPERATURE
+                        sampling temperature. Use 0 to compare hosts token for
+                        token: at temperature 0 a divergence between two hosts
+                        serving the same weights is a difference in numerics,
+                        not in sampling.
   --out OUT             output dir for results.jsonl
 ```
 

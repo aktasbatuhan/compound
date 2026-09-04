@@ -72,6 +72,28 @@ def test_apply_tb_env_reasoning_flag_wins_over_preset(monkeypatch) -> None:
     assert "COMPOUND_REASONING" not in os.environ
 
 
+@pytest.fixture(autouse=True)
+def _isolate_pinning_env():
+    """Undo the env vars ``_apply_tb_env`` writes straight into ``os.environ``.
+
+    It sets COMPOUND_REASONING / COMPOUND_DW_CACHE / COMPOUND_TB_TIMEOUT_MULT
+    directly, which is the point of the function, but it means a test calling it
+    leaks that value into every test that runs later. The default args here have
+    ``cache_optin=False``, so without this the whole suite downstream ran with
+    cache markers disabled.
+    """
+    import os
+
+    keys = ("COMPOUND_REASONING", "COMPOUND_DW_CACHE", "COMPOUND_TB_TIMEOUT_MULT")
+    saved = {k: os.environ.get(k) for k in keys}
+    yield
+    for k, v in saved.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+
+
 def test_apply_tb_env_reasoning_omitted_honors_env(monkeypatch) -> None:
     import os
 

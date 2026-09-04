@@ -64,7 +64,7 @@ each host receives the id it expects.
 |---|---|
 | `OPENROUTER_API_KEY`, `DOUBLEWORD_API_KEY` | credentials, read from `.env` |
 | `COMPOUND_REASONING` (`on` or `off`) | pin reasoning mode for terminal-bench runs; the `--reasoning` flag wins when given |
-| `COMPOUND_DW_CACHE=1` | force prompt-cache markers on for opt-in hosts |
+| `COMPOUND_DW_CACHE=0` | turn prompt-cache markers **off** for opt-in hosts (they are on by default) |
 | `COMPOUND_TB_TIMEOUT_MULT=N` | extended-limits mode for terminal-bench; wins over the flag |
 | `COMPOUND_CALL_TIMEOUT` | the proxy's hang ceiling per call in seconds, default 300; 0 disables it |
 | `COMPOUND_CALL_LEDGER` | ledger path; set by the CLI when you pass `--call-ledger` or `--ledger-dir` |

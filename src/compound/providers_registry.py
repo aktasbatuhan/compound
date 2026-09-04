@@ -29,6 +29,7 @@ the CLI, and every benchmark inherits it the same way.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -282,20 +283,31 @@ def parse_providers(
     return specs
 
 
-def apply_host_models(specs: list[ProviderSpec], mapping: dict[str, str]) -> list[ProviderSpec]:
+def apply_host_models(
+    specs: list[ProviderSpec],
+    mapping: dict[str, str],
+    *,
+    known_names: Iterable[str] | None = None,
+) -> list[ProviderSpec]:
     """Return ``specs`` with :attr:`ProviderSpec.wire_model` set from ``mapping``.
 
     A mapping key matches a spec by exact token (``doubleword/flex``), by label
     (``doubleword-flex``), or by kind (``doubleword``), most specific first.
 
-    A key naming a provider *kind* that this arm happens not to use is a no-op,
-    not an error: one grid fans the same mapping out to every arm, and only the
+    A key naming a provider this arm happens not to use is a no-op, not an
+    error: one grid fans the same mapping out to every arm, and only the
     Doubleword arms of that grid have a Doubleword provider. A key that names
-    no known kind is still a typo and raises, so a misspelling cannot silently
+    nothing at all is still a typo and raises, so a misspelling cannot silently
     leave an arm on the wrong model id.
+
+    ``known_names`` are the direct-host names configured in ``compound.yaml``.
+    They have to be passed in because a host like ``zai`` is a valid target on
+    its own arm and unused on every other one, and without them the typo guard
+    would reject the very mapping a mixed grid needs.
     """
     from dataclasses import replace
 
+    valid = set(_KNOWN) | {str(n) for n in (known_names or ())}
     unused = set(mapping)
     out: list[ProviderSpec] = []
     for spec in specs:
@@ -309,10 +321,10 @@ def apply_host_models(specs: list[ProviderSpec], mapping: dict[str, str]) -> lis
             continue
         unused.discard(chosen)
         out.append(replace(spec, wire_model=mapping[chosen]))
-    typos = sorted(k for k in unused if k not in _KNOWN and "/" not in k and "-" not in k)
+    typos = sorted(k for k in unused if k not in valid and "/" not in k and "-" not in k)
     if typos:
         raise ValueError(
             f"--host-model keys name no known provider: {typos} "
-            f"(known kinds: {sorted(_KNOWN)})"
+            f"(known: {sorted(valid)})"
         )
     return out

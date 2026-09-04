@@ -49,7 +49,8 @@ def load_env(path: Path = Path(".env")) -> None:
 
 def probe(provider: str, wire_model: str, marked: bool, turns: int, filler_tokens: int) -> float:
     """Steady-state cached/prompt ratio over turns 2..N. Returns a percentage."""
-    os.environ["COMPOUND_DW_CACHE"] = "1" if marked else ""
+    # Explicit "0": an empty value now means the default, which is markers ON.
+    os.environ["COMPOUND_DW_CACHE"] = "1" if marked else "0"
     spec = replace(parse_provider(provider), wire_model=wire_model)
     filler = "The quick brown fox jumps over the lazy dog. " * max(1, filler_tokens // 10)
     messages: list[dict[str, str]] = [

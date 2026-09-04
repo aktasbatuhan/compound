@@ -29,6 +29,7 @@ file mapping ``name -> {messages, response_format}``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -42,6 +43,7 @@ from typing import Any
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
+from compound.orproxy import cache_optin_enabled, mark_cache_prefix
 from compound.providers_registry import (
     ProviderSpec,
     openrouter_provider_block,
@@ -58,6 +60,20 @@ CONCURRENCY = 2
 REASONING_ON = "reasoning-on"
 REASONING_OFF = "reasoning-off"
 MODES = (REASONING_ON, REASONING_OFF)
+
+#: How a cell treats the host's prompt cache.
+#:   "cold" prepends a per-call nonce, so no prefix can ever be served warm.
+#:         This isolates raw serving speed and is the honest number to compare
+#:         against a vendor benchmark that does not mention caching.
+#:   "warm" sends a byte-identical prompt every rep, so the host may serve the
+#:         prefix from cache. The cold/warm delta is the cache measurement.
+CACHE_COLD = "cold"
+CACHE_WARM = "warm"
+CACHE_MODES = (CACHE_COLD, CACHE_WARM)
+
+#: How much generated text to keep per call. Enough to locate where two hosts
+#: first diverge at temperature 0 without turning the ledger into a corpus.
+TEXT_KEEP_CHARS = 4000
 
 
 def make_nonce() -> str:
@@ -109,6 +125,7 @@ def build_body(
     *,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     nonce: str | None = None,
+    temperature: float = 0.7,
 ) -> dict[str, Any]:
     """Build the streamed chat-completions body for one (route, mode, shape).
 
@@ -119,17 +136,30 @@ def build_body(
     ``require_parameters`` on; ``openrouter/auto`` is deliberately unpinned. A
     Doubleword flex token forwards its ``service_tier``.
     """
-    messages = prepend_nonce(shape["messages"], nonce or make_nonce())
+    # None means "generate one"; an explicit empty string means "send the prompt
+    # unchanged", which is what a warm-cache cell needs.
+    if nonce is None:
+        nonce = make_nonce()
+    messages = prepend_nonce(shape["messages"], nonce) if nonce else shape["messages"]
     body: dict[str, Any] = {
         "model": model,
         "messages": messages,
-        "temperature": 0.7,
-        "max_tokens": max_tokens,
+        "temperature": temperature,
+        # A shape may set its own output budget: a profile grid varies input and
+        # output length independently, and one global cap would flatten that axis.
+        "max_tokens": int(shape.get("max_tokens") or max_tokens),
         "stream": True,
         "stream_options": {"include_usage": True},
     }
     if shape.get("response_format"):
         body["response_format"] = shape["response_format"]
+    # Mirror the pinning proxy exactly. A host whose cache is opt-in
+    # (Doubleword) serves nothing warm without an explicit marker, so a harness
+    # that skips the marker measures that host at its worst case while every
+    # implicit-cache host is measured at its best. That is not a fair comparison,
+    # it is the opt-in trap with our name on it.
+    if spec.cache_strategy == "explicit_marker" and cache_optin_enabled():
+        body["messages"] = mark_cache_prefix(body["messages"])
     if spec.kind == "openrouter":
         body["reasoning"] = {"enabled": mode == REASONING_ON}
         body["usage"] = {"include": True}
@@ -158,6 +188,7 @@ def measure_stream(
     usage: dict[str, Any] | None = None
     provider: str | None = None
     finish: str | None = None
+    parts: list[str] = []
     for raw in raw_lines:
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8", "replace")
@@ -181,6 +212,7 @@ def measure_stream(
                 last_delta = t
                 if delta.get("content"):
                     n_content_chunks += 1
+                    parts.append(delta["content"])
             if ch.get("finish_reason"):
                 finish = ch["finish_reason"]
     return {
@@ -190,6 +222,7 @@ def measure_stream(
         "usage": usage,
         "provider": provider,
         "finish": finish,
+        "text": "".join(parts),
     }
 
 
@@ -204,13 +237,25 @@ def one_call(
     *,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     timeout_s: int = DEFAULT_TIMEOUT_S,
+    cache_mode: str = CACHE_COLD,
+    temperature: float = 0.7,
 ) -> dict[str, Any]:
     """Make one streamed call and return its result record.
 
     Timeouts, resets, and HTTP errors (429s included) are recorded on the record,
     never retried and never raised: unreliability is data, not a crash.
+
+    A ``warm`` cell sends the prompt byte-identically on every rep so the host's
+    prompt cache can serve the prefix; a ``cold`` cell prepends a fresh nonce so
+    it cannot. The generated text is fingerprinted so two hosts running the same
+    prompt at temperature 0 can be compared token for token.
     """
-    body = build_body(spec, model, mode, shape, max_tokens=max_tokens)
+    body = build_body(
+        spec, model, mode, shape,
+        max_tokens=max_tokens,
+        nonce="" if cache_mode == CACHE_WARM else None,
+        temperature=temperature,
+    )
     key = os.environ.get(spec.required_key_env(), "")
     rec: dict[str, Any] = {
         "ts": time.time(),
@@ -220,6 +265,9 @@ def one_call(
         "mode": mode,
         "shape": shape_name,
         "rep": rep,
+        "cache_mode": cache_mode,
+        "temperature": temperature,
+        "cache_marked": spec.cache_strategy == "explicit_marker" and cache_optin_enabled(),
     }
     req = urlrequest.Request(
         spec.forward_base_url.rstrip("/") + "/chat/completions",
@@ -234,6 +282,7 @@ def one_call(
         "usage": None,
         "provider": None,
         "finish": None,
+        "text": "",
     }
     try:
         with urlrequest.urlopen(req, timeout=timeout_s) as r:
@@ -253,6 +302,12 @@ def one_call(
     rec["finish_reason"] = m["finish"]
     rec["provider_echo"] = m["provider"]
     rec["n_content_chunks"] = m["n_content_chunks"]
+    text = m.get("text") or ""
+    # The hash identifies an exact generation; the head is what an analyst reads
+    # when two hosts disagree and the question is where they first split.
+    rec["text_sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest() if text else None
+    rec["text_len"] = len(text)
+    rec["text"] = text[:TEXT_KEEP_CHARS]
     usage = m["usage"]
     if usage:
         rec["prompt_tokens"] = usage.get("prompt_tokens")
@@ -280,19 +335,27 @@ def run_round(
     *,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     timeout_s: int = DEFAULT_TIMEOUT_S,
+    modes: tuple[str, ...] = MODES,
+    cache_modes: tuple[str, ...] = (CACHE_COLD,),
+    temperature: float = 0.7,
 ) -> None:
-    """Run every (route, mode, shape, rep) cell once, all routes in parallel."""
+    """Run every (route, mode, cache mode, shape, rep) cell once, routes in parallel."""
     shape_names = list(shapes)
 
     def route_worker(spec: ProviderSpec) -> None:
         route_model = model_for(spec, model_or, model)
         cells = [
-            (mode, sname, rep)
-            for mode in MODES
+            (mode, cmode, sname, rep)
+            for mode in modes
+            for cmode in cache_modes
             for sname in shape_names
             for rep in range(reps)
         ]
-        with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
+        # Warm cells run at concurrency 1: rep 0 populates the prefix cache that
+        # the later reps are supposed to hit, and firing them together would race
+        # that write and understate the hit rate.
+        workers = 1 if CACHE_WARM in cache_modes and len(cache_modes) == 1 else CONCURRENCY
+        with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = [
                 pool.submit(
                     one_call,
@@ -305,8 +368,10 @@ def run_round(
                     rep,
                     max_tokens=max_tokens,
                     timeout_s=timeout_s,
+                    cache_mode=cmode,
+                    temperature=temperature,
                 )
-                for mode, sname, rep in cells
+                for mode, cmode, sname, rep in cells
             ]
             for fut in futures:
                 rec = fut.result()
@@ -330,6 +395,9 @@ def run_serving(
     reps: int = DEFAULT_REPS,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     timeout_s: int = DEFAULT_TIMEOUT_S,
+    modes: tuple[str, ...] = MODES,
+    cache_modes: tuple[str, ...] = (CACHE_COLD,),
+    temperature: float = 0.7,
     sleep: Callable[[float], None] = time.sleep,
     log: Callable[[str], None] = print,
 ) -> Path:
@@ -356,6 +424,9 @@ def run_serving(
             lock,
             max_tokens=max_tokens,
             timeout_s=timeout_s,
+            modes=modes,
+            cache_modes=cache_modes,
+            temperature=temperature,
         )
         n = _round_count(out_path, r)
         log(f"round {r}/{rounds}: {n} calls in {time.time() - t0:.0f}s -> {out_path}")
