@@ -27,16 +27,42 @@ providers:
     type: openai_compatible
     # OpenAI caches prompt prefixes on its own; no marker to inject.
     cache_strategy: implicit
+    # Current OpenAI models reject max_tokens (400: use max_completion_tokens).
+    max_tokens_field: max_completion_tokens
   # Same endpoint and weights, billed on the queued discount tier. Kept as its
   # own provider so a grid can run both tiers as separate arms and the request
-  # body carries service_tier on every call. OpenAI echoes the tier back in the
-  # response, so tier compliance is checkable per call the way a provider pin is.
+  # body carries service_tier on every call. OpenAI echoes the tier back on
+  # every streamed chunk (recorded as service_tier_echo), so tier compliance is
+  # checkable per call the way a provider pin is. Flex bills at Batch API rates
+  # with prompt caching on top; when capacity is short it returns 429 "Resource
+  # Unavailable" and does not charge, which the harness records as a failure
+  # rather than retrying, since that rate is the tier's reliability. OpenAI
+  # recommends a 15 minute client timeout on flex (docs, 2026-09-04), so the
+  # arm declares it: with the harness default a slow-but-served flex call
+  # would be booked as a timeout.
   openai-flex:
     base_url: https://api.openai.com/v1
     api_key_env: OPENAI_API_KEY
     type: openai_compatible
     service_tier: flex
     cache_strategy: implicit
+    timeout_s: 900
+    max_tokens_field: max_completion_tokens
+  # Anthropic, on its native Messages API. Its OpenAI-compatible layer is a
+  # test surface that drops what a comparison needs (no prompt caching, empty
+  # prompt_tokens_details, service_tier ignored, temperature capped at 1), so
+  # measuring through it would score Anthropic at 0% cache the way an unmarked
+  # call scores Doubleword. `type: anthropic` switches the serving harness to
+  # /messages with x-api-key auth; the cache is the same opt-in cache_control
+  # marker Doubleword uses, so it is explicit_marker. The pinning proxy refuses
+  # this host (it forwards chat-completions bodies verbatim) rather than route
+  # it through the lossy layer. Priority Tier is no longer sold, so there is
+  # one arm; the tier that served each call still lands in service_tier_echo.
+  anthropic:
+    base_url: https://api.anthropic.com/v1
+    api_key_env: ANTHROPIC_API_KEY
+    type: anthropic
+    cache_strategy: explicit_marker
   # Z.ai serves GLM first-party. Its id for the weights is bare (glm-5.3-flash)
   # where OpenRouter namespaces them (z-ai/glm-5.3-flash), so an arm needs
   # --host-model zai=glm-5.3-flash. Reports prompt_tokens_details.cached_tokens,
@@ -124,6 +150,51 @@ flex_pricing_usd_per_million_tokens:
   deepseek-ai/DeepSeek-V4-Flash:
     input: 0.07
     output: 0.14
+
+# Rate cards for serving hosts that return no per-call cost, keyed by route
+# label then model id, $ per million tokens. Everything priced from these is
+# DERIVED and is labelled so wherever it is shown; OpenRouter's per-call cost
+# is the provider's own bill and always wins when present. `cached_input` is
+# the cache-read rate, `cache_write` the write premium where a host bills one
+# (Anthropic 5 minute TTL = 1.25x input); a missing field falls back to `input`.
+serving_rates_usd_per_million_tokens:
+  # Telnyx publishes $0.13 in / $0.03 cached / $0.26 out for this model. 920
+  # calls priced at these rates summed to $1.3924 against a $1.39 dashboard
+  # bill (0.2%), 2026-09-04.
+  telnyx:
+    deepseek-v4-flash:
+      input: 0.13
+      cached_input: 0.03
+      output: 0.26
+  # OpenAI pricing page, 2026-09-04. Standard tier.
+  openai:
+    gpt-5.6-sol:
+      input: 4.00
+      cached_input: 0.40
+      output: 20.00
+    gpt-5.4-mini:
+      input: 0.75
+      cached_input: 0.075
+      output: 4.50
+  # Flex tier: Batch API rates, half of standard.
+  openai-flex:
+    gpt-5.4-mini:
+      input: 0.375
+      cached_input: 0.0375
+      output: 2.25
+  # platform.claude.com pricing page, 2026-09-04. cache_write is the 5m TTL
+  # write, the TTL the marker injects.
+  anthropic:
+    claude-opus-5:
+      input: 5.00
+      cached_input: 0.50
+      cache_write: 6.25
+      output: 25.00
+    claude-sonnet-5:
+      input: 2.00
+      cached_input: 0.20
+      cache_write: 2.50
+      output: 10.00
 
 benchmarks:
   ds1000:

@@ -16,7 +16,19 @@ many hosts" is one flag.
 | `openrouter/<upstream>/<quant>` | the same, restricted to one quantization: `openrouter/deepinfra/fp8` |
 | `doubleword/realtime` | Doubleword's realtime tier, addressed directly |
 | `doubleword/flex` | Doubleword's flex (queued) tier |
-| `direct/<name>` | any OpenAI-compatible host defined under `providers.<name>` in `compound.yaml` |
+| `direct/<name>` | any host defined under `providers.<name>` in `compound.yaml`: OpenAI-compatible by default, or Anthropic's Messages API with `type: anthropic` |
+
+`compound.yaml` ships `direct/openai` (standard tier), `direct/openai-flex`
+(the queued half-price tier, `service_tier: flex` on every call), `direct/anthropic`,
+`direct/telnyx` and `direct/zai`. First-party hosts name the same weights
+differently, so a mixed grid passes one id per host:
+
+```bash
+compound-bench serving --providers direct/openai,direct/openai-flex,direct/anthropic \
+    --shapes profiles.json \
+    --host-model openai=gpt-5.4-mini --host-model openai-flex=gpt-5.4-mini \
+    --host-model anthropic=claude-sonnet-5
+```
 
 You do not need to know the upstream slugs. `providers <model>` reads them off
 OpenRouter and prints paste-ready tokens:
@@ -64,6 +76,44 @@ swapped out. For `doubleword/flex` the request carries `service_tier: flex`.
 
 The served host is recorded on every call from the provider echo in the
 response, so a pinned run can be checked after the fact rather than trusted.
+OpenAI echoes the tier that served each call the same way (`service_tier_echo`
+in the ledger, next to `service_tier_requested`), so a flex arm that was quietly
+served on the default tier shows up as such. When flex has no capacity it
+returns a 429 and does not charge; the harness records that as a failure rather
+than retrying, because that rate is the tier's reliability. Flex can also queue
+longer than the harness timeout before its first byte, so the provider block
+declares `timeout_s: 900`, OpenAI's own recommendation.
+
+## Anthropic is measured on its native API
+
+Anthropic offers an OpenAI-compatible endpoint, and the harness deliberately
+does not use it. That layer has no prompt caching, returns empty token details,
+ignores `service_tier` and caps temperature at 1. A comparison run through it
+would score Anthropic at 0% cache for the same reason an unmarked call scores
+Doubleword at 0%: the measurement, not the host. `type: anthropic` switches the
+serving harness to `/v1/messages`, where cache reads and writes come back per
+call and the same `cache_control` marker Doubleword needs is the one Anthropic
+needs. Two consequences to read the numbers with:
+
+- Current Claude models reject sampling parameters, so no temperature is sent
+  and the ledger records `temperature: null` for that route. The agreement
+  analysis sets such a route aside instead of counting it as a host that
+  failed to reproduce itself.
+- The pinning proxy speaks chat completions only and refuses this host rather
+  than forward it through the lossy layer, so Anthropic runs in
+  `compound-bench serving` and not behind a third-party harness.
+
+## Cost: measured or derived
+
+OpenRouter returns the cost of every call, and that number is used as is.
+OpenAI, Anthropic and Telnyx return none, so their cost is priced from the
+rate cards under `serving_rates_usd_per_million_tokens` in `compound.yaml`
+(input, cached input, cache write where billed, output) and shown with a `~`
+prefix wherever it appears. Doubleword's cost comes from differencing its
+billing meter. A derived figure is only as good as its rate card: the Telnyx
+card was checked against a bill (920 calls priced at it summed to within 0.2%
+of the dashboard), the OpenAI and Anthropic cards carry the date they were
+copied from the vendor's pricing page.
 
 ## Your own host
 

@@ -220,3 +220,62 @@ def test_apply_host_models_still_rejects_a_typo_among_configured_names():
         apply_host_models(
             parse_providers("openrouter/auto"), {"zia": "x"}, known_names=config
         )
+
+
+# --- wire dialect and per-host timeout ---------------------------------------
+
+ANTHROPIC_CFG = {
+    "anthropic": {
+        "base_url": "https://api.anthropic.com/v1",
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "type": "anthropic",
+        "cache_strategy": "explicit_marker",
+    },
+    "openai-flex": {
+        "base_url": "https://api.openai.com/v1",
+        "api_key_env": "OPENAI_API_KEY",
+        "type": "openai_compatible",
+        "service_tier": "flex",
+        "timeout_s": 900,
+        "max_tokens_field": "max_completion_tokens",
+    },
+}
+
+
+def test_proxy_renames_the_output_cap_for_hosts_that_need_it():
+    from compound.orproxy import inject
+
+    spec = parse_provider("direct/openai-flex", providers_config=ANTHROPIC_CFG)
+    out = inject({"model": "m", "max_tokens": 50, "messages": []}, spec)
+    assert out["max_completion_tokens"] == 50 and "max_tokens" not in out
+    plain = parse_provider("openrouter/deepinfra")
+    assert inject({"max_tokens": 50, "messages": []}, plain)["max_tokens"] == 50
+
+
+def test_direct_type_anthropic_selects_the_messages_dialect():
+    spec = parse_provider("direct/anthropic", providers_config=ANTHROPIC_CFG)
+    assert spec.dialect == "anthropic"
+    assert spec.cache_strategy == "explicit_marker"
+    assert spec.timeout_s is None
+    # litellm speaks the Messages API natively; no api_base, no key override
+    tau = spec.to_tau_model("claude-sonnet-5")
+    assert tau.litellm_name() == "anthropic/claude-sonnet-5"
+    assert tau.resolve_api_key_env() is None
+
+
+def test_openai_compatible_hosts_default_to_chat_completions():
+    assert parse_provider("openrouter/deepinfra").dialect == "openai"
+    assert parse_provider("doubleword/flex").dialect == "openai"
+    spec = parse_provider("direct/openai-flex", providers_config=ANTHROPIC_CFG)
+    assert spec.dialect == "openai"
+    assert spec.service_tier == "flex"
+    assert spec.timeout_s == 900
+
+
+def test_proxy_refuses_a_messages_dialect_host():
+    from compound.orproxy import serve_provider
+
+    spec = parse_provider("direct/anthropic", providers_config=ANTHROPIC_CFG)
+    with pytest.raises(RuntimeError, match="chat completions only"):
+        with serve_provider(spec):
+            pass

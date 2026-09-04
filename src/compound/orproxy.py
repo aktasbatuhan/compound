@@ -153,6 +153,9 @@ def inject(body: dict[str, Any], spec: ProviderSpec) -> dict[str, Any]:
         merged[key] = value
     if spec.wire_model:
         merged["model"] = spec.wire_model
+    if spec.max_tokens_field != "max_tokens" and "max_tokens" in merged:
+        # A harness writes the OpenAI-compatible name; this host wants its own.
+        merged[spec.max_tokens_field] = merged.pop("max_tokens")
     if spec.cache_strategy == "explicit_marker" and cache_optin_enabled():
         merged["messages"] = mark_cache_prefix(merged.get("messages"))
     if spec.kind == "openrouter":
@@ -408,6 +411,16 @@ def serve_provider(spec: ProviderSpec, port: int = 0):
     ``port=0`` binds a free port (useful for tests). The base URL already ends in
     ``/v1`` so it drops straight into ``OPENAI_API_BASE``.
     """
+    if spec.dialect != "openai":
+        # The proxy forwards chat-completions bodies verbatim. Anthropic's
+        # OpenAI-compatible layer would accept them, but with prompt caching
+        # off and token details empty, which is the unmarked-Doubleword mistake
+        # again. Refuse rather than run an arm that cannot be compared.
+        raise RuntimeError(
+            f"{spec.token}: the pinning proxy speaks chat completions only; a "
+            f"{spec.dialect}-dialect host runs in `compound-bench serving`, not "
+            "behind a harness"
+        )
     server = ProxyServer(spec, port)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

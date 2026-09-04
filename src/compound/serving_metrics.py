@@ -17,7 +17,16 @@ comma-separated list, and each token carries its own pinning (OpenRouter
 ``provider.only`` with ``require_parameters``, or the Doubleword service tier).
 Each host's reasoning dialect is applied per arm: OpenRouter takes a
 ``reasoning: {enabled}`` block, Doubleword takes ``reasoning_effort`` where
-"none" disables.
+"none" disables, Anthropic takes a ``thinking`` block.
+
+Two wire dialects, one record shape. Every host but Anthropic speaks chat
+completions. Anthropic is measured on its native Messages API rather than its
+OpenAI-compatible layer, because that layer has no prompt caching, returns empty
+token details and ignores ``service_tier``: it would score Anthropic at 0% cache
+the way an unmarked call scores Doubleword. Both dialects are driven over the
+same stdlib HTTP client with the same per-line clock sampling, so a TTFT from
+one is comparable to a TTFT from the other; a vendor SDK would add its own
+retries and buffering to exactly one arm.
 
 Keys come from the environment via each token's registry entry
 (``OPENROUTER_API_KEY`` / ``DOUBLEWORD_API_KEY``); this module never reads a
@@ -100,10 +109,15 @@ def prepend_nonce(messages: list[dict[str, Any]], nonce: str) -> list[dict[str, 
 def model_for(spec: ProviderSpec, model_or: str | None, model: str | None) -> str:
     """The model slug to send on this host, per provider kind.
 
-    OpenRouter routes take ``--model-or`` (the OpenRouter slug); Doubleword and
-    direct routes take ``--model`` (the host's own slug). Raises ``ValueError``
-    when the needed flag is missing, so a run fails loudly before any spend.
+    A per-host id (``--host-model openai=gpt-5.4-mini``, carried on
+    :attr:`ProviderSpec.wire_model`) wins outright: a grid that mixes first-party
+    hosts has no single slug that every host knows. Otherwise OpenRouter routes
+    take ``--model-or`` (the OpenRouter slug); Doubleword and direct routes take
+    ``--model`` (the host's own slug). Raises ``ValueError`` when the needed
+    flag is missing, so a run fails loudly before any spend.
     """
+    if spec.wire_model:
+        return spec.wire_model
     if spec.kind == "openrouter":
         if not model_or:
             raise ValueError(
@@ -141,13 +155,16 @@ def build_body(
     if nonce is None:
         nonce = make_nonce()
     messages = prepend_nonce(shape["messages"], nonce) if nonce else shape["messages"]
+    if spec.dialect == "anthropic":
+        return build_messages_body(spec, model, mode, messages, shape, max_tokens=max_tokens)
     body: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
         # A shape may set its own output budget: a profile grid varies input and
         # output length independently, and one global cap would flatten that axis.
-        "max_tokens": int(shape.get("max_tokens") or max_tokens),
+        # The field name is the host's (OpenAI: max_completion_tokens).
+        spec.max_tokens_field: int(shape.get("max_tokens") or max_tokens),
         "stream": True,
         "stream_options": {"include_usage": True},
     }
@@ -173,6 +190,163 @@ def build_body(
     return body
 
 
+def build_messages_body(
+    spec: ProviderSpec,
+    model: str,
+    mode: str,
+    messages: list[dict[str, Any]],
+    shape: dict[str, Any],
+    *,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+) -> dict[str, Any]:
+    """The Anthropic Messages body for one call, from the same chat-shaped prompt.
+
+    System and developer turns are hoisted into the top-level ``system`` field
+    (Anthropic takes one), joined with a newline, which is what its own
+    compatibility layer does. Reasoning on is adaptive thinking; reasoning off
+    is ``thinking: disabled``, which current models accept only without a high
+    effort setting and Claude Fable rejects outright, so an off cell on such a
+    model records a 400 rather than silently thinking anyway.
+
+    No ``temperature`` is sent. Claude 4.7 and later reject sampling parameters
+    with a 400, so the harness cannot pin them; the record carries
+    ``temperature: null`` and the agreement analysis treats such a route as
+    unpinnable rather than as a temperature-0 host that failed to reproduce.
+
+    A cache marker goes on the last message exactly as it does for Doubleword,
+    since Anthropic's cache is the same opt-in ``cache_control`` design.
+
+    A ``response_format`` of type ``json_schema`` is translated to Anthropic's
+    ``output_config.format`` so both dialects decode under the same constraint;
+    dropping it would compare constrained decoding on one arm against free
+    generation on the other. ``json_object`` has no Messages equivalent and
+    raises before any spend rather than run an uncomparable cell.
+    """
+    system_parts: list[str] = []
+    turns: list[dict[str, Any]] = []
+    for m in messages:
+        role = m.get("role")
+        if role in ("system", "developer"):
+            content = m.get("content")
+            if isinstance(content, list):
+                content = "\n".join(
+                    str(c.get("text", "")) for c in content if isinstance(c, dict)
+                )
+            system_parts.append(str(content or ""))
+        else:
+            turns.append({"role": role, "content": m.get("content")})
+    body: dict[str, Any] = {
+        "model": model,
+        "messages": turns,
+        "max_tokens": int(shape.get("max_tokens") or max_tokens),
+        "stream": True,
+        "thinking": {"type": "adaptive"} if mode == REASONING_ON else {"type": "disabled"},
+    }
+    if system_parts:
+        body["system"] = "\n".join(system_parts)
+    rf = shape.get("response_format")
+    if rf:
+        if rf.get("type") != "json_schema":
+            raise ValueError(
+                f"{spec.label}: response_format {rf.get('type')!r} has no Messages "
+                "API equivalent; only json_schema can be compared across dialects"
+            )
+        schema = (rf.get("json_schema") or {}).get("schema") or rf.get("schema")
+        if not schema:
+            raise ValueError(f"{spec.label}: response_format json_schema carries no schema")
+        body["output_config"] = {"format": {"type": "json_schema", "schema": schema}}
+    if spec.cache_strategy == "explicit_marker" and cache_optin_enabled():
+        body["messages"] = mark_cache_prefix(body["messages"])
+    if spec.service_tier:
+        body["service_tier"] = spec.service_tier
+    return body
+
+
+def measure_messages_stream(
+    raw_lines: Iterable[bytes | str], now: Callable[[], float]
+) -> dict[str, Any]:
+    """Consume a Messages-API SSE stream into the same handles as :func:`measure_stream`.
+
+    ``message_start`` carries the input side of usage (uncached input, cache
+    reads, cache writes, the tier that served the call); ``message_delta``
+    carries the cumulative output count and the stop reason. The usage dict
+    returned is normalised to chat-completions field names so :func:`one_call`
+    reads both dialects the same way: ``prompt_tokens`` is the whole prompt
+    (uncached + cache read + cache write), ``cached_tokens`` is the cache read,
+    and ``cache_write_tokens`` is the extra Anthropic exposes and OpenAI does not.
+    """
+    first_delta: float | None = None
+    last_delta: float | None = None
+    n_content_chunks = 0
+    usage: dict[str, Any] | None = None
+    finish: str | None = None
+    error: str | None = None
+    stopped = False
+    parts: list[str] = []
+    for raw in raw_lines:
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", "replace")
+        raw = raw.strip()
+        if not raw.startswith("data:"):
+            continue
+        try:
+            d = json.loads(raw[5:])
+        except json.JSONDecodeError:
+            continue
+        t = now()
+        kind = d.get("type")
+        if kind == "message_stop":
+            stopped = True
+        elif kind == "message_start":
+            u = (d.get("message") or {}).get("usage") or {}
+            uncached = u.get("input_tokens") or 0
+            read = u.get("cache_read_input_tokens") or 0
+            write = u.get("cache_creation_input_tokens") or 0
+            usage = {
+                "prompt_tokens": uncached + read + write,
+                "prompt_tokens_details": {"cached_tokens": read},
+                "cache_write_tokens": write,
+                "completion_tokens": None,
+                "service_tier": u.get("service_tier"),
+            }
+        elif kind == "content_block_delta":
+            delta = d.get("delta") or {}
+            # Only a delta that carries something starts or advances the clock,
+            # matching measure_stream; an empty delta is not a token served.
+            payload = delta.get("text") if delta.get("type") == "text_delta" else (
+                delta.get("thinking") if delta.get("type") == "thinking_delta" else None
+            )
+            if payload:
+                if first_delta is None:
+                    first_delta = t
+                last_delta = t
+                if delta.get("type") == "text_delta":
+                    n_content_chunks += 1
+                    parts.append(payload)
+        elif kind == "message_delta":
+            finish = (d.get("delta") or {}).get("stop_reason") or finish
+            out = (d.get("usage") or {}).get("output_tokens")
+            if out is not None:
+                usage = usage or {"prompt_tokens": None, "prompt_tokens_details": {}}
+                usage["completion_tokens"] = out
+        elif kind == "error":
+            error = json.dumps(d.get("error") or d)[:500]
+    if error is None and not stopped:
+        # A stream that ends without message_stop is a cut connection, not a
+        # short answer: the call failed, and its half-usage must not be priced.
+        error = "stream ended before message_stop"
+    return {
+        "first_delta": first_delta,
+        "last_delta": last_delta,
+        "n_content_chunks": n_content_chunks,
+        "usage": usage if error is None else None,
+        "provider": None,
+        "finish": finish,
+        "text": "".join(parts),
+        "error": error,
+    }
+
+
 def measure_stream(
     raw_lines: Iterable[bytes | str], now: Callable[[], float]
 ) -> dict[str, Any]:
@@ -187,6 +361,7 @@ def measure_stream(
     n_content_chunks = 0
     usage: dict[str, Any] | None = None
     provider: str | None = None
+    tier: str | None = None
     finish: str | None = None
     parts: list[str] = []
     for raw in raw_lines:
@@ -202,6 +377,11 @@ def measure_stream(
         t = now()
         if d.get("provider"):
             provider = d["provider"]
+        # OpenAI echoes the tier that actually served the call on every chunk
+        # ("default", "flex", "priority"), so a flex arm is checkable per call
+        # the way a pinned OpenRouter upstream is via its provider echo.
+        if d.get("service_tier"):
+            tier = d["service_tier"]
         if d.get("usage"):
             usage = d["usage"]
         for ch in d.get("choices") or []:
@@ -221,6 +401,7 @@ def measure_stream(
         "n_content_chunks": n_content_chunks,
         "usage": usage,
         "provider": provider,
+        "service_tier": tier,
         "finish": finish,
         "text": "".join(parts),
     }
@@ -257,23 +438,37 @@ def one_call(
         temperature=temperature,
     )
     key = os.environ.get(spec.required_key_env(), "")
+    anthropic = spec.dialect == "anthropic"
     rec: dict[str, Any] = {
         "ts": time.time(),
         "iso": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "round": round_no,
         "route": spec.label,
+        "model": model,
         "mode": mode,
         "shape": shape_name,
         "rep": rep,
         "cache_mode": cache_mode,
-        "temperature": temperature,
+        # None means the host does not take a sampling temperature; see
+        # build_messages_body. The value is what was sent, never what was asked.
+        "temperature": None if anthropic else temperature,
         "cache_marked": spec.cache_strategy == "explicit_marker" and cache_optin_enabled(),
+        "service_tier_requested": spec.service_tier,
     }
-    req = urlrequest.Request(
-        spec.forward_base_url.rstrip("/") + "/chat/completions",
-        data=json.dumps(body).encode(),
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-    )
+    if anthropic:
+        url = spec.forward_base_url.rstrip("/") + "/messages"
+        headers = {
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+    else:
+        url = spec.forward_base_url.rstrip("/") + "/chat/completions"
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    req = urlrequest.Request(url, data=json.dumps(body).encode(), headers=headers)
+    # A host may declare that it needs longer (a queued tier before first byte);
+    # the harness default is a floor, never a ceiling on such a host.
+    timeout_s = max(timeout_s, spec.timeout_s or 0)
     t0 = time.monotonic()
     m: dict[str, Any] = {
         "first_delta": None,
@@ -287,7 +482,11 @@ def one_call(
     try:
         with urlrequest.urlopen(req, timeout=timeout_s) as r:
             rec["status"] = getattr(r, "status", None)
-            m = measure_stream(r, time.monotonic)
+            m = (measure_messages_stream if anthropic else measure_stream)(r, time.monotonic)
+            if m.get("error"):
+                # A Messages stream can fail mid-way with an ``error`` event
+                # after a 200; that is a failed call, not a short answer.
+                rec["error"] = m["error"]
     except urlerror.HTTPError as e:
         rec["status"] = e.code
         rec["error"] = e.read().decode("utf-8", "replace")[:500]
@@ -301,6 +500,7 @@ def one_call(
     rec["ttft_s"] = round(first_delta - t0, 3) if first_delta else None
     rec["finish_reason"] = m["finish"]
     rec["provider_echo"] = m["provider"]
+    rec["service_tier_echo"] = m.get("service_tier")
     rec["n_content_chunks"] = m["n_content_chunks"]
     text = m.get("text") or ""
     # The hash identifies an exact generation; the head is what an analyst reads
@@ -316,6 +516,10 @@ def one_call(
         rec["reasoning_tokens"] = ctd.get("reasoning_tokens")
         ptd = usage.get("prompt_tokens_details") or {}
         rec["cached_tokens"] = ptd.get("cached_tokens")
+        if usage.get("cache_write_tokens") is not None:
+            rec["cache_write_tokens"] = usage["cache_write_tokens"]
+        if usage.get("service_tier"):
+            rec["service_tier_echo"] = usage["service_tier"]
         rec["cost_usd"] = usage.get("cost")
         ct = usage.get("completion_tokens")
         if ct and first_delta and last_delta and last_delta > first_delta:
@@ -511,6 +715,42 @@ def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         )
     rows.sort(key=lambda row: (str(row["route"]), str(row["mode"])))
     return rows
+
+
+def derived_cost_usd(rec: dict[str, Any], rates: dict[str, Any]) -> float | None:
+    """Price one call from a published rate card, for hosts that bill no cost field.
+
+    ``rates`` is ``compound.yaml``'s ``serving_rates_usd_per_million_tokens``:
+    route label -> model id -> ``{input, cached_input, output, cache_write?}``.
+    The result is *derived*, not measured, and every consumer must label it so:
+    OpenRouter's per-call ``cost`` is the provider's own bill, this is ours.
+    Returns ``None`` when the record has no token counts, no matching rate, or
+    when the route is one whose cost is measured (the measured figure wins).
+    """
+    if rec.get("cost_usd") is not None or rec.get("prompt_tokens") is None:
+        return None
+    per_route = rates.get(rec.get("route") or "") or {}
+    model = rec.get("model")
+    card = per_route.get(model) if model else None
+    if card is None and not model and len(per_route) == 1:
+        # Ledgers written before the model was recorded per call: one card for
+        # the route is unambiguous. A record that names a model the card set
+        # does not know is never priced at some other model's rate.
+        card = next(iter(per_route.values()))
+    if not card:
+        return None
+    prompt = rec.get("prompt_tokens") or 0
+    cached = rec.get("cached_tokens") or 0
+    written = rec.get("cache_write_tokens") or 0
+    out = rec.get("completion_tokens") or 0
+    uncached = max(prompt - cached - written, 0)
+    usd = (
+        uncached * float(card.get("input", 0))
+        + cached * float(card.get("cached_input", card.get("input", 0)))
+        + written * float(card.get("cache_write", card.get("input", 0)))
+        + out * float(card.get("output", 0))
+    ) / 1e6
+    return round(usd, 8)
 
 
 def _fmt(value: Any, spec: str) -> str:
