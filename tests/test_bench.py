@@ -26,6 +26,39 @@ CASES = [
 ]
 
 
+def test_probe_requires_explicit_go(monkeypatch, capsys):
+    from compound import openrouter_discovery
+    from compound.bench import main
+
+    monkeypatch.setattr("sys.argv", ["compound-bench", "providers", "m", "--probe"])
+    monkeypatch.setattr(
+        openrouter_discovery, "fetch_endpoints", lambda *a: pytest.fail("unexpected network"),
+    )
+    assert main() == 0
+    assert "Add --go" in capsys.readouterr().out
+
+
+def test_paid_probe_dispatches_only_after_key_preflight(monkeypatch):
+    from compound import openrouter_discovery
+    from compound.bench import main
+
+    monkeypatch.setattr(
+        "sys.argv", ["compound-bench", "providers", "m", "--probe", "--go"],
+    )
+    monkeypatch.setattr(openrouter_discovery, "fetch_endpoints", lambda *a: [])
+    called = []
+    monkeypatch.setattr(
+        openrouter_discovery, "probe_endpoints", lambda *a: called.append(a) or {},
+    )
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with pytest.raises(SystemExit, match="missing required API key"):
+        main()
+    assert called == []
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    assert main() == 0
+    assert len(called) == 1
+
+
 def test_select_case_ids_filters_and_validates() -> None:
     assert select_case_ids(CASES) == ["retail:10", "retail:33", "airline:3"]
     assert select_case_ids(CASES, partition="optimizer_train") == ["retail:33", "airline:3"]

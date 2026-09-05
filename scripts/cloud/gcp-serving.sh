@@ -125,7 +125,7 @@ rm -f RUN_DONE
     echo "===== PASS \$SHAPES/\$CMODE reps=\$REPS \$(date -u +%H:%M:%S) ====="
     OPENROUTER_API_KEY='$OPENROUTER_API_KEY' DOUBLEWORD_API_KEY='$DOUBLEWORD_API_KEY' \
     TELNYX_API_KEY='$TELNYX_API_KEY' \
-    uv run python -m compound.bench serving \
+    uv run python -m compound.bench serving --go \
       --providers '$ROUTES' \
       --shapes "\$SHAPES.json" \
       --model-or '$MODEL_OR' --model '$MODEL_DW' \

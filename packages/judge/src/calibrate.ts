@@ -10,7 +10,6 @@
  */
 import {
   type CaseRow,
-  type CompoundDatabase,
   type JudgeCalibrationRow,
   listCases,
   recordJudgeCalibration,

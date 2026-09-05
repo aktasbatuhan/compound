@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implementation and development · Compound</title>
+<meta name="description" content="Compound has two execution surfaces. The Python benchmark CLI compares serving
+hosts on benchmark tasks and request shapes. The TypeScript trace pipeline
+imports production traces and evaluates candidate changes on curated cases.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../../docs/" class="cur">docs</a>
+      <a href="../../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../../docs/">Overview</a>
+    <a href="../../docs/providers/">Providers</a>
+    <a href="../../docs/benchmarks/">Benchmarks</a>
+    <a href="../../docs/harbor/">Terminal-Bench 4.0</a>
+    <a href="../../docs/reports/">Reports and ledgers</a>
+    <a href="../../docs/serving/">Serving metrics</a>
+    <a href="../../docs/traces/">Your own traces</a>
+    <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/development/" class="cur">Implementation and development</a>
+    <a href="../../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="implementation-and-development">Implementation and development</h1>
+<p>Compound has two execution surfaces. The Python benchmark CLI compares serving
+hosts on benchmark tasks and request shapes. The TypeScript trace pipeline
+imports production traces and evaluates candidate changes on curated cases.</p>
+<h2 id="code-map">Code map</h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src/compound/bench.py</code></td>
+<td>Benchmark CLI and execution opt-in</td>
+</tr>
+<tr>
+<td><code>providers_registry.py</code>, <code>orproxy.py</code></td>
+<td>Provider tokens, request pinning, harness proxy</td>
+</tr>
+<tr>
+<td><code>adapters/</code>, <code>provider_sweep.py</code></td>
+<td>Official benchmark harness integration and host sweeps</td>
+</tr>
+<tr>
+<td><code>serving_metrics.py</code>, <code>call_ledger.py</code></td>
+<td>Serving measurements and per-call evidence</td>
+</tr>
+<tr>
+<td><code>bench_report.py</code>, <code>scripts/analyze_*.py</code></td>
+<td>Reports and comparison analysis</td>
+</tr>
+<tr>
+<td><code>packages/pipeline</code>, <code>ingest</code>, <code>redaction</code>, <code>contract</code></td>
+<td>Normalize, redact, validate, classify, persist</td>
+</tr>
+<tr>
+<td><code>packages/curation</code>, <code>assertions</code>, <code>judge</code>, <code>gate</code></td>
+<td>Case provenance, grading, calibration, sealed decisions</td>
+</tr>
+<tr>
+<td><code>packages/execution</code>, <code>storage</code>, <code>cli</code></td>
+<td>Replay, spend reservations, cache, durable state, orchestration</td>
+</tr>
+<tr>
+<td><code>src/compound/optimize_product.py</code>, <code>spend_ledger.py</code></td>
+<td>Python optimizer on the trace pipeline's SQLite budget</td>
+</tr>
+<tr>
+<td><code>packages/api</code>, <code>dashboard</code></td>
+<td>Local API and Next.js views</td>
+</tr>
+<tr>
+<td><code>site/docs-src</code>, <code>scripts/build_site.py</code></td>
+<td>Documentation source and generated pages</td>
+</tr>
+</tbody>
+</table>
+<p>Paths without a directory prefix in the Python rows are under <code>src/compound/</code>.
+Use <code>compound-bench</code> for benchmarks and <code>bun run compound</code> for traces; the Python
+package also installs a separate <code>compound</code> command for its experiment engine.</p>
+<h2 id="spend-controls">Spend controls</h2>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Paid opt-in</th>
+<th>Budget boundary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TypeScript experiments, judging, gates, optimization</td>
+<td><code>--paid</code>, positive cap, enabled config budget</td>
+<td>Shared SQLite reservations; optimizer uses the same tables</td>
+</tr>
+<tr>
+<td>BFCL / DS-1000 benchmark runs</td>
+<td><code>--go</code>, Python budget configuration</td>
+<td>Python benchmark budget controls</td>
+</tr>
+<tr>
+<td>tau2 / MMLU / terminal-bench / Harbor</td>
+<td><code>--go</code></td>
+<td>No shared SQLite dollar cap; constrain workload size</td>
+</tr>
+<tr>
+<td>Serving measurements</td>
+<td><code>--go</code></td>
+<td>No dollar cap; preview route/shape/mode/repetition count</td>
+</tr>
+<tr>
+<td>Endpoint probes</td>
+<td><code>--probe --go</code></td>
+<td>One probe per discovered endpoint, no dollar cap</td>
+</tr>
+</tbody>
+</table>
+<p>The JSONL call ledger measures calls. It does not authorize or reserve spend.
+SQLite reservations serialize estimated headroom, not guaranteed maximum charges.
+An in-flight call may exceed its estimate, and reservations expire after 15 minutes
+without checking process liveness. External billing remains the reconciliation source.</p>
+<h2 id="implemented-behavior-and-remaining-boundaries">Implemented behavior and remaining boundaries</h2>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Implemented</th>
+<th>Remaining boundary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agentic trace replay</td>
+<td><code>experiment --agentic</code> and <code>gate --agentic</code>; recorded/mocked results, blocked tools, per-turn accounting</td>
+<td><code>live_read_only</code> execution is unsupported; this is replay, not arbitrary live tool execution</td>
+</tr>
+<tr>
+<td>Importers</td>
+<td>Langfuse, canonical JSON, OTel GenAI</td>
+<td>Broader vendor exports still require mapping and validation</td>
+</tr>
+<tr>
+<td>Native Anthropic</td>
+<td>Python serving measurements; tau model conversion selects the native provider</td>
+<td>Chat-completions harness proxy refuses it; TypeScript native provider support is separate work</td>
+</tr>
+<tr>
+<td>First-party OpenAI</td>
+<td>Configured direct standard/flex routes with provider-specific request fields</td>
+<td>Support must be checked per harness and model</td>
+</tr>
+<tr>
+<td>Host pinning</td>
+<td>Routing constraint and provider-echo comparison when recorded</td>
+<td>Quantization suffixes are labels; absent echoes remain unverified</td>
+</tr>
+<tr>
+<td>Local API</td>
+<td>Loopback default, shared storage and pipeline behavior</td>
+<td>No authentication for exposure beyond the local machine</td>
+</tr>
+</tbody>
+</table>
+<p>Older design documents and open epics may describe only part of this behavior.
+Review each execution path before marking a capability complete. Continuous
+ingest, automatic curation, and drift-triggered re-decisions remain future work.</p>
+<h2 id="validation-workflow">Validation workflow</h2>
+<pre><code class="language-bash">uv sync --extra dev
+bun install --frozen-lockfile
+uv run ruff check src tests scripts
+uv run compound validate-config
+uv run pytest -q
+bun run lint
+bun run typecheck
+bun test packages
+uv run --with markdown python scripts/build_site.py
+</code></pre>
+<p>Commit rebuilt documentation alongside its Markdown sources. Test paid paths
+with stub providers; a green suite does not establish live provider compatibility,
+benchmark harness availability, or the correctness of an unpublished experiment.</p>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../../docs/">docs</a> <a href="../../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>

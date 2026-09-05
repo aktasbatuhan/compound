@@ -136,11 +136,19 @@ def speed_table(rows: list[dict[str, Any]], rates: dict[str, Any]) -> None:
             dec50 = percentile([r.get("decode_tps") for r in good], 50)
             tot50 = percentile([r.get("total_s") for r in good], 50)
             prompt = sum(r.get("prompt_tokens") or 0 for r in good)
-            cached = sum(r.get("cached_tokens") or 0 for r in good)
-            costs = [r["cost_usd"] for r in good if r.get("cost_usd") is not None]
-            cache_pct = (cached / prompt * 100) if prompt else None
-            per_m = (sum(costs) / (prompt / 1e6)) if costs and prompt else None
+            cache_pairs = [r for r in good if r.get("cached_tokens") is not None
+                           and r.get("prompt_tokens") is not None]
+            cache_prompt = sum(r["prompt_tokens"] for r in cache_pairs)
+            cached = sum(r["cached_tokens"] for r in cache_pairs)
+            priced = [r for r in good if r.get("cost_usd") is not None
+                      and r.get("prompt_tokens") is not None]
+            priced_prompt = sum(r["prompt_tokens"] for r in priced)
+            cache_pct = (cached / cache_prompt * 100) if cache_prompt else None
+            per_m = (sum(r["cost_usd"] for r in priced) / (priced_prompt / 1e6)
+                     if priced_prompt else None)
             cost_col = _f(per_m, 4)
+            if per_m is not None and len(priced) < len(good):
+                cost_col += f"*{len(priced)}/{len(good)}"
             if per_m is None and prompt:
                 # Rate over the priced calls only, so a call with no rate card
                 # cannot sit in the denominator and understate the figure.
@@ -155,7 +163,7 @@ def speed_table(rows: list[dict[str, Any]], rates: dict[str, Any]) -> None:
                 f"  {route:<22}{len(rs):>5}{fails / len(rs) * 100:>6.0f}%"
                 f"{f'{lo * 100:.0f}-{hi * 100:.0f}':>14}"
                 f"{_f(ttft50):>8}{_f(ttft90):>8}{_f(dec50, 0):>8}{_f(tot50):>8}"
-                f"{_f(cache_pct, 0):>8}{cost_col:>9}"
+                f"{_f(cache_pct, 0):>8} {cost_col:>9}"
             )
 
 

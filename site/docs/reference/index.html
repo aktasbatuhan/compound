@@ -31,6 +31,7 @@
     <a href="../../docs/serving/">Serving metrics</a>
     <a href="../../docs/traces/">Your own traces</a>
     <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/development/">Implementation and development</a>
     <a href="../../docs/reference/" class="cur">CLI reference</a>
   </nav>
   <article class="docs-body">
@@ -55,7 +56,7 @@ options:
                         mmlu: test questions per subject
 </code></pre>
 <h2 id="compound-bench-providers">compound-bench providers</h2>
-<pre><code class="language-text">usage: compound.bench providers [-h] [--json] [--probe] model
+<pre><code class="language-text">usage: compound.bench providers [-h] [--json] [--probe] [--go] model
 
 positional arguments:
   model       OpenRouter model slug, e.g. deepseek/deepseek-v4-flash-0731
@@ -63,10 +64,11 @@ positional arguments:
 options:
   -h, --help  show this help message and exit
   --json      machine-readable output
-  --probe     send one tiny pinned call to every host and report what it
-              actually did. OpenRouter's 'up' is its own belief; without your
+  --probe     with --go, send one paid pinned call to every host and report
+              what it did. OpenRouter's 'up' is its own belief; without your
               own upstream key you sit on its shared rate-limit pool, where a
               listed-up host can 429 every call.
+  --go        execute paid probes with --probe
 </code></pre>
 <h2 id="compound-bench-tasks">compound-bench tasks</h2>
 <pre><code class="language-text">usage: compound.bench tasks [-h] [--partition PARTITION] [--contains CONTAINS]
@@ -220,8 +222,8 @@ options:
   --go                  execute (default is a dry run)
 </code></pre>
 <h2 id="compound-bench-serving">compound-bench serving</h2>
-<pre><code class="language-text">usage: compound.bench serving [-h] --providers PROVIDERS --shapes SHAPES
-                              [--model-or MODEL_OR] [--model MODEL]
+<pre><code class="language-text">usage: compound.bench serving [-h] [--go] --providers PROVIDERS --shapes
+                              SHAPES [--model-or MODEL_OR] [--model MODEL]
                               [--host-model HOST=MODEL] [--rounds ROUNDS]
                               [--interval INTERVAL] [--reps REPS]
                               [--cache-mode {cold,warm,both}]
@@ -230,6 +232,7 @@ options:
 
 options:
   -h, --help            show this help message and exit
+  --go                  execute (default is a dry run)
   --providers PROVIDERS
                         comma-separated provider tokens, e.g.
                         openrouter/deepinfra,doubleword/flex,openrouter/auto

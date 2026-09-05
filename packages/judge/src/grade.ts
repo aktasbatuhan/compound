@@ -14,7 +14,6 @@
 
 import type { CompletionResponse } from "@compound/execution";
 import {
-  type CompoundDatabase,
   getCachedCompletion,
   getExperiment,
   getExperimentResults,

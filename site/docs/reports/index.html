@@ -34,6 +34,7 @@ and which host actually answered.">
     <a href="../../docs/serving/">Serving metrics</a>
     <a href="../../docs/traces/">Your own traces</a>
     <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/development/">Implementation and development</a>
     <a href="../../docs/reference/">CLI reference</a>
   </nav>
   <article class="docs-body">
@@ -97,11 +98,11 @@ line per model call:</p>
 <tbody>
 <tr>
 <td><code>route</code> / <code>upstream</code></td>
-<td>the token you asked for, and the host that answered (<code>provider_echo</code>)</td>
+<td>route label and requested host; <code>provider_echo</code> separately names the responding host</td>
 </tr>
 <tr>
 <td><code>pin_honored</code></td>
-<td>whether the echo matches the pin; <code>null</code> when the call returned no echo</td>
+<td>whether the echo matches the host pin; <code>null</code> when unpinned or no echo was returned</td>
 </tr>
 <tr>
 <td><code>status</code>, <code>error</code>, <code>latency_ms</code></td>
@@ -117,7 +118,7 @@ line per model call:</p>
 </tr>
 <tr>
 <td><code>abandoned</code></td>
-<td>true when the call returned 200 but no usage block arrived, so its tokens were billed but are not counted</td>
+<td>true when the call returned 200 but no usage block arrived, so any charges are unknown</td>
 </tr>
 <tr>
 <td><code>reasoning_pin</code>, <code>cache_marked</code></td>
@@ -125,6 +126,15 @@ line per model call:</p>
 </tr>
 </tbody>
 </table>
+<p>Host verification does not verify quantization. Summaries count verified,
+unverified, and violated host pins separately. Cost totals cover only calls
+that report cost; missing counts identify partial subtotals. Cache-hit rates
+use only calls reporting both prompt and cached tokens in their denominator.</p>
+<p>Recording must be enabled before the run. Proxy write failures are warnings,
+and malformed ledger rows now produce warnings when read. A ledger alone
+cannot prove that no calls were lost: check the run logs and reconcile counts
+with the harness before making per-call claims. A warning about missing rows
+means the evidence is incomplete. The JSONL ledger is not a spend limiter.</p>
 <p>A <code>null</code> means the host did not tell us. It is not the same claim as a measured
 zero, and the tooling keeps the two apart.</p>
 <pre><code class="language-bash">compound-bench ledger artifacts/tb/calls.jsonl           # per-route rollup

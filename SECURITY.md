@@ -20,10 +20,19 @@ spend. You will get a reply within a few days.
 
 ## Money controls
 
-Every paid call reserves its estimated cost against the shared SQLite ledger
-inside an IMMEDIATE transaction before the provider is called, and settles the
+Paid calls in the TypeScript trace pipeline and its Python optimizer reserve
+their estimated cost against the shared SQLite ledger
+inside an IMMEDIATE transaction before the provider is called, and settle the
 reservation at the actual charge afterwards, so two runs on one database cannot
 both pass a check only one could afford. The Python optimizer uses the same
 tables under the same rules and refuses to run without a budget. A reservation
-left by a crashed process expires after 15 minutes. If you find a way to spend
-outside the ledger, report it as above.
+older than 15 minutes expires without checking whether its process is still alive.
+These controls serialize estimates; they cannot guarantee that a provider's actual
+charge stays below its estimate.
+
+Benchmark telemetry uses separate JSONL files, not this reservation ledger.
+`run`, `harbor`, `serving`, and `providers --probe` require `--go` to spend.
+BFCL and DS-1000 enforce their Python budget controls; tau2, MMLU, terminal-bench,
+Harbor, serving measurements, and endpoint probes have no shared dollar cap.
+Limit the workload before opting in. Report violations of the documented
+controls using the contact above.

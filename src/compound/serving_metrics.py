@@ -711,6 +711,7 @@ def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     (r.get("completion_tokens") for r in recs), 50
                 ),
                 "cost_usd": sum(costs) if costs else None,
+                "cost_missing": len(recs) - len(costs),
             }
         )
     rows.sort(key=lambda row: (str(row["route"]), str(row["mode"])))
@@ -773,4 +774,9 @@ def format_summary(rows: list[dict[str, Any]]) -> str:
             f"{_fmt(row['decode_tps_p50'], '7.1f')} {_fmt(row['total_p50'], '7.2f')} "
             f"{_fmt(row['completion_p50'], '7.0f')} {_fmt(row['cost_usd'], '9.5f')}"
         )
+        if row["cost_missing"]:
+            lines.append(
+                f"  {row['route']} {row['mode']}: cost missing for "
+                f"{row['cost_missing']}/{row['n']} calls; reported subtotal only."
+            )
     return "\n".join(lines)

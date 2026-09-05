@@ -47,7 +47,7 @@ MODELS="${FSWE_MODELS:-glm53flash:z-ai/glm-5.3-flash:zai-org/GLM-5.3-Flash deeps
 # on OpenRouter's shared rate-limit pool, which moves hourly and is per
 # (upstream, model). On 2026-09-03 deepinfra and baseten were listed as up and
 # returned 429 on every call for one model while serving the other, which cost
-# two arms mid-grid. `compound-bench providers <model> --probe` settles it.
+# two arms mid-grid. `compound-bench providers <model> --probe --go` settles it.
 ARMS="${FSWE_ARMS:-openrouter/auto openrouter/novita/fp8 openrouter/siliconflow/fp8 openrouter/gmicloud/fp8 openrouter/parasail/fp8 openrouter/together doubleword/realtime doubleword/flex}"
 # Which models the DOUBLEWORD arms may run. `dw usage` reports billed cost by
 # model but never by tier, and it truncates its window to the calendar day, so

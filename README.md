@@ -37,16 +37,18 @@ compound-bench providers z-ai/glm-5.3-flash
 compound-bench run terminal_bench \
     --model z-ai/glm-5.3-flash \
     --providers openrouter/deepinfra/fp8,openrouter/parasail/fp8,openrouter/z-ai/fp8 \
-    --tasks hello-world,fix-permissions --trials 3 --go
+    --tasks hello-world,fix-permissions --trials 3 \
+    --output artifacts/example --call-ledger artifacts/example/calls.jsonl --go
 
 #    or Terminal-Bench 4.0 through Harbor, same provider tokens
 compound-bench harbor --model z-ai/glm-5.3-flash \
     --providers openrouter/auto,openrouter/deepinfra/fp8 \
-    --dataset terminal-bench@4.0.0 --n-tasks 5 --attempts 2 --go
+    --dataset terminal-bench@4.0.0 --n-tasks 5 --attempts 2 \
+    --ledger-dir artifacts/harbor/calls --go
 
-# 3. one report: success, cost per task, latency, tokens per second, cache hits,
-#    and which upstream actually served each call
-PYTHONPATH=src python -m compound.bench_report artifacts/<run>
+# 3. episode report, then per-call cache and routing evidence
+PYTHONPATH=src python -m compound.bench_report artifacts/example
+compound-bench ledger artifacts/example/calls.jsonl --hosts
 ```
 
 You need an OpenRouter key in `.env` for OpenRouter routes. A `--go` run checks every
@@ -54,13 +56,14 @@ credential the chosen hosts need before it spends anything.
 
 What a run gives you:
 
-- **Verified pinning.** Each OpenRouter route runs with fallbacks disabled, and the served
-  upstream is recorded on every call, so a pinned run is checked rather than trusted.
-  Third-party agent harnesses (terminal-bench, Harbor) go through a localhost proxy that
-  stamps the pin into every request.
-- **A per-call ledger.** Status, latency, prompt and cached tokens, reported cost, and the
-  upstream that answered, for every call. Cost is OpenRouter's own accounting where the host
-  reports it; hosts that do not report cost get the `--prices` you declare, labeled as such.
+- **Host pinning.** Pinned OpenRouter routes disable fallbacks. Third-party agent harnesses
+  (terminal-bench, Harbor) use a localhost proxy to inject the pin. Enable the call ledger
+  to compare the requested host with the provider echo; a missing echo stays unverified.
+  Quantization suffixes label discovered endpoints but do not constrain quantization.
+- **A per-call ledger.** With recording enabled, status, latency, token usage, reported cost,
+  and provider echo are captured when available. Missing values stay unknown; partial cost
+  totals are labeled. Episode reports can derive cost from declared `--prices`. The JSONL
+  call ledger records evidence; it does not enforce a spend limit.
 - **Intervals, not bare means.** Wilson intervals on rates, two-proportion tests with
   Holm correction when arms are compared.
 - **Any OpenAI-compatible host.** `--provider myhost --api-base http://localhost:8000/v1`
@@ -120,13 +123,19 @@ sent to the providers you explicitly run, and nowhere else.
 
 ### Money controls
 
-Every paid call, in TypeScript or in the Python optimizer, reserves its estimate
+Paid calls in the TypeScript trace pipeline and its Python optimizer reserve their estimates
 against the shared SQLite ledger inside a write transaction before the provider is
-called, and settles the reservation at the actual charge afterwards. Concurrent runs
+called, and settle the reservation at the actual charge afterwards. Concurrent runs
 therefore serialize on the same limit instead of each checking a stale total. A
 gate claims its sealed cohort the same way before spending. Runs stay dry without
 `--paid` and a per-run `--cap`; a config that fails to load stops an import instead
 of persisting raw traces.
+
+Benchmark `run`, `harbor`, `serving`, and `providers --probe` require `--go` to spend.
+BFCL and DS-1000 runs use their Python budget controls. The other benchmark paths
+do not enforce the shared SQLite limit or a dollar cap; bound their tasks, trials,
+and serving repetitions before opting in. Reservations in the trace pipeline are
+estimates, so actual charges can exceed reserved amounts.
 
 ## Development
 
@@ -136,7 +145,8 @@ bun test                  # TypeScript: ingest, curation, experiments, gate, das
 ```
 
 CI runs both suites plus lint and a docs-build check on every pull request. See
-[CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+[CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and the
+[current implementation map](site/docs-src/development.md).
 
 ## License
 

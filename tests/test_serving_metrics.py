@@ -20,6 +20,32 @@ SHAPE_NO_RF = {"messages": [{"role": "user", "content": "hi"}]}
 PIN = {"only": ["deepinfra"], "allow_fallbacks": False, "require_parameters": True}
 
 
+@pytest.mark.parametrize("paid,has_key", [(False, False), (False, True), (True, False)])
+def test_cli_serving_never_calls_without_consent_and_credentials(
+    monkeypatch, tmp_path, capsys, paid, has_key,
+):
+    shapes = tmp_path / "shapes.json"
+    shapes.write_text(json.dumps({"S": SHAPE_NO_RF}))
+    monkeypatch.chdir(tmp_path)
+    if has_key:
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    else:
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(sm, "run_serving", lambda *a, **kw: pytest.fail("unexpected paid call"))
+    argv = [
+        "compound-bench", "serving", "--providers", "openrouter/deepinfra",
+        "--model-or", "m", "--shapes", str(shapes), "--out", str(tmp_path / "out"),
+    ]
+    monkeypatch.setattr("sys.argv", argv + (["--go"] if paid else []))
+    if paid:
+        with pytest.raises(SystemExit, match="missing required API key"):
+            bench_main()
+    else:
+        assert bench_main() == 0
+        assert "dry run (no spend)" in capsys.readouterr().out
+    assert not (tmp_path / "out").exists()
+
+
 # --- body construction per route kind and mode ------------------------------
 
 
@@ -269,6 +295,8 @@ def test_summarize_aggregates_per_route_mode():
     assert on["ttft_p50"] == 2.0  # median of [1.0, 3.0]; the errored row has no ttft
     assert on["completion_p50"] == 300.0
     assert on["cost_usd"] == pytest.approx(0.03)  # summed where present
+    assert on["cost_missing"] == 1
+    assert "reported subtotal only" in sm.format_summary(list(rows.values()))
 
     off = rows[("deepinfra", "reasoning-off")]
     assert off["n"] == 1
@@ -355,6 +383,7 @@ def test_cli_serving_is_registered_on_the_real_parser(monkeypatch, tmp_path, cap
         [
             "compound-bench",
             "serving",
+            "--go",
             "--providers",
             "openrouter/deepinfra,doubleword/flex",
             "--shapes",
@@ -739,7 +768,7 @@ def test_cli_serving_accepts_host_model(monkeypatch, tmp_path):
 
     monkeypatch.setattr(sm, "run_serving", fake_run_serving)
     monkeypatch.setattr("sys.argv", [
-        "compound-bench", "serving",
+        "compound-bench", "serving", "--go",
         "--providers", "openrouter/deepinfra,direct/anthropic",
         "--shapes", str(shapes), "--model-or", "or-slug",
         "--host-model", "anthropic=claude-sonnet-5",

@@ -13,8 +13,12 @@ compound-bench serving \
     --model-or deepseek/deepseek-v4-flash-0731 \
     --model deepseek-ai/DeepSeek-V4-Flash-0731 \
     --shapes shapes.json --rounds 8 --interval 3600 --reps 3 \
-    --out artifacts/serving
+    --out artifacts/serving --go
 ```
+
+Omit `--go` to preview the call count without credentials, output writes, or
+provider calls. This command has no dollar cap: the preview counts calls, not
+maximum charges. Existing automation must now pass `--go` explicitly.
 
 - `--model-or` is the OpenRouter slug; `--model` is the id Doubleword or a direct host uses for the same weights. Hosts name models differently.
 - `--shapes` is a JSON file mapping a name to `{messages, response_format}`, so you measure the request shapes your workload actually sends, including structured output.

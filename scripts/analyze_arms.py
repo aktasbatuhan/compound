@@ -22,11 +22,12 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import math
 import sys
 from pathlib import Path
 from typing import Any
+
+from compound.call_ledger import load_records, summarize
 
 
 def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -64,16 +65,7 @@ def two_proportion_z(s1: int, n1: int, s2: int, n2: int) -> tuple[float, float]:
 
 
 def load_arm(ledger: Path) -> list[dict[str, Any]]:
-    rows = []
-    for line in ledger.read_text().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rows.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return rows
+    return load_records(ledger)
 
 
 def summarize_arm(name: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -82,9 +74,12 @@ def summarize_arm(name: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     abandoned = sum(1 for r in rows if r.get("abandoned"))
     errors = sum(1 for r in rows if r.get("status") not in (200, None))
     priced = [r for r in rows if r.get("cost_usd") is not None]
-    cost = sum(r["cost_usd"] for r in priced)
+    cost = sum(r["cost_usd"] for r in priced) if priced else None
     ptok = sum(r.get("prompt_tokens") or 0 for r in rows)
-    ctok = sum(r.get("cached_tokens") or 0 for r in rows)
+    evidence = summarize([{**r, "route": name} for r in rows])
+    evidence = evidence[0] if evidence else {}
+    cost_pairs = [r for r in priced if r.get("prompt_tokens") is not None]
+    priced_prompt = sum(r["prompt_tokens"] for r in cost_pairs)
     lat = sorted(r["latency_ms"] / 1000 for r in rows if r.get("latency_ms") is not None)
     ok = [r for r in rows if not r.get("abandoned") and r.get("status") == 200]
     ok_lat = sorted(r["latency_ms"] / 1000 for r in ok if r.get("latency_ms") is not None)
@@ -106,9 +101,14 @@ def summarize_arm(name: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
         "cost_usd": cost,
         "priced_calls": len(priced),
         "prompt_tokens": ptok,
-        "cached_tokens": ctok,
-        "cache_ratio": (ctok / ptok) if ptok else None,
-        "cost_per_1k_prompt": (cost / (ptok / 1000)) if ptok else None,
+        "cached_tokens": evidence.get("cached_tokens", 0),
+        "cache_ratio": evidence.get("cache_hit_rate"),
+        "cost_per_1k_prompt": (
+            sum(r["cost_usd"] for r in cost_pairs) / (priced_prompt / 1000)
+            if priced_prompt else None
+        ),
+        "pin_unverified": evidence.get("pin_unverified", 0),
+        "pin_violations": evidence.get("pin_violations", 0),
         "p50_s": ok_lat[len(ok_lat) // 2] if ok_lat else None,
         "p90_s": ok_lat[int(len(ok_lat) * 0.9)] if ok_lat else None,
         "max_s": lat[-1] if lat else None,
@@ -153,12 +153,19 @@ def main() -> int:
         lo, hi = a["hang_ci"]
         cache = "—" if a["cache_ratio"] is None else f"{a['cache_ratio'] * 100:.1f}"
         cpk = "—" if a["cost_per_1k_prompt"] is None else f"{a['cost_per_1k_prompt']:.5f}"
+        cost = "—" if a["cost_usd"] is None else f"{a['cost_usd']:.4f}"
         print(
             f"{a['arm']:<16s} {a['calls']:>6d} {a['hang_rate'] * 100:>6.1f}% "
             f"{f'{lo * 100:.1f}-{hi * 100:.1f}':>14s} {a['abandoned']:>6d} "
-            f"{a['cost_usd']:>9.4f} {cpk:>10s} {cache:>7s} "
+            f"{cost:>9s} {cpk:>10s} {cache:>7s} "
             f"{(a['p50_s'] or 0):>6.0f} {(a['p90_s'] or 0):>6.0f} {len(a['hosts']):>5d}"
         )
+        if a["priced_calls"] < a["calls"]:
+            print(f"  cost is a reported subtotal: {a['priced_calls']}/{a['calls']} calls priced.")
+        if a["pin_unverified"] or a["pin_violations"]:
+            print(
+                f"  host pin: {a['pin_unverified']} unverified, {a['pin_violations']} violated."
+            )
 
     base = next((a for a in arms if "auto" in a["arm"]), None)
     if base:
@@ -193,7 +200,7 @@ def main() -> int:
 
     print(
         "\nCost figures are LOWER BOUNDS on any arm with abandoned calls: those "
-        "tokens were billed but their usage block never arrived. cache% is the "
+        "calls may have been billed but their usage block never arrived. cache% is the "
         "host's self-reported cached/prompt ratio, which at least one host "
         "populates unreliably; read it beside $/1k ptok, not instead of it."
     )

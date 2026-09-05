@@ -39,13 +39,24 @@ line per model call:
 
 | Field | Meaning |
 |---|---|
-| `route` / `upstream` | the token you asked for, and the host that answered (`provider_echo`) |
-| `pin_honored` | whether the echo matches the pin; `null` when the call returned no echo |
+| `route` / `upstream` | route label and requested host; `provider_echo` separately names the responding host |
+| `pin_honored` | whether the echo matches the host pin; `null` when unpinned or no echo was returned |
 | `status`, `error`, `latency_ms` | HTTP status, error class (`hang_timeout`, ...), wall time |
 | `prompt_tokens`, `completion_tokens`, `cached_tokens`, `reasoning_tokens` | from the usage block; `null` when the host did not report it |
 | `cost_usd` | the host's own accounting; `null` when not reported |
-| `abandoned` | true when the call returned 200 but no usage block arrived, so its tokens were billed but are not counted |
+| `abandoned` | true when the call returned 200 but no usage block arrived, so any charges are unknown |
 | `reasoning_pin`, `cache_marked` | what the proxy injected |
+
+Host verification does not verify quantization. Summaries count verified,
+unverified, and violated host pins separately. Cost totals cover only calls
+that report cost; missing counts identify partial subtotals. Cache-hit rates
+use only calls reporting both prompt and cached tokens in their denominator.
+
+Recording must be enabled before the run. Proxy write failures are warnings,
+and malformed ledger rows now produce warnings when read. A ledger alone
+cannot prove that no calls were lost: check the run logs and reconcile counts
+with the harness before making per-call claims. A warning about missing rows
+means the evidence is incomplete. The JSONL ledger is not a spend limiter.
 
 A `null` means the host did not tell us. It is not the same claim as a measured
 zero, and the tooling keeps the two apart.

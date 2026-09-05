@@ -146,12 +146,16 @@ def select_case_ids(
     return ids
 
 
-def cmd_providers(model: str, as_json: bool, probe: bool = False) -> int:
+def cmd_providers(model: str, as_json: bool, probe: bool = False, go: bool = False) -> int:
     """List the OpenRouter upstreams that serve a model, as --providers tokens."""
     import os
     from dataclasses import asdict
 
     from compound.openrouter_discovery import fetch_endpoints, format_table, probe_endpoints
+
+    if probe and not go:
+        print("dry run (no spend). Add --go to send one paid probe per discovered host.")
+        return 0
 
     try:
         endpoints = fetch_endpoints(model)
@@ -513,7 +517,6 @@ def cmd_serving(args: argparse.Namespace) -> int:
             sm.model_for(spec, args.model_or, args.model)  # fail fast on a missing model
     except ValueError as exc:
         raise SystemExit(f"error: {exc}") from exc
-    _require_keys({s.required_key_env() for s in specs})
     modes = (sm.REASONING_ON, sm.REASONING_OFF) if args.reasoning_modes == "both" else (
         sm.REASONING_ON if args.reasoning_modes == "on" else sm.REASONING_OFF,
     )
@@ -526,6 +529,10 @@ def cmd_serving(args: argparse.Namespace) -> int:
         f"x {len(cache_modes)} cache mode(s) x {args.reps} rep(s) x {args.rounds} round(s) "
         f"= {cells} calls at temperature {args.temperature}"
     )
+    if not args.go:
+        print("\ndry run (no spend). Add --go to execute; provider charges are not capped.")
+        return 0
+    _require_keys({s.required_key_env() for s in specs})
     out = sm.run_serving(
         specs,
         args.model_or,
@@ -776,10 +783,11 @@ def main() -> int:
     providers.add_argument(
         "--probe",
         action="store_true",
-        help="send one tiny pinned call to every host and report what it actually did. "
+        help="with --go, send one paid pinned call to every host and report what it did. "
              "OpenRouter's 'up' is its own belief; without your own upstream key you sit "
              "on its shared rate-limit pool, where a listed-up host can 429 every call.",
     )
+    providers.add_argument("--go", action="store_true", help="execute paid probes with --probe")
 
     tasks = sub.add_parser("tasks", help="print case ids for a benchmark")
     tasks.add_argument("benchmark", choices=sorted(BENCHMARKS))
@@ -790,6 +798,7 @@ def main() -> int:
         "serving",
         help="serving-metrics harness: TTFT/decode/cost per host per reasoning mode",
     )
+    serving.add_argument("--go", action="store_true", help="execute (default is a dry run)")
     serving.add_argument(
         "--providers",
         required=True,
@@ -1010,7 +1019,7 @@ def main() -> int:
     if args.command == "prepare":
         return cmd_prepare(args)
     if args.command == "providers":
-        return cmd_providers(args.model, args.as_json, args.probe)
+        return cmd_providers(args.model, args.as_json, args.probe, args.go)
     if args.command == "tasks":
         return cmd_tasks(args.benchmark, args.partition, args.contains)
     if args.command == "serving":

@@ -33,6 +33,7 @@ schedule so you can see how a host moves through the day.">
     <a href="../../docs/serving/" class="cur">Serving metrics</a>
     <a href="../../docs/traces/">Your own traces</a>
     <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/development/">Implementation and development</a>
     <a href="../../docs/reference/">CLI reference</a>
   </nav>
   <article class="docs-body">
@@ -45,8 +46,11 @@ schedule so you can see how a host moves through the day.</p>
     --model-or deepseek/deepseek-v4-flash-0731 \
     --model deepseek-ai/DeepSeek-V4-Flash-0731 \
     --shapes shapes.json --rounds 8 --interval 3600 --reps 3 \
-    --out artifacts/serving
+    --out artifacts/serving --go
 </code></pre>
+<p>Omit <code>--go</code> to preview the call count without credentials, output writes, or
+provider calls. This command has no dollar cap: the preview counts calls, not
+maximum charges. Existing automation must now pass <code>--go</code> explicitly.</p>
 <ul>
 <li><code>--model-or</code> is the OpenRouter slug; <code>--model</code> is the id Doubleword or a direct host uses for the same weights. Hosts name models differently.</li>
 <li><code>--shapes</code> is a JSON file mapping a name to <code>{messages, response_format}</code>, so you measure the request shapes your workload actually sends, including structured output.</li>

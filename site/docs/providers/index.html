@@ -33,6 +33,7 @@ many hosts&quot; is one flag.">
     <a href="../../docs/serving/">Serving metrics</a>
     <a href="../../docs/traces/">Your own traces</a>
     <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/development/">Implementation and development</a>
     <a href="../../docs/reference/">CLI reference</a>
   </nav>
   <article class="docs-body">
@@ -59,7 +60,7 @@ many hosts" is one flag.</p>
 </tr>
 <tr>
 <td><code>openrouter/&lt;upstream&gt;/&lt;quant&gt;</code></td>
-<td>the same, restricted to one quantization: <code>openrouter/deepinfra/fp8</code></td>
+<td>the same host pin, with a discovery label for quantization: <code>openrouter/deepinfra/fp8</code></td>
 </tr>
 <tr>
 <td><code>doubleword/realtime</code></td>
@@ -82,7 +83,7 @@ differently, so a mixed grid passes one id per host:</p>
 <pre><code class="language-bash">compound-bench serving --providers direct/openai,direct/openai-flex,direct/anthropic \
     --shapes profiles.json \
     --host-model openai=gpt-5.4-mini --host-model openai-flex=gpt-5.4-mini \
-    --host-model anthropic=claude-sonnet-5
+    --host-model anthropic=claude-sonnet-5 --go
 </code></pre>
 <p>You do not need to know the upstream slugs. <code>providers &lt;model&gt;</code> reads them off
 OpenRouter and prints paste-ready tokens:</p>
@@ -98,8 +99,8 @@ OpenRouter and prints paste-ready tokens:</p>
 the same claim as "will serve me right now". Without your own upstream key you
 sit on OpenRouter's shared rate-limit pool for that host, where an endpoint
 listed as up can return 429 on every call for one model while serving another
-fine. <code>--probe</code> settles it by sending one small pinned call to each host:</p>
-<pre><code class="language-bash">compound-bench providers z-ai/glm-5.3-flash --probe
+fine. <code>--probe --go</code> tests it by sending one small pinned call to each host:</p>
+<pre><code class="language-bash">compound-bench providers z-ai/glm-5.3-flash --probe --go
 # PROVIDER TOKEN                  STATUS  SECONDS  DETAIL
 # openrouter/z-ai/fp8                200      1.4  Z.AI
 # openrouter/deepinfra/fp8           429      0.5  {&quot;error&quot;:{&quot;message&quot;:&quot;Provider returned error&quot;...
@@ -142,6 +143,9 @@ needs. Two consequences to read the numbers with:</p>
   than forward it through the lossy layer, so Anthropic runs in
   <code>compound-bench serving</code> and not behind a third-party harness.</li>
 </ul>
+<p>Quantization suffixes such as <code>/fp8</code> are labels from discovery. Routing strips
+the suffix and pins the host only; a matching provider echo does not verify
+the quantization used for that call.</p>
 <h2 id="cost-measured-or-derived">Cost: measured or derived</h2>
 <p>OpenRouter returns the cost of every call, and that number is used as is.
 OpenAI, Anthropic and Telnyx return none, so their cost is priced from the

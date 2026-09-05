@@ -13,7 +13,7 @@ many hosts" is one flag.
 |---|---|
 | `openrouter/auto` | OpenRouter's own routing, no pin. Useful as a control arm. |
 | `openrouter/<upstream>` | one OpenRouter upstream, fallbacks disabled: `openrouter/deepinfra` |
-| `openrouter/<upstream>/<quant>` | the same, restricted to one quantization: `openrouter/deepinfra/fp8` |
+| `openrouter/<upstream>/<quant>` | the same host pin, with a discovery label for quantization: `openrouter/deepinfra/fp8` |
 | `doubleword/realtime` | Doubleword's realtime tier, addressed directly |
 | `doubleword/flex` | Doubleword's flex (queued) tier |
 | `direct/<name>` | any host defined under `providers.<name>` in `compound.yaml`: OpenAI-compatible by default, or Anthropic's Messages API with `type: anthropic` |
@@ -27,7 +27,7 @@ differently, so a mixed grid passes one id per host:
 compound-bench serving --providers direct/openai,direct/openai-flex,direct/anthropic \
     --shapes profiles.json \
     --host-model openai=gpt-5.4-mini --host-model openai-flex=gpt-5.4-mini \
-    --host-model anthropic=claude-sonnet-5
+    --host-model anthropic=claude-sonnet-5 --go
 ```
 
 You do not need to know the upstream slugs. `providers <model>` reads them off
@@ -48,10 +48,10 @@ The `STATUS` column is OpenRouter's own belief about the endpoint, which is not
 the same claim as "will serve me right now". Without your own upstream key you
 sit on OpenRouter's shared rate-limit pool for that host, where an endpoint
 listed as up can return 429 on every call for one model while serving another
-fine. `--probe` settles it by sending one small pinned call to each host:
+fine. `--probe --go` tests it by sending one small pinned call to each host:
 
 ```bash
-compound-bench providers z-ai/glm-5.3-flash --probe
+compound-bench providers z-ai/glm-5.3-flash --probe --go
 # PROVIDER TOKEN                  STATUS  SECONDS  DETAIL
 # openrouter/z-ai/fp8                200      1.4  Z.AI
 # openrouter/deepinfra/fp8           429      0.5  {"error":{"message":"Provider returned error"...
@@ -102,6 +102,10 @@ needs. Two consequences to read the numbers with:
 - The pinning proxy speaks chat completions only and refuses this host rather
   than forward it through the lossy layer, so Anthropic runs in
   `compound-bench serving` and not behind a third-party harness.
+
+Quantization suffixes such as `/fp8` are labels from discovery. Routing strips
+the suffix and pins the host only; a matching provider echo does not verify
+the quantization used for that call.
 
 ## Cost: measured or derived
 

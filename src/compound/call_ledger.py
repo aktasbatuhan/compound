@@ -32,6 +32,7 @@ import json
 import os
 import threading
 import time
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -292,21 +293,30 @@ def build_record(
     echo = normalize_host(record.get("provider_echo"))
     pinned = normalize_host(upstream)
     record["pin_honored"] = None if (pinned is None or echo is None) else (echo == pinned)
+    # A provider echo identifies the host, not its quantization or endpoint.
+    record["pin_scope"] = "host" if pinned is not None else None
     return record
 
 
 def load_records(path: str | Path) -> list[dict[str, Any]]:
-    """Read a ledger file, skipping any line a killed run left half-written."""
+    """Read usable rows, warning about lost evidence instead of silently skipping it."""
     records: list[dict[str, Any]] = []
     with open(path) as handle:
-        for line in handle:
+        for line_no, line in enumerate(handle, 1):
             line = line.strip()
             if not line:
                 continue
             try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
+                record = json.loads(line)
+                if not isinstance(record, dict):
+                    raise ValueError("expected an object")
+                records.append(record)
+            except ValueError:
+                warnings.warn(
+                    f"{path}:{line_no}: unreadable ledger row skipped; evidence is incomplete",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
     return records
 
 
@@ -335,10 +345,13 @@ def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "errors": 0,
                 "abandoned": 0,
                 "pin_violations": 0,
+                "pin_verified": 0,
+                "pin_unverified": 0,
                 "prompt_tokens": 0,
                 "cached_tokens": 0,
                 "completion_tokens": 0,
                 "cache_reported": 0,
+                "cache_prompt_tokens": 0,
                 "cost_usd": 0.0,
                 "cost_reported": 0,
                 "upstreams": {},
@@ -352,6 +365,10 @@ def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             row["abandoned"] += 1
         if record.get("pin_honored") is False:
             row["pin_violations"] += 1
+        elif record.get("pin_honored") is True:
+            row["pin_verified"] += 1
+        elif record.get("upstream") is not None:
+            row["pin_unverified"] += 1
         echo = record.get("provider_echo")
         if echo:
             row["upstreams"][echo] = row["upstreams"].get(echo, 0) + 1
@@ -360,8 +377,10 @@ def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             if isinstance(value, (int, float)):
                 row[field] += value
         cached = record.get("cached_tokens")
-        if isinstance(cached, (int, float)):
+        prompt = record.get("prompt_tokens")
+        if isinstance(cached, (int, float)) and isinstance(prompt, (int, float)):
             row["cached_tokens"] += cached
+            row["cache_prompt_tokens"] += prompt
             row["cache_reported"] += 1
         cost = record.get("cost_usd")
         if isinstance(cost, (int, float)):
@@ -375,12 +394,13 @@ def summarize(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in by_route.values():
         latencies = sorted(row.pop("latencies"))
         row["latency_p50_ms"] = latencies[len(latencies) // 2] if latencies else None
-        prompt = row["prompt_tokens"]
+        prompt = row["cache_prompt_tokens"]
         # Only meaningful when at least one call reported the split.
         row["cache_hit_rate"] = (
             row["cached_tokens"] / prompt if (prompt and row["cache_reported"]) else None
         )
         row["cost_usd"] = row["cost_usd"] if row["cost_reported"] else None
+        row["cost_missing"] = row["calls"] - row["cost_reported"]
         row["distinct_upstreams"] = len(row["upstreams"])
         out.append(row)
     return sorted(out, key=lambda r: r["route"])
@@ -403,18 +423,28 @@ def format_summary(rows: list[dict[str, Any]]) -> str:
             f"{row['cached_tokens']:>9d} {hit:>6s} {cost:>10s} {p50:>8s} "
             f"{row['distinct_upstreams']:>6d}"
         )
+        if row["cost_missing"]:
+            lines.append(
+                f"  {row['route']}: cost missing for {row['cost_missing']}/{row['calls']} "
+                "calls; cost$ is the reported subtotal, not a complete bill."
+            )
+        if row["pin_unverified"] or row["pin_violations"]:
+            lines.append(
+                f"  {row['route']}: host pin verified on {row['pin_verified']} calls, "
+                f"unverified on {row['pin_unverified']}, violated on {row['pin_violations']}."
+            )
     lines.append("")
     lines.append(
         "hit% = cached / prompt tokens, over calls whose host reported the split; "
         "— = never reported."
     )
     lines.append(
-        "pin! = calls answered by a host other than the pinned one. hosts = distinct "
+        "pin! checks host identity only, not quantization. hosts = distinct "
         "upstreams that answered (1 is expected on a pinned route)."
     )
     lines.append(
         "aband = 200s that never delivered a usage block, typically the client "
-        "timing out on a slow call. Those tokens were billed but are not in cost$, "
+        "timing out on a slow call. Those calls may have been billed but are not in cost$, "
         "so a route with abandoned calls is understated here; reconcile against "
         "the provider's own billing before quoting its cost."
     )

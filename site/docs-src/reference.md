@@ -32,7 +32,7 @@ options:
 ## compound-bench providers
 
 ```text
-usage: compound.bench providers [-h] [--json] [--probe] model
+usage: compound.bench providers [-h] [--json] [--probe] [--go] model
 
 positional arguments:
   model       OpenRouter model slug, e.g. deepseek/deepseek-v4-flash-0731
@@ -40,10 +40,11 @@ positional arguments:
 options:
   -h, --help  show this help message and exit
   --json      machine-readable output
-  --probe     send one tiny pinned call to every host and report what it
-              actually did. OpenRouter's 'up' is its own belief; without your
+  --probe     with --go, send one paid pinned call to every host and report
+              what it did. OpenRouter's 'up' is its own belief; without your
               own upstream key you sit on its shared rate-limit pool, where a
               listed-up host can 429 every call.
+  --go        execute paid probes with --probe
 ```
 
 ## compound-bench tasks
@@ -209,8 +210,8 @@ options:
 ## compound-bench serving
 
 ```text
-usage: compound.bench serving [-h] --providers PROVIDERS --shapes SHAPES
-                              [--model-or MODEL_OR] [--model MODEL]
+usage: compound.bench serving [-h] [--go] --providers PROVIDERS --shapes
+                              SHAPES [--model-or MODEL_OR] [--model MODEL]
                               [--host-model HOST=MODEL] [--rounds ROUNDS]
                               [--interval INTERVAL] [--reps REPS]
                               [--cache-mode {cold,warm,both}]
@@ -219,6 +220,7 @@ usage: compound.bench serving [-h] --providers PROVIDERS --shapes SHAPES
 
 options:
   -h, --help            show this help message and exit
+  --go                  execute (default is a dry run)
   --providers PROVIDERS
                         comma-separated provider tokens, e.g.
                         openrouter/deepinfra,doubleword/flex,openrouter/auto

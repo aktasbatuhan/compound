@@ -153,6 +153,7 @@ class TestBuildRecord:
             response_raw=json.dumps({"provider": "DeepInfra", "usage": {}}).encode(),
         )
         assert record["pin_honored"] is True
+        assert record["pin_scope"] == "host"
         assert record["route"] == "deepinfra-fp4"
         assert record["latency_ms"] == 1234.5
 
@@ -240,6 +241,29 @@ class TestSummarize:
         assert row["cache_reported"] == 1
         assert row["cached_tokens"] == 80
         assert row["calls"] == 2
+        assert row["cache_hit_rate"] == 0.8
+        assert row["cache_prompt_tokens"] == 100
+
+    def test_incomplete_cost_and_unverified_pin_are_visible(self):
+        records = [
+            {"route": "a", "upstream": "a", "pin_honored": True, "cost_usd": 0.1},
+            {"route": "a", "upstream": "a", "pin_honored": None, "cost_usd": None},
+        ]
+        row = self.rows(records)["a"]
+        assert row["cost_usd"] == 0.1
+        assert row["cost_missing"] == 1
+        assert row["pin_verified"] == 1
+        assert row["pin_unverified"] == 1
+        text = format_summary([row])
+        assert "reported subtotal" in text
+        assert "unverified on 1" in text
+
+    def test_cached_tokens_without_prompt_count_do_not_enter_ratio(self):
+        row = self.rows([
+            {"route": "a", "prompt_tokens": 100, "cached_tokens": 80},
+            {"route": "a", "prompt_tokens": None, "cached_tokens": 200},
+        ])["a"]
+        assert row["cache_hit_rate"] == 0.8
 
     def test_cache_hit_rate_is_null_when_nobody_reported(self):
         records = [{"route": "dw", "status": 200, "prompt_tokens": 500, "cached_tokens": None}]
@@ -288,7 +312,16 @@ class TestLoadRecords:
         # A run killed mid-write must still yield every complete call.
         path = tmp_path / "calls.jsonl"
         path.write_text('{"route": "a"}\n{"route": "b"}\n{"route": "trunc"')
-        assert [r["route"] for r in load_records(path)] == ["a", "b"]
+        with pytest.warns(RuntimeWarning, match="evidence is incomplete"):
+            assert [r["route"] for r in load_records(path)] == ["a", "b"]
+
+    def test_non_object_rows_are_reported_without_echoing_content(self, tmp_path):
+        path = tmp_path / "calls.jsonl"
+        path.write_text('null\n["private-content"]\n{"route": "a"}\n')
+        with pytest.warns(RuntimeWarning) as caught:
+            assert load_records(path) == [{"route": "a"}]
+        assert len(caught) == 2
+        assert all("private-content" not in str(w.message) for w in caught)
 
 
 class TestKeepAliveComments:

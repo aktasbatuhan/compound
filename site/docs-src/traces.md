@@ -47,12 +47,16 @@ the providers you explicitly run, and nowhere else.
 
 ## Money controls
 
-Every paid call goes through one primitive, in both languages:
+Paid trace-pipeline calls and Python optimizer calls use the shared SQLite
+reservation contract. Benchmark commands use separate controls; see
+[Implementation and development](../development/#spend-controls).
+
+The trace-pipeline contract is:
 
 1. **Reserve.** The call's estimated cost (prompt size plus the full output budget at the model's price) is written to `spend_reservations` inside an IMMEDIATE transaction, after checking the committed ledger plus every other live reservation against the per-run cap and the global hard limit. Two processes on one database serialize here.
 2. **Call** the provider.
 3. **Settle.** The reservation is deleted and the actual charge appended to `spend_records` in one transaction. A call that fails releases its reservation. A call that returns no usage is charged at the estimate, never zero.
 
-`compound optimize` requires `--paid --cap` and hands the Python side the database path, the cap, the limit, and the prices; every candidate rollout and reflection call reserves and settles the same way, and the run's measured cost is stored with the optimization. A reservation left by a crashed process expires after 15 minutes.
+`compound optimize` requires `--paid --cap` and hands the Python side the database path, the cap, the limit, and the prices; every candidate rollout and reflection call reserves and settles the same way, and the run's measured cost is stored with the optimization. Reservations expire after 15 minutes without a process-liveness check. They protect estimated headroom; an actual provider charge can exceed its estimate.
 
 A paid gate claims its sealed cohort atomically with the prior-decision check before running either experiment, so two gates on the same cohort cannot both pass the preflight. The claim is released when the gate ends; the recorded verdict is what blocks the next attempt.
