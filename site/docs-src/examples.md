@@ -5,11 +5,21 @@ nav: top
 
 # Examples
 
-Two runs made with Compound, published with every per-call record behind them.
+Start with the serving report below, then explore the earlier benchmark runs.
+The earlier runs were made with Compound, with per-call evidence behind them.
 They are small: one model each, a handful of hosts, and within-mode host
 differences that mostly do not reach significance. Read them as worked
 examples of what a report looks like, not as a leaderboard. The point of the
 tool is that you run your own.
+
+## Same model, different serving tradeoffs
+
+DeepSeek V4 Flash across 14 serving routes, six request shapes, cold and warm:
+12,795 measured calls. Explore first-token latency, generation speed, cache
+behavior, failures and request cost, with per-call data available to download.
+
+[Explore the report](../report/serving/), then [run your own experiment](../docs/serving/)
+with representative prompts and the hosts you are considering.
 
 ## Same model, eight hosts
 

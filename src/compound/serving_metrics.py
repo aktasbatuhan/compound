@@ -449,6 +449,7 @@ def one_call(
         "shape": shape_name,
         "rep": rep,
         "cache_mode": cache_mode,
+        "max_tokens": int(shape.get("max_tokens") or max_tokens),
         # None means the host does not take a sampling temperature; see
         # build_messages_body. The value is what was sent, never what was asked.
         "temperature": None if anthropic else temperature,

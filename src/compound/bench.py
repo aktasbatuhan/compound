@@ -794,6 +794,17 @@ def main() -> int:
     tasks.add_argument("--partition", help="filter to one partition")
     tasks.add_argument("--contains", help="case-insensitive substring filter")
 
+    report = sub.add_parser(
+        "serving-report", help="build a portable interactive HTML report from serving JSONL"
+    )
+    report.add_argument(
+        "results", nargs="+", type=Path,
+        help="results.jsonl or .jsonl.gz files; matching conditions are pooled",
+    )
+    report.add_argument("--out", type=Path, required=True, help="output HTML file")
+    report.add_argument("--title", default="Serving comparison")
+    report.add_argument("--force", action="store_true", help="replace an existing report")
+
     serving = sub.add_parser(
         "serving",
         help="serving-metrics harness: TTFT/decode/cost per host per reasoning mode",
@@ -1014,6 +1025,15 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+    if args.command == "serving-report":
+        from compound.serving_report import build_report
+
+        try:
+            out = build_report(args.results, args.out, title=args.title, force=args.force)
+        except (OSError, ValueError, EOFError) as exc:
+            parser.error(str(exc))
+        print(f"Report: {out.resolve()}")
+        return 0
     if args.command == "list":
         return cmd_list()
     if args.command == "prepare":

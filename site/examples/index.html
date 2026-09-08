@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Examples · Compound</title>
-<meta name="description" content="Two runs made with Compound, published with every per-call record behind them.
+<meta name="description" content="Start with the serving report below, then explore the earlier benchmark runs.
+The earlier runs were made with Compound, with per-call evidence behind them.
 They are small: one model each, a handful of hosts, and within-mode host
 differences that mostly do not reach significance. Read them as worked
-examples of what a report looks like, not as a leaderboard. The point of the
 ">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,11 +29,18 @@ examples of what a report looks like, not as a leaderboard. The point of the
 
   <article class="docs-body">
 <h1 id="examples">Examples</h1>
-<p>Two runs made with Compound, published with every per-call record behind them.
+<p>Start with the serving report below, then explore the earlier benchmark runs.
+The earlier runs were made with Compound, with per-call evidence behind them.
 They are small: one model each, a handful of hosts, and within-mode host
 differences that mostly do not reach significance. Read them as worked
 examples of what a report looks like, not as a leaderboard. The point of the
 tool is that you run your own.</p>
+<h2 id="same-model-different-serving-tradeoffs">Same model, different serving tradeoffs</h2>
+<p>DeepSeek V4 Flash across 14 serving routes, six request shapes, cold and warm:
+12,795 measured calls. Explore first-token latency, generation speed, cache
+behavior, failures and request cost, with per-call data available to download.</p>
+<p><a href="../report/serving/">Explore the report</a>, then <a href="../docs/serving/">run your own experiment</a>
+with representative prompts and the hosts you are considering.</p>
 <h2 id="same-model-eight-hosts">Same model, eight hosts</h2>
 <p><code>deepseek-v4-flash</code> on terminal-bench: eight serving configurations, two
 pinned reasoning modes, 588 scored episodes, task time limits tripled so no

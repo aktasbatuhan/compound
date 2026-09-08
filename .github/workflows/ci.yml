@@ -48,5 +48,6 @@ jobs:
       - run: uv sync --extra dev
       - run: bun install --frozen-lockfile
       - run: uv run --with markdown python scripts/build_site.py
+      - run: python3 scripts/serving_evidence.py --check
       - name: built docs match sources
         run: git diff --exit-code -- site/docs site/examples

@@ -232,6 +232,7 @@ def test_one_call_assembles_record_from_stream(monkeypatch):
     assert rec["route"] == "deepinfra"
     assert rec["mode"] == sm.REASONING_ON
     assert rec["shape"] == "S"
+    assert rec["max_tokens"] == captured["body"]["max_tokens"]
     assert rec["status"] == 200
     assert rec["provider_echo"] == "deepinfra"
     assert rec["finish_reason"] == "stop"

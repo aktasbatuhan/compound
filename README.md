@@ -25,6 +25,22 @@ the quality and speed I need?** Compound answers it by running your workload aga
 host with the host pinned and verified, and reporting success, cost, latency, and cache-hit
 rate per host with confidence intervals.
 
+## See what changes across hosts
+
+[Explore the serving report](https://compound-1js.pages.dev/report/serving/):
+DeepSeek V4 Flash across 14 serving routes and six request shapes. Compare
+first-token latency, generation speed, cache behavior, failures, and request cost.
+Then use Compound to run the same measurements on your own prompts.
+
+Create the same kind of interactive comparison from your own serving run:
+
+```bash
+compound-bench serving-report artifacts/serving/results.jsonl --out report.html
+```
+
+Open `report.html` locally or publish it. The file includes workload selectors, linked
+provider highlighting, metric definitions and downloadable measurements.
+
 ## Run it on your model
 
 ```bash

@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "cost_calibration": [
+    {
+      "route": "doubleword-realtime",
+      "cache_mode": "cold",
+      "input_group": "small",
+      "shapes": [
+        "in10k_out100",
+        "in10k_out1k",
+        "in1k_out100",
+        "in1k_out1k"
+      ],
+      "calls": 80,
+      "input_tokens": 448033,
+      "cost_usd": 0.05238491000000001,
+      "cost_per_m_prompt": 0.1169219901212634,
+      "start": "2026-09-04T08:37:06.304487+00:00",
+      "end": "2026-09-04T08:39:09.368892+00:00",
+      "source_sha256": "5db727abab47f0b79980f036c0c34b9d61e5a77d0d36b551db8166763a748d7d",
+      "calls_sha256": "60c12b3c2739c9c9c6ddf2b520b3a5d489a5c18fece0cf7953e394e6931c7d87"
+    },
+    {
+      "route": "doubleword-realtime",
+      "cache_mode": "warm",
+      "input_group": "small",
+      "shapes": [
+        "in10k_out100",
+        "in10k_out1k",
+        "in1k_out100",
+        "in1k_out1k"
+      ],
+      "calls": 80,
+      "input_tokens": 445760,
+      "cost_usd": 0.01080615000000007,
+      "cost_per_m_prompt": 0.024242080940416525,
+      "start": "2026-09-04T08:39:19.776748+00:00",
+      "end": "2026-09-04T08:41:46.400649+00:00",
+      "source_sha256": "5db727abab47f0b79980f036c0c34b9d61e5a77d0d36b551db8166763a748d7d",
+      "calls_sha256": "92df77947fef2e2658ee37475c9e308dd2455fbaabf0017e415f033bd9d87a2b"
+    },
+    {
+      "route": "doubleword-realtime",
+      "cache_mode": "cold",
+      "input_group": "large",
+      "shapes": [
+        "in100k_out100",
+        "in100k_out1k"
+      ],
+      "calls": 16,
+      "input_tokens": 1606584,
+      "cost_usd": 0.1814680999999999,
+      "cost_per_m_prompt": 0.11295276188484381,
+      "start": "2026-09-04T08:41:56.772324+00:00",
+      "end": "2026-09-04T08:43:30.972496+00:00",
+      "source_sha256": "5db727abab47f0b79980f036c0c34b9d61e5a77d0d36b551db8166763a748d7d",
+      "calls_sha256": "c5695fe2e58f262190e375f268504743d0eaf9f17635bb70fb250ff6e25d4178"
+    },
+    {
+      "route": "doubleword-realtime",
+      "cache_mode": "warm",
+      "input_group": "large",
+      "shapes": [
+        "in100k_out100",
+        "in100k_out1k"
+      ],
+      "calls": 16,
+      "input_tokens": 1606128,
+      "cost_usd": 0.039404080000000063,
+      "cost_per_m_prompt": 0.024533586364225056,
+      "start": "2026-09-04T08:43:41.406445+00:00",
+      "end": "2026-09-04T08:46:15.942502+00:00",
+      "source_sha256": "5db727abab47f0b79980f036c0c34b9d61e5a77d0d36b551db8166763a748d7d",
+      "calls_sha256": "7811f98e03f65ac8d316e368e4dc478a55a6e7e0e7b923f55b7a6fa0c5e22d7a"
+    },
+    {
+      "route": "doubleword-flex",
+      "cache_mode": "cold",
+      "input_group": "small",
+      "shapes": [
+        "in10k_out100",
+        "in10k_out1k",
+        "in1k_out100",
+        "in1k_out1k"
+      ],
+      "calls": 80,
+      "input_tokens": 448040,
+      "cost_usd": 0.04074909999999998,
+      "cost_per_m_prompt": 0.09094969199178642,
+      "start": "2026-09-04T08:46:26.825211+00:00",
+      "end": "2026-09-04T08:48:20.112685+00:00",
+      "source_sha256": "5db727abab47f0b79980f036c0c34b9d61e5a77d0d36b551db8166763a748d7d",
+      "calls_sha256": "f0c5bb4d7d8bbcd602513e6f3b2b2e29e91f60f42d8099cd9087783d6b134041"
+    },
+    {
+      "route": "doubleword-flex",
+      "cache_mode": "warm",
+      "input_group": "small",
+      "shapes": [
+        "in10k_out100",
+        "in10k_out1k",
+        "in1k_out100",
+        "in1k_out1k"
+      ],
+      "calls": 80,
+      "input_tokens": 445760,
+      "cost_usd": 0.008289639999999987,
+      "cost_per_m_prompt": 0.01859664393395546,
+      "start": "2026-09-04T08:48:30.564738+00:00",
+      "end": "2026-09-04T08:51:52.727696+00:00",
+      "source_sha256": "5db727abab47f0b79980f036c0c34b9d61e5a77d0d36b551db8166763a748d7d",
+      "calls_sha256": "f71da2f45aa49382baeb5df68e7e82561a9ea8f938dc208f34efff3599b170a6"
+    },
+    {
+      "route": "doubleword-flex",
+      "cache_mode": "cold",
+      "input_group": "large",
+      "shapes": [
+        "in100k_out100",
+        "in100k_out1k"
+      ],
+      "calls": 16,
+      "input_tokens": 1606579,
+      "cost_usd": 0.14130045999999996,
+      "cost_per_m_prompt": 0.08795114339226391,
+      "start": "2026-09-04T08:52:03.199999+00:00",
+      "end": "2026-09-04T08:53:51.404862+00:00",
+      "source_sha256": "5db727abab47f0b79980f036c0c34b9d61e5a77d0d36b551db8166763a748d7d",
+      "calls_sha256": "dbc5e3e2ee4fcdda407beb11d36d80e8c20fcba708331865495f3bc6b2a331c1"
+    },
+    {
+      "route": "doubleword-flex",
+      "cache_mode": "warm",
+      "input_group": "large",
+      "shapes": [
+        "in100k_out100",
+        "in100k_out1k"
+      ],
+      "calls": 16,
+      "input_tokens": 1606128,
+      "cost_usd": 0.030398570000000014,
+      "cost_per_m_prompt": 0.018926617305719103,
+      "start": "2026-09-04T08:54:01.800126+00:00",
+      "end": "2026-09-04T08:56:18.876318+00:00",
+      "source_sha256": "5db727abab47f0b79980f036c0c34b9d61e5a77d0d36b551db8166763a748d7d",
+      "calls_sha256": "bd1a386e45176c9e0f0cd3e4e09cd62200fc4730ec0662f81db3be75833701e0"
+    }
+  ],
+  "cost_method": "Doubleword costs use matched account-meter charge deltas divided by input tokens from separate calibration calls. Small calibration pools 1k and 10k shapes; large pools 100k shapes, each across output budgets. Applied to corresponding marked-run cells without assigning costs to individual calls.",
+  "model": "DeepSeek V4 Flash (0731)",
+  "model_identity_basis": "Archived experiment configuration; legacy rows lack model IDs.",
+  "sources": [
+    {
+      "id": "original",
+      "archive": "serving-1788459928/all.jsonl",
+      "sha256": "5247b4b8ff0b6787a95463ed494c12a09d46466f85e508509b8ffba9976a4b9c",
+      "rows": 12880,
+      "excluded": {
+        "unmarked_doubleword": 1840,
+        "account_credit": 85
+      },
+      "included": 10955,
+      "start": "2026-09-03T18:27:26+0000",
+      "end": "2026-09-03T20:51:44+0000"
+    },
+    {
+      "id": "marked",
+      "archive": "serving-dw-marked/all.jsonl",
+      "sha256": "e6f68d1aef83633b7585cbf9f518bb3ab7d35268fca8186233e8d33705a99c4b",
+      "rows": 1840,
+      "excluded": {},
+      "included": 1840,
+      "start": "2026-09-03T20:56:08+0000",
+      "end": "2026-09-03T23:17:08+0000"
+    },
+    {
+      "id": "auto_followup",
+      "archive": "serving-auto-402-rerun/all.jsonl",
+      "sha256": "9850b1a5d826329810a545a337b7901843396306ade86f6a71f2291014652a9f",
+      "rows": 17,
+      "excluded": {},
+      "included": 17,
+      "start": "2026-09-04T08:24:00+0000",
+      "end": "2026-09-04T08:31:05+0000"
+    }
+  ],
+  "included_rows": 12812,
+  "calls_sha256": "e30dd477d54a6cf3288e060f869e43ef485baf05a1b6ae847bb45a45261ddf63",
+  "decoded_sha256": "a85974cda7701a6028a852632a00ecbc559b384d933b4430881c800b44b61f70",
+  "selection": "Original non-Doubleword routes plus marked Doubleword rerun. All account-credit 402 rows excluded. Auto follow-up shown separately.",
+  "limitations": [
+    "Controlled request shapes, not production traffic or task-quality evaluation.",
+    "Doubleword was rerun later; time-of-day effects are not controlled across those runs.",
+    "Cold requests contain unique nonces; only warm requests repeat identical prefixes.",
+    "Quantization suffixes are discovery labels, not verified per-call constraints.",
+    "Excluding credit errors changes denominators and leaves gaps in affected cells.",
+    "Cost uses per-call charges where reported and separate Doubleword calibration intervals where available.",
+    "Repeated calls are dependent observations; intervals are descriptive, not causal tests.",
+    "No raw prompt, output, or error text is included in this public measurement bundle."
+  ]
+}

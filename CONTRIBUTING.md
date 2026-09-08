@@ -26,6 +26,17 @@ python3 scripts/build_site.py      # only if you touched site/docs-src
 CI runs the same commands. The site job fails if `site/docs/` is out of date
 with `site/docs-src/`, so commit the rebuilt pages with the source change.
 
+The bundled serving study rebuilds without dependencies or credentials:
+
+```bash
+python3 scripts/serving_evidence.py          # rebuild HTML and JSON summary
+python3 scripts/serving_evidence.py --check  # verify checksums and generated output
+```
+
+Its public archive contains only selected measurement fields. Do not add raw
+prompts, completions, error bodies, or account identifiers. Source hashes and
+row numbers preserve provenance; exclusions remain explicit in the manifest.
+
 ## What makes a change easy to merge
 
 - **Every number has a record.** A change that reports a new metric should say
