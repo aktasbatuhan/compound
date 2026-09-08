@@ -16,8 +16,25 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 # Only measurements are exported. Request/response text and raw errors are private.
-STRINGS = ("iso", "route", "model", "mode", "shape", "cache_mode", "provider_echo")
+STRINGS = (
+    "iso",
+    "route",
+    "model",
+    "mode",
+    "shape",
+    "cache_mode",
+    "provider_echo",
+    "experiment",
+    "reuse_policy",
+    "phase",
+    "run_id",
+    "prompt_sha256",
+)
 NUMBERS = (
+    "idle_s",
+    "actual_idle_s",
+    "concurrency",
+    "trial",
     "max_tokens",
     "temperature",
     "status",
@@ -32,7 +49,16 @@ NUMBERS = (
     "total_s",
     "decode_tps",
 )
-CONDITION = ("shape", "mode", "temperature", "max_tokens")
+CONDITION = (
+    "shape",
+    "mode",
+    "temperature",
+    "max_tokens",
+    "experiment",
+    "reuse_policy",
+    "idle_s",
+    "concurrency",
+)
 ARM = ("route", "model", "cache_marked")
 
 
@@ -265,24 +291,27 @@ def scatter(cells, ids):
 
 
 def cache_change(cells, ids):
+    phases = (
+        ("prime", "probe")
+        if any(c.get("experiment") == "cache-study" for c in cells)
+        else ("cold", "warm")
+    )
+    before, after = phases
     pairs = defaultdict(dict)
     for c in cells:
-        if c["cache_mode"] in ("cold", "warm"):
+        if c["cache_mode"] in phases:
             pairs[arm(c)][c["cache_mode"]] = c
     out, i = "", 0
     available = [
         p
         for p in pairs.values()
-        if all(k in p and p[k]["cost_per_m_prompt"] is not None for k in ("cold", "warm"))
+        if all(k in p and p[k]["cost_per_m_prompt"] is not None for k in phases)
     ]
-    maximum = (
-        max((p[k]["cost_per_m_prompt"] for p in available for k in ("cold", "warm")), default=1)
-        or 1
-    )
+    maximum = max((p[k]["cost_per_m_prompt"] for p in available for k in phases), default=1) or 1
     for p in available:
-        c, w = p["cold"], p["warm"]
+        c, w = p[before], p[after]
         y = 65 + i * 36
-        a, b = (300 + p[k]["cost_per_m_prompt"] / maximum * 350 for k in ("cold", "warm"))
+        a, b = (300 + p[k]["cost_per_m_prompt"] / maximum * 350 for k in phases)
         label = f"{ids[arm(c)]}. {c['route']}"
         marks = svg_text(280, y + 5, label[:28], "end") + line(a, y, b, y, "range")
         marks += f'<circle class="cold" cx="{a}" cy="{y}" r="5"/>' + dot(b, y)
@@ -294,20 +323,22 @@ def cache_change(cells, ids):
         out += group(
             c,
             label
-            + " · cold $"
+            + f" · {before} $"
             + fmt(c["cost_per_m_prompt"], 4)
-            + " · warm $"
+            + f" · {after} $"
             + fmt(w["cost_per_m_prompt"], 4),
             marks,
             ids,
         )
         i += 1
     if not available:
-        return '<section class="figure"><h3>Cache cost impact</h3><p>Needs reported costs for both cold and warm calls from the same provider, model and marker setting.</p></section>'
-    out += svg_text(300, 25, "Cold ○ → warm ●; linear cost scale from $0 to $" + fmt(maximum, 4))
+        return f'<section class="figure"><h3>Cache cost impact</h3><p>Needs reported costs for both {before} and {after} calls from the same provider, model and marker setting.</p></section>'
+    out += svg_text(
+        300, 25, f"{before.title()} ○ → {after} ●; linear cost scale from $0 to $" + fmt(maximum, 4)
+    )
     return figure(
         "Cache cost impact",
-        "Request cost per million input tokens, including output charges. Compares the cold and warm groups for this workload and reasoning/temperature setting. Warm includes the first cache-populating call.",
+        f"Request cost per million input tokens, including output charges. Compares {before} and {after} calls for matching workload settings. Priming calls are separate in cache studies; ordinary warm serving groups include their first call.",
         out,
         100 + i * 36,
     )
@@ -319,11 +350,23 @@ def render(rows, cells, manifest, title):
     for c in cells:
         cohorts[tuple(c[k] for k in (*CONDITION, "cache_mode"))].append(c)
     sections, options = [], []
-    labels = ("Workload", "Reasoning", "Temperature", "Output budget", "Cache")
+    labels = (
+        "Workload",
+        "Reasoning",
+        "Temperature",
+        "Output budget",
+        "Experiment",
+        "Prefix reuse",
+        "Idle seconds",
+        "Burst size",
+        "Phase / cache",
+    )
     for index, (condition, selected) in enumerate(cohorts.items()):
         label = " · ".join(
             f"{k}: {v if v is not None else 'not recorded'}"
             for k, v in zip(labels, condition, strict=True)
+            if v is not None
+            or k in ("Workload", "Reasoning", "Temperature", "Output budget", "Phase / cache")
         )
         options.append(f'<option value="condition-{index}">{esc(label)}</option>')
         body = f'<h2>{esc(condition[0])}</h2><p>{esc(label)}</p><ul class="legend">'

@@ -85,6 +85,60 @@ cache-populating call. This is serving measurement, not an answer-quality evalua
 <p>Request/response text, raw error messages and credentials are excluded from downloads.
 Review route, model and shape labels before publishing; those labels are included.
 Existing output files are preserved unless you pass <code>--force</code>.</p>
+<h2 id="run-a-controlled-cache-experiment">Run a controlled cache experiment</h2>
+<p><code>cache-study</code> compares OpenRouter automatic routing, pinned routes and Doubleword
+realtime/flex. Each independent trial primes a new prefix, waits for the selected idle delay,
+then submits a burst of probes. Priming completes before any probe starts. No retries
+are added. Trial order is shuffled with a recorded seed.</p>
+<pre><code class="language-bash">compound-bench cache-study \
+    --providers openrouter/auto,openrouter/relace \
+    --model-or YOUR_MODEL \
+    --shapes benchmarks/cache-study/shapes.json \
+    --reuse exact,prefix,none --delays 0,30 --concurrency 1,4 \
+    --trials 3 --max-calls 252 --out artifacts/cache-study
+</code></pre>
+<p>To include Doubleword, append <code>doubleword/realtime,doubleword/flex</code> to <code>--providers</code>
+and supply <code>--model deepseek-ai/DeepSeek-V4-Flash-0731</code> alongside the matching
+<code>--model-or deepseek/deepseek-v4-flash-0731</code>. Four routes double the plan to 504 calls;
+raise <code>--max-calls</code> explicitly. Doubleword runs require cache markers and refuse to
+start if <code>COMPOUND_DW_CACHE</code> disables them. Paid runs load keys from <code>.env</code>.</p>
+<p>This is a dry run: <strong>72 priming calls + 180 probes = 252 calls</strong>, with 1,080 seconds
+of scheduled idle time plus request time if executed. Confirm the model and pinned
+host are available before adding <code>--go</code>. The call limit rejects larger plans before
+execution; it is not a dollar cap. Execution requires a new output directory.
+For a smaller wiring check, use <code>--reuse exact --delays 0 --concurrency 1 --trials 1</code>:
+two routes, four calls total.</p>
+<p>The bundled synthetic reference has 32,768 characters before instructions and trial
+identifiers, with a 16-token output budget. It is not a quality benchmark or a claim
+about an exact token count. Replace it with your own shapes to test representative
+prompt sizes; every shape must declare <code>max_tokens</code>.</p>
+<p>The reuse conditions are:</p>
+<ul>
+<li><code>exact</code>: probes repeat the priming messages exactly.</li>
+<li><code>prefix</code>: probes retain the document prefix and change a request ID in the final message.</li>
+<li><code>none</code>: each probe gets a new identifier at the start of the prompt as a fresh-prefix control.</li>
+</ul>
+<p>Every route and trial gets an independent fixed-length prefix identifier, preventing
+one experiment arm from priming another. Consequently, prompts across routes differ
+in this identifier; they contain the same reference content. Prefix isolation avoids
+cross-arm cache reuse but does not control shared capacity or provider load.</p>
+<p>Concurrency is the requested probe burst size, not a sustained requests-per-second
+load. Idle time is measured from priming completion; <code>actual_idle_s</code> records each
+probe's start gap. A failed prime remains in the evidence and probes still run, so
+inspect priming failures before interpreting a low cache share. Provider cache hits
+are measured, never assumed from the phase name.</p>
+<pre><code class="language-bash">compound-bench serving-report artifacts/cache-study/results.jsonl \
+    --out artifacts/cache-study/report.html --title &quot;Routing and prefix reuse&quot;
+</code></pre>
+<p>The report separates reuse policy, delay, burst size and prime/probe phases. Its cost
+comparison pairs priming and probe groups within matching conditions. The output
+<code>experiment.json</code> records planned calls, trial order, routes and a hash of the shapes;
+per-call records include prompt hashes, settings, timings and reported upstreams.</p>
+<p>Start by asking whether the cost gap changes with reuse, delay or burst size. Routing
+distributions and cache shares are observations; they do not by themselves establish
+why a provider cached or evicted a prefix. Three trials are a pilot, not enough to
+support a general provider ranking. Repeat a larger balanced experiment across time
+windows before publishing broader conclusions.</p>
   </article>
 </main>
 <footer>

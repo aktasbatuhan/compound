@@ -494,6 +494,47 @@ _HARBOR_DEFAULT_DATASET = "terminal-bench/terminal-bench@4.0.0"
 _HARBOR_DEFAULT_AGENT = "terminus-2"
 
 
+def cmd_cache_study(args: argparse.Namespace) -> int:
+    from compound import cache_study, serving_metrics
+    from compound.env import load_env
+    from compound.providers_registry import parse_providers
+
+    try:
+        if args.go:
+            load_env()
+        specs = parse_providers(args.providers, providers_config=_load_providers_config())
+        shapes = serving_metrics.load_shapes(Path(args.shapes))
+        for spec in specs:
+            serving_metrics.model_for(spec, args.model_or, args.model)
+        if (any(s.cache_strategy == "explicit_marker" for s in specs)
+                and not serving_metrics.cache_optin_enabled()):
+            raise ValueError(
+                "cache-study requires explicit cache markers; enable COMPOUND_DW_CACHE"
+            )
+        conditions = cache_study.plan(
+            specs, shapes, args.reuse.split(","),
+            [float(v) for v in args.delays.split(",")],
+            [int(v) for v in args.concurrency.split(",")], args.trials,
+        )
+        count = sum(1+c[4] for c in conditions)
+        if count > args.max_calls:
+            raise ValueError(f"planned {count} calls exceeds --max-calls {args.max_calls}")
+        print(f"cache-study: {len(conditions)} trials, {len(conditions)} priming calls, "
+              f"{count-len(conditions)} probes = {count} calls")
+        print(f"Scheduled idle time: {sum(c[3] for c in conditions):g}s plus request time. "
+              "No retries. Provider charges are not dollar-capped.")
+        if not args.go:
+            print("dry run (no spend or output writes). Add --go to execute.")
+            return 0
+        _require_keys({s.required_key_env() for s in specs})
+        out = cache_study.run(specs, args.model_or, shapes, conditions, Path(args.out),
+                              direct_model=args.model, seed=args.seed, max_calls=args.max_calls)
+    except (ValueError, OSError) as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    print(f"results -> {out}")
+    return 0
+
+
 def cmd_serving(args: argparse.Namespace) -> int:
     """Serving-metrics harness: TTFT / decode TPS / cost per host per reasoning mode."""
     from compound import serving_metrics as sm
@@ -794,6 +835,24 @@ def main() -> int:
     tasks.add_argument("--partition", help="filter to one partition")
     tasks.add_argument("--contains", help="case-insensitive substring filter")
 
+    cache = sub.add_parser("cache-study", help="controlled prime/wait/probe cache experiment")
+    cache.add_argument("--providers", required=True, help="OpenRouter and Doubleword route tokens")
+    cache.add_argument("--model-or", required=True)
+    cache.add_argument("--model", help="Doubleword model ID for the same model version")
+    cache.add_argument("--shapes", required=True, help="shapes JSON; each needs max_tokens")
+    cache.add_argument("--reuse", default="exact,prefix,none")
+    cache.add_argument(
+        "--delays", default="0,30", help="comma-separated idle seconds after priming"
+    )
+    cache.add_argument("--concurrency", default="1,4", help="comma-separated probe burst sizes")
+    cache.add_argument("--trials", type=int, default=3)
+    cache.add_argument("--seed", type=int, default=0, help="trial-order random seed")
+    cache.add_argument(
+        "--max-calls", type=int, default=1000, help="refuse larger plans; not a dollar cap"
+    )
+    cache.add_argument("--out", default="artifacts/cache-study", help="new output directory")
+    cache.add_argument("--go", action="store_true", help="execute paid calls; default is a dry run")
+
     report = sub.add_parser(
         "serving-report", help="build a portable interactive HTML report from serving JSONL"
     )
@@ -1025,6 +1084,8 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+    if args.command == "cache-study":
+        return cmd_cache_study(args)
     if args.command == "serving-report":
         from compound.serving_report import build_report
 
