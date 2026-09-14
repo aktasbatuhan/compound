@@ -816,3 +816,122 @@ def test_derived_cost_uses_the_only_card_when_a_ledger_has_no_model():
     # another model's rate
     other = dict(old_ledger, model="some-other-model")
     assert sm.derived_cost_usd(other, RATES) is None
+
+
+def test_cache_effectiveness_flags_requested_but_never_observed():
+    """A host that accepts a cache marker and caches nothing must say so.
+
+    This is the hazard that keeps Anthropic on its native Messages API here: an
+    API layer can accept the request and report zero cached tokens, which scores
+    the host at 0% cache and reads as the tier being expensive.
+    """
+    from compound.serving_metrics import cache_effectiveness
+
+    asked_and_denied = [
+        {"cache_requested": True,
+         "usage": {"input_tokens": 4000, "input_tokens_details": {"cached_tokens": 0}}}
+        for _ in range(4)
+    ]
+    report = cache_effectiveness(asked_and_denied)
+    assert report["requested_but_never_observed"] is True
+    assert report["cached_input_share"] == 0.0
+    assert report["warning"]
+
+    asked_and_served = [
+        {"cache_requested": True,
+         "usage": {"prompt_tokens": 4000, "cache_read_input_tokens": 2000}}
+        for _ in range(4)
+    ]
+    report = cache_effectiveness(asked_and_served)
+    assert report["requested_but_never_observed"] is False
+    assert report["warning"] is None
+    assert report["cached_input_share"] == 0.5
+
+    never_asked = [{"cache_requested": False, "usage": {"prompt_tokens": 4000}}]
+    assert cache_effectiveness(never_asked)["warning"] is None
+
+
+def test_cache_effectiveness_reads_real_provider_usage_shapes():
+    """Payloads captured from live runs, not shapes invented to match the parser.
+
+    Anthropic reports input_tokens alongside cache_read_input_tokens, and its
+    input_tokens excludes what the cache served. Selecting on input_tokens alone
+    routes it down the Responses branch and scores it at 0% cache, which is the
+    failure this function exists to detect.
+    """
+    from compound.serving_metrics import cache_effectiveness
+
+    # Doubleword realtime, chat completions, measured 2026-09-14.
+    dw_realtime = {"prompt_tokens": 3899,
+                   "prompt_tokens_details": {"cached_tokens": 2336},
+                   "cache_read_input_tokens": 2336,
+                   "cache_creation_input_tokens": 0,
+                   "completion_tokens": 1571}
+    assert cache_effectiveness(
+        [{"cache_requested": True, "usage": dw_realtime}]
+    )["cached_input_share"] == round(2336 / 3899, 4)
+
+    # Doubleword async, responses API, same day: accepted the marker, cached nothing.
+    dw_async = {"input_tokens": 3899,
+                "input_tokens_details": {"cached_tokens": 0},
+                "output_tokens": 1007}
+    report = cache_effectiveness([{"cache_requested": True, "usage": dw_async}])
+    assert report["cached_input_share"] == 0.0
+    assert report["requested_but_never_observed"] is True
+
+    # Native Anthropic Messages: input_tokens excludes cache reads and writes.
+    anthropic = {"input_tokens": 1000,
+                 "cache_read_input_tokens": 3000,
+                 "cache_creation_input_tokens": 0,
+                 "output_tokens": 200}
+    report = cache_effectiveness([{"cache_requested": True, "usage": anthropic}])
+    assert report["cached_input_share"] == 0.75, "Anthropic must not be scored at 0% cache"
+    assert report["requested_but_never_observed"] is False
+
+    # An Anthropic call that wrote the cache but read nothing is still a real 0%.
+    cold = {"input_tokens": 1000, "cache_creation_input_tokens": 3000,
+            "cache_read_input_tokens": 0, "output_tokens": 200}
+    assert cache_effectiveness(
+        [{"cache_requested": True, "usage": cold}]
+    )["cached_input_share"] == 0.0
+
+
+def test_cache_effectiveness_precedence_and_flags():
+    """Zero is a measurement; a missing counter is not. Either request flag counts."""
+    from compound.serving_metrics import cache_effectiveness
+
+    # Nested counter says zero while a stale top-level counter says 40: zero wins,
+    # so a route that genuinely stopped caching is not reported as still caching.
+    conflicting = {"prompt_tokens": 100,
+                   "prompt_tokens_details": {"cached_tokens": 0},
+                   "cache_read_input_tokens": 40}
+    report = cache_effectiveness([{"cache_requested": True, "usage": conflicting}])
+    assert report["cached_input_share"] == 0.0
+    assert report["requested_but_never_observed"] is True
+
+    # Missing nested counter does fall back to the top-level one.
+    missing_nested = {"prompt_tokens": 100, "cache_read_input_tokens": 40}
+    assert cache_effectiveness(
+        [{"cache_requested": True, "usage": missing_nested}]
+    )["cached_input_share"] == 0.4
+
+    # The serving harness emits cache_marked, not cache_requested.
+    marked = [{"cache_marked": True,
+               "usage": {"prompt_tokens": 100, "prompt_tokens_details": {"cached_tokens": 0}}}]
+    assert cache_effectiveness(marked)["requested_but_never_observed"] is True
+
+    # The warning counts what it actually saw rather than claiming every call.
+    mixed = [{"cache_marked": True, "usage": {"prompt_tokens": 100}},
+             {"cache_marked": False, "usage": {"prompt_tokens": 100}}]
+    assert "1 of 2 calls" in cache_effectiveness(mixed)["warning"]
+
+
+def test_cache_effectiveness_handles_empty_and_missing_usage():
+    from compound.serving_metrics import cache_effectiveness
+
+    assert cache_effectiveness([])["cached_input_share"] == 0.0
+    assert cache_effectiveness([])["warning"] is None
+    # A cell with no usage is dropped, so telemetry gaps never fake a 0% cache.
+    only_missing = [{"cache_requested": True, "usage": None}]
+    assert cache_effectiveness(only_missing)["cells"] == 0
+    assert cache_effectiveness(only_missing)["warning"] is None
