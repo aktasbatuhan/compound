@@ -28,7 +28,11 @@ providers:
     # This backend is the Responses API, so it does not cache. A flex run through
     # chat completions pays async rates and still caches; a flex run through
     # responses pays async rates on every input token.
-    cache_strategy: none
+    #
+    # No cache_strategy is declared here on purpose. The field is only read for
+    # direct/<name> routes (providers_registry), where this host already defaults
+    # to "none". The doubleword/flex and doubleword/realtime routes do not consult
+    # it, so declaring it here would imply an enforcement that does not exist.
   # OpenAI direct (issue #10). openai_compatible, so no adapter code — the same
   # HttpProvider that serves OpenRouter serves it. Any host that mirrors this API
   # (vLLM, Fireworks, Together, Groq, Cerebras, …) is one more provider block.

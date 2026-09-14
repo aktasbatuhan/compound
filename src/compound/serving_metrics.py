@@ -80,8 +80,13 @@ def cache_effectiveness(cells):
     hazard the Anthropic OpenAI-compatible layer presents, and the reason Anthropic
     is measured on its native Messages API here.
 
-    Each cell is a mapping with a ``usage`` block and a ``cache_requested`` flag.
-    Usage is read in the Responses, Chat Completions and Anthropic shapes.
+    Each cell is a mapping with a ``usage`` block and a flag saying the call asked to
+    cache: ``cache_marked`` as the serving harness emits it, or ``cache_requested``.
+    Usage is read in the Responses, Chat Completions and native Anthropic shapes.
+
+    Group cells by host, API and model before calling this. An aggregate over mixed
+    routes can hide one route that cached nothing behind others that cached well,
+    which is the case this is meant to surface.
     """
 
     requested = observed = total_input = total_cached = counted = 0
@@ -90,14 +95,30 @@ def cache_effectiveness(cells):
         if not usage:
             continue
         counted += 1
-        requested += bool(cell.get("cache_requested"))
-        if "input_tokens" in usage:
-            tin = usage.get("input_tokens", 0) or 0
-            cached = (usage.get("input_tokens_details") or {}).get("cached_tokens", 0) or 0
+        # Shipped serving cells carry "cache_marked"; migration rows carry
+        # "cache_requested". Either means the same thing: this call asked to cache.
+        requested += bool(cell.get("cache_requested") or cell.get("cache_marked"))
+        read = usage.get("cache_read_input_tokens") or 0
+        write = usage.get("cache_creation_input_tokens") or 0
+        if "prompt_tokens" in usage:
+            # Chat Completions, and the hosts that add Anthropic-style cache counters
+            # beside it. prompt_tokens already includes whatever was read from cache.
+            tin = usage.get("prompt_tokens") or 0
+            nested = (usage.get("prompt_tokens_details") or {}).get("cached_tokens")
+            # An explicit zero is a measurement. Only a missing counter falls back.
+            cached = nested if nested is not None else read
+        elif read or write:
+            # Native Anthropic Messages. input_tokens counts only what was neither read
+            # from nor written to the cache, so the other two are added back to get the
+            # prompt the request actually carried. Selecting on input_tokens alone would
+            # send this shape down the Responses branch and score it at 0% cache, which
+            # is the failure this function exists to catch.
+            tin = (usage.get("input_tokens") or 0) + read + write
+            cached = read
         else:
-            tin = usage.get("prompt_tokens", 0) or 0
-            cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0
-            cached = usage.get("cache_read_input_tokens", 0) or cached
+            # Responses.
+            tin = usage.get("input_tokens") or 0
+            cached = (usage.get("input_tokens_details") or {}).get("cached_tokens") or 0
         total_input += tin
         total_cached += cached
         observed += bool(cached)
@@ -110,9 +131,10 @@ def cache_effectiveness(cells):
         "cached_input_share": round(total_cached / total_input, 4) if total_input else 0.0,
         "requested_but_never_observed": silent,
         "warning": (
-            "Prompt caching was requested on every call and never observed. The cost and "
-            "latency here are uncached. Check whether this host supports caching on this "
-            "API before attributing the result to the tier or the model."
+            f"Prompt caching was requested on {requested} of {counted} calls and never "
+            "observed. The cost and latency here are uncached. Check whether this host "
+            "supports caching on this API before attributing the result to the tier or "
+            "the model."
             if silent else None
         ),
     }
