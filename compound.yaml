@@ -18,6 +18,17 @@ providers:
     base_url: https://api.doubleword.ai/v1
     api_key_env: DOUBLEWORD_API_KEY
     type: flex
+    # Prompt caching here depends on the API, not the tier. Doubleword's caching
+    # guide states that cache_control is supported on /v1/chat/completions and
+    # "isn't supported yet" on /v1/responses, and the async/flex tier is reachable
+    # from either. Measured 2026-09-14 on DeepSeek V4.1 Flash, same account, one
+    # byte-identical 4k-token prompt repeated six times: chat completions cached
+    # 57.8% (realtime) and 58.1% (service_tier flex), while /v1/responses cached
+    # 0% on both the flex and the default tier, with and without the marker.
+    # This backend is the Responses API, so it does not cache. A flex run through
+    # chat completions pays async rates and still caches; a flex run through
+    # responses pays async rates on every input token.
+    cache_strategy: none
   # OpenAI direct (issue #10). openai_compatible, so no adapter code — the same
   # HttpProvider that serves OpenRouter serves it. Any host that mirrors this API
   # (vLLM, Fireworks, Together, Groq, Cerebras, …) is one more provider block.

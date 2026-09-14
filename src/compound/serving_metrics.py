@@ -70,6 +70,54 @@ REASONING_ON = "reasoning-on"
 REASONING_OFF = "reasoning-off"
 MODES = (REASONING_ON, REASONING_OFF)
 
+def cache_effectiveness(cells):
+    """Compare prompt caching that was requested against caching that was observed.
+
+    A host can accept a cache marker on an endpoint that does not implement caching
+    and return zero cached tokens without an error. That reads as the tier or the
+    model being expensive when it is the API layer that cannot cache, so the gap is
+    reported rather than left to be inferred from a cost column. This is the same
+    hazard the Anthropic OpenAI-compatible layer presents, and the reason Anthropic
+    is measured on its native Messages API here.
+
+    Each cell is a mapping with a ``usage`` block and a ``cache_requested`` flag.
+    Usage is read in the Responses, Chat Completions and Anthropic shapes.
+    """
+
+    requested = observed = total_input = total_cached = counted = 0
+    for cell in cells:
+        usage = (cell or {}).get("usage") or {}
+        if not usage:
+            continue
+        counted += 1
+        requested += bool(cell.get("cache_requested"))
+        if "input_tokens" in usage:
+            tin = usage.get("input_tokens", 0) or 0
+            cached = (usage.get("input_tokens_details") or {}).get("cached_tokens", 0) or 0
+        else:
+            tin = usage.get("prompt_tokens", 0) or 0
+            cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0
+            cached = usage.get("cache_read_input_tokens", 0) or cached
+        total_input += tin
+        total_cached += cached
+        observed += bool(cached)
+    asked = requested > 0
+    silent = bool(asked and observed == 0)
+    return {
+        "cells": counted,
+        "cache_requested_cells": requested,
+        "cache_observed_cells": observed,
+        "cached_input_share": round(total_cached / total_input, 4) if total_input else 0.0,
+        "requested_but_never_observed": silent,
+        "warning": (
+            "Prompt caching was requested on every call and never observed. The cost and "
+            "latency here are uncached. Check whether this host supports caching on this "
+            "API before attributing the result to the tier or the model."
+            if silent else None
+        ),
+    }
+
+
 #: How a cell treats the host's prompt cache.
 #:   "cold" prepends a per-call nonce, so no prefix can ever be served warm.
 #:         This isolates raw serving speed and is the honest number to compare

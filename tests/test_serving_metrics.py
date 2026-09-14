@@ -816,3 +816,51 @@ def test_derived_cost_uses_the_only_card_when_a_ledger_has_no_model():
     # another model's rate
     other = dict(old_ledger, model="some-other-model")
     assert sm.derived_cost_usd(other, RATES) is None
+
+
+def test_cache_effectiveness_flags_requested_but_never_observed():
+    """A host that accepts a cache marker and caches nothing must say so.
+
+    This is the hazard that keeps Anthropic on its native Messages API here: an
+    API layer can accept the request and report zero cached tokens, which scores
+    the host at 0% cache and reads as the tier being expensive.
+    """
+    from compound.serving_metrics import cache_effectiveness
+
+    asked_and_denied = [
+        {"cache_requested": True,
+         "usage": {"input_tokens": 4000, "input_tokens_details": {"cached_tokens": 0}}}
+        for _ in range(4)
+    ]
+    report = cache_effectiveness(asked_and_denied)
+    assert report["requested_but_never_observed"] is True
+    assert report["cached_input_share"] == 0.0
+    assert report["warning"]
+
+    asked_and_served = [
+        {"cache_requested": True,
+         "usage": {"prompt_tokens": 4000, "cache_read_input_tokens": 2000}}
+        for _ in range(4)
+    ]
+    report = cache_effectiveness(asked_and_served)
+    assert report["requested_but_never_observed"] is False
+    assert report["warning"] is None
+    assert report["cached_input_share"] == 0.5
+
+    never_asked = [{"cache_requested": False, "usage": {"prompt_tokens": 4000}}]
+    assert cache_effectiveness(never_asked)["warning"] is None
+
+
+def test_cache_effectiveness_reads_all_three_usage_shapes():
+    from compound.serving_metrics import cache_effectiveness
+
+    shapes = [
+        [{"cache_requested": True,
+          "usage": {"input_tokens": 100, "input_tokens_details": {"cached_tokens": 40}}}],
+        [{"cache_requested": True,
+          "usage": {"prompt_tokens": 100, "prompt_tokens_details": {"cached_tokens": 40}}}],
+        [{"cache_requested": True,
+          "usage": {"prompt_tokens": 100, "cache_read_input_tokens": 40}}],
+    ]
+    for cells in shapes:
+        assert cache_effectiveness(cells)["cached_input_share"] == 0.4
