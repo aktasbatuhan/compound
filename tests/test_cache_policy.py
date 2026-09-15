@@ -29,8 +29,6 @@ DELEGATES_TO_PROXY = {
     "tau_sweep.py": "passes a base_url to the tau2 harness; point it at orproxy",
     "tau_gepa.py": "passes a base_url to GEPA; point it at orproxy",
     "bench.py": "resolves a base_url for external benchmarks; point them at orproxy",
-    "providers_registry.py": "declares endpoints and cache strategy, sends nothing",
-    "migration_io.py": "documents the Responses cache difference, sends nothing",
 }
 
 
