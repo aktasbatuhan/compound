@@ -57,3 +57,9 @@ skills-lock.json
 packages/cli/compound.yaml
 *.jpeg
 compound-launch-results.png
+
+# Private prospect research, contacts, and outreach drafts.
+/outreach/
+
+# Local credentials for paid study runs, never committed.
+keys.json

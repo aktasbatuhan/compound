@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "selection_seed": "flex-agentic-20260909",
+  "trials": 1,
+  "deadlines_s": [
+    60,
+    300,
+    900
+  ],
+  "sources": {
+    "retail": {
+      "repo": "https://github.com/amazon-agi/tau2-bench-verified",
+      "revision": "864350a8971a8f8ee9e7b8472e2edc380a806b0c",
+      "data_path": ".compound/sources/tau2-bench-verified/data/tau2/domains/retail/tasks.json",
+      "data_sha256": "04cef2fdf59745e1c890d0e722726f103685ce94ba8cd63035d9ff9c2744b157",
+      "tasks": [
+        {
+          "id": "16",
+          "stratum": "cancel_pending_order",
+          "sha256": "2a5dd623e092e8cbb9dc6c7b3837cc35c836830bd60b13893e035cc009075e04"
+        },
+        {
+          "id": "5",
+          "stratum": "return_delivered_order_items",
+          "sha256": "ebf83b08589cf918c6479846509c69a1aea5b34ad5fe939f7dd7ec5c1ab8e4f3"
+        },
+        {
+          "id": "58",
+          "stratum": "exchange_delivered_order_items",
+          "sha256": "38a64ac8b51ecbb69b704f74c361300af3a5432af4d470a0187f5212005612ed"
+        },
+        {
+          "id": "85",
+          "stratum": "modify_pending_order_items",
+          "sha256": "c7ceb1bc97b7e32c02d0a693d639f2bb648776331eb2594f9b37a3d6d9833d02"
+        },
+        {
+          "id": "97",
+          "stratum": "modify_pending_order_address",
+          "sha256": "ec46585ca6862e558d8af9d3775bfd3898207b843d7625a3879ce12cbb9d7cb9"
+        }
+      ],
+      "max_steps": 30,
+      "success_rule": "official reward == 1",
+      "selection_rule": "One per transaction action class; SHA256(seed + task_id) ordering; reference replay must raise no errors and change DB state.",
+      "qualification_exclusions": [
+        {
+          "id": "54",
+          "reason": "reference find_user_id_by_email raises User not found"
+        }
+      ]
+    },
+    "coding": {
+      "repo": "https://github.com/SWE-agent/mini-swe-agent",
+      "revision": "04d809ceab9df28f9adaed044884180159172930",
+      "dataset": "princeton-nlp/SWE-bench_Verified",
+      "data_path": ".compound/sources/swe-verified-pilot.json",
+      "data_sha256": "f38427db7c6ed525a82a4edca5d1a9f2f45c433d0d46004e31c4a9de4213a4a7",
+      "tasks": [
+        {
+          "id": "django__django-13569",
+          "stratum": "django/django",
+          "sha256": "78fe954c180040dc8d9e3330e1d242f58266f3d65bc9f254089a46538daee9ca"
+        },
+        {
+          "id": "sympy__sympy-15809",
+          "stratum": "sympy/sympy",
+          "sha256": "164203b4fdd978ad96625749dcf2863c686956d1f2dfbf9ec8a998523289d688"
+        },
+        {
+          "id": "scikit-learn__scikit-learn-14053",
+          "stratum": "scikit-learn/scikit-learn",
+          "sha256": "01ced913993098576b72991c9fa7be5d729bc791881022937950d8eb9ed1974f"
+        },
+        {
+          "id": "matplotlib__matplotlib-24870",
+          "stratum": "matplotlib/matplotlib",
+          "sha256": "a4505d530de07232667104a1f998fae150a136783adb93962c07e3c3d493cd40"
+        },
+        {
+          "id": "astropy__astropy-7336",
+          "stratum": "astropy/astropy",
+          "sha256": "042d81ca716680da83355dda4bd59a45068b2b59f2ee8ce11e11c0f8872c137d"
+        }
+      ],
+      "max_steps": 40,
+      "success_rule": "official SWE-bench resolved == true",
+      "dataset_revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+      "grader_repo": "https://github.com/SWE-bench/SWE-bench",
+      "grader_revision": "02e7a74ffd0b707aab73d203fe87bdc7c76afc8e",
+      "selection_rule": "One per declared repository; SHA256(seed + instance_id) ordering across all 500 Verified records; no outcome-based selection."
+    },
+    "finance": {
+      "repo": "https://github.com/Devansh1105/finbalance",
+      "revision": "a1062b7b392eaf53311308c2f63cf748b68bb8cf",
+      "data_path": ".compound/sources/finbalance/data/coverage/records.jsonl",
+      "data_sha256": "c1568a30ac43401047e3b1c19f672359ed2dadfd977aa0d1bc36dd6b2cd41580",
+      "tasks": [
+        {
+          "id": "COV_PRO_M1_0075",
+          "stratum": "clean-level-1",
+          "sha256": "e5715c8addf2d5b4cb4746c6511ad99d46b37733d9fa258d5533c3236b8b9fde"
+        },
+        {
+          "id": "COV_PRO_M2_0076",
+          "stratum": "clean-level-2",
+          "sha256": "484355357882314540587dbcdd23e2bf2b5fcd74a9169560b1f8d91c271f971b"
+        },
+        {
+          "id": "COV_MAN_M3_0092",
+          "stratum": "clean-level-3",
+          "sha256": "ad0d1977a4b8c0e4427f9ca2be0d26bd01a99ec99dcb110bd01fbe8c2be4fad1"
+        },
+        {
+          "id": "COV_HEA_M4_0063",
+          "stratum": "clean-level-4",
+          "sha256": "e1b77f098f58a632919b8044bdba084e909e8fa335ef69af7d9fca50cbc8e57c"
+        },
+        {
+          "id": "COV_NEG_00_TRANSFER_MISMATCH",
+          "stratum": "inconsistent",
+          "sha256": "abfcc654a78cd41d39540914c35746f2c217bd03ed72783e974d27b6481ea1e3"
+        }
+      ],
+      "max_steps": 8,
+      "mode": "tool_native_full_tool_agent",
+      "success_rule": "strict parsed answer: clean = exact entries with citations and balance sheet, no inconsistency flag/codes; inconsistent = correct flag/code and empty answer",
+      "selection_rule": "SHA256(seed + record_id) ordering; one clean monthly record at each difficulty 1-4 and one inconsistency record."
+    }
+  },
+  "models": [
+    {
+      "id": "gpt-sol",
+      "model": "openai/gpt-5.6-sol",
+      "provider": "openrouter",
+      "standard_endpoint": "openai",
+      "flex_endpoint": "openai/flex"
+    },
+    {
+      "id": "gemini-vertex",
+      "model": "google/gemini-3.8-flash",
+      "provider": "openrouter",
+      "standard_endpoint": "google-vertex/global",
+      "flex_endpoint": "google-vertex/global/flex"
+    },
+    {
+      "id": "gemini-studio",
+      "model": "google/gemini-3.8-flash",
+      "provider": "openrouter",
+      "standard_endpoint": "google-ai-studio",
+      "flex_endpoint": "google-ai-studio/flex"
+    },
+    {
+      "id": "deepseek-dw",
+      "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+      "provider": "doubleword",
+      "standard_endpoint": "realtime",
+      "flex_endpoint": "flex"
+    },
+    {
+      "id": "glm-dw",
+      "model": "zai-org/GLM-5.3",
+      "provider": "doubleword",
+      "standard_endpoint": "realtime",
+      "flex_endpoint": "flex"
+    }
+  ],
+  "controls": {
+    "max_output_tokens": 8192,
+    "max_episode_s": 1800,
+    "reasoning_effort": "medium",
+    "retries": 0,
+    "concurrency": 1,
+    "cache": "provider caching enabled; Doubleword explicit markers required",
+    "simulator_model": "openai/gpt-5.6-sol",
+    "simulator_tier": "default"
+  }
+}

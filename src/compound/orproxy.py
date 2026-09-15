@@ -35,6 +35,7 @@ from typing import Any
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
+from compound.cache_policy import mark_cache_prefix as _mark_cache_prefix
 from compound.call_ledger import (
     MAX_CAPTURE_BYTES,
     CallLedger,
@@ -61,6 +62,7 @@ def get_ledger() -> CallLedger | None:
             ledger = CallLedger(path)
             _LEDGERS[path] = ledger
         return ledger
+
 
 #: Transient upstream failures worth retrying. A shared-pool 429 aborted 25
 #: terminal-bench episodes in one sweep because the agent harness treats any
@@ -222,24 +224,7 @@ def cache_optin_enabled() -> bool:
 
 def mark_cache_prefix(messages: Any) -> Any:
     """Attach ``cache_control`` to the last content block of the last message."""
-    if not isinstance(messages, list) or not messages:
-        return messages
-    marker = {"type": "ephemeral", "ttl": "5m"}
-    msgs = list(messages)
-    last = dict(msgs[-1])
-    content = last.get("content")
-    if isinstance(content, str):
-        last["content"] = [{"type": "text", "text": content, "cache_control": marker}]
-    elif isinstance(content, list) and content:
-        blocks = list(content)
-        final = dict(blocks[-1])
-        final["cache_control"] = marker
-        blocks[-1] = final
-        last["content"] = blocks
-    else:
-        return messages
-    msgs[-1] = last
-    return msgs
+    return _mark_cache_prefix(messages)
 
 
 def target_url(base_url: str, path: str) -> str:
@@ -291,6 +276,7 @@ class _Handler(BaseHTTPRequestHandler):
         if debug_path and data:
             with open(debug_path, "a") as dbg:
                 dbg.write(">>> REQUEST\n" + data.decode("utf-8", "replace")[:4000] + "\n")
+
         def make_request() -> urlrequest.Request:
             return urlrequest.Request(url, data=data, headers=headers, method=method)
 
