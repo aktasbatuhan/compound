@@ -226,6 +226,9 @@ def chat_response(raw):
 
 
 # Input/cache-read/output dollars per million; upper rates cover long context.
+#: A 5 minute cache write bills at 1.25x standard input (Doubleword docs).
+CACHE_WRITE_MULTIPLIER = 1.25
+
 RATES = {
     ("gpt-astra", "standard"): (10, 1, 50),
     ("gpt-astra", "flex"): (5, 0.5, 25),
@@ -345,9 +348,16 @@ class Gateway:
             # meter instead of per call; see benchmarks/flex-agentic.
             payload["messages"] = mark_cache_prefix(payload["messages"])
             payload["service_tier"] = "priority" if tier == "standard" else "flex"
+            # Chat completions takes a flat reasoning_effort; the Responses API
+            # took a nested reasoning.effort. Dropping it on the switch would have
+            # silently run the study on the model's default.
+            effort = self.spec["controls"].get("reasoning_effort")
+            if effort:
+                payload["reasoning_effort"] = effort
             base, key = "https://api.doubleword.ai/v1/chat/completions", "DOUBLEWORD_API_KEY"
         if needs_marker(base) and not is_marked(payload):
             raise ValueError(f"refusing to send an uncached request to {base}")
+        cache_requested = is_marked(payload)
         wire = json.dumps(payload).encode()
         input_bound, input_evidence = self.input_bound(eid, role, payload)
         episode_limit = (
@@ -407,13 +417,25 @@ class Gateway:
             cost = usage.get("cost")
             kind = "reported"
             if cost is None and model["provider"] == "doubleword" and raw.get("usage"):
-                cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
-                cost = (
-                    (usage.get("prompt_tokens", 0) - cached) * rate_in
-                    + cached * rate_cache
-                    + usage.get("completion_tokens", 0) * rate_out
-                ) / 1e6
-                kind = "derived_responses_no_cache"
+                prompt = usage.get("prompt_tokens")
+                completion = usage.get("completion_tokens")
+                if not isinstance(prompt, int) or not isinstance(completion, int):
+                    # Missing evidence is unknown cost, never zero. Leaving it None
+                    # keeps the reservation held instead of releasing it as free.
+                    cost = None
+                else:
+                    read = usage.get("cache_read_input_tokens")
+                    if read is None:
+                        read = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+                    written = usage.get("cache_creation_input_tokens") or 0
+                    # A 5 minute cache write bills at 1.25x the ordinary input rate.
+                    cost = (
+                        max(prompt - read - written, 0) * rate_in
+                        + read * rate_cache
+                        + written * rate_in * CACHE_WRITE_MULTIPLIER
+                        + completion * rate_out
+                    ) / 1e6
+                    kind = "derived_from_rate_card"
             if cost is not None:
                 cost = float(cost)
                 if cost < 0 or not __import__("math").isfinite(cost):
@@ -423,6 +445,7 @@ class Gateway:
             row.update(
                 status=200,
                 usage=usage,
+                cache_requested=cache_requested,
                 cost_usd=cost,
                 cost_kind=kind,
                 served_tier=raw.get("service_tier"),

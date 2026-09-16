@@ -115,3 +115,46 @@ def test_no_module_hardcodes_the_uncacheable_responses_endpoint():
         and p.name not in ("migration_io.py",)
     ]
     assert not offenders, f"{offenders} send agent traffic to the uncacheable endpoint"
+
+
+def test_the_runner_halts_when_caching_is_asked_for_and_never_delivered():
+    """The runtime check the static scan cannot make: a host that accepts the
+    marker and returns nothing must stop the run, not bill a whole study."""
+    from compound.agentic_run import CACHE_GATE_MIN_CALLS
+    from compound.serving_metrics import cache_effectiveness
+
+    asked_and_denied = [
+        {
+            "cache_requested": True,
+            "usage": {"prompt_tokens": 9884, "prompt_tokens_details": {"cached_tokens": 0}},
+        }
+        for _ in range(CACHE_GATE_MIN_CALLS)
+    ]
+    assert cache_effectiveness(asked_and_denied)["requested_but_never_observed"]
+
+    served = [
+        {
+            "cache_requested": True,
+            "usage": {"prompt_tokens": 9884, "prompt_tokens_details": {"cached_tokens": 9805}},
+        }
+        for _ in range(CACHE_GATE_MIN_CALLS)
+    ]
+    assert not cache_effectiveness(served)["requested_but_never_observed"]
+
+    runner = (SRC / "agentic_run.py").read_text()
+    assert "prompt caching requested and never observed" in runner, "the halt was removed"
+    assert "cache_effectiveness(asked)" in runner, "the gate must reuse the shared detector"
+
+
+def test_the_declared_reasoning_effort_reaches_doubleword():
+    """Dropped silently once already; chat completions takes a flat parameter."""
+    gateway = (SRC / "agentic_gateway.py").read_text()
+    assert 'payload["reasoning_effort"] = effort' in gateway
+    assert 'self.spec["controls"].get("reasoning_effort")' in gateway
+
+
+def test_missing_usage_never_settles_as_free_inference():
+    gateway = (SRC / "agentic_gateway.py").read_text()
+    assert "CACHE_WRITE_MULTIPLIER = 1.25" in gateway
+    assert "cache_creation_input_tokens" in gateway
+    assert "derived_responses_no_cache" not in gateway, "stale cost label"

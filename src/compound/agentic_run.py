@@ -18,6 +18,7 @@ from pathlib import Path
 
 from compound.agentic_gateway import Gateway, missing_rates
 from compound.agentic_study import plan, summarize, verify_sources
+from compound.serving_metrics import cache_effectiveness
 
 
 def attempt_calls(calls, episode_id, since):
@@ -28,6 +29,10 @@ def attempt_calls(calls, episode_id, since):
     stale rows misreads a clean re-run as a repeat of the old failure.
     """
     return [c for c in calls if c["episode_id"] == episode_id and c["started_at"] >= since]
+
+
+#: Enough marked calls that a zero hit rate is the endpoint, not a cold start.
+CACHE_GATE_MIN_CALLS = 8
 
 
 def account_failure(calls):
@@ -296,6 +301,7 @@ def main():
                     if calls_path.exists()
                     else []
                 )
+            calls_all = calls
             calls = attempt_calls(calls, e["episode_id"], attempt_started)
             auxiliary_failed = any(c["status"] != 200 and c["role"] == "auxiliary" for c in calls)
             if (
@@ -306,10 +312,7 @@ def main():
                 result["status"] = "provider_error"
             if auxiliary_failed:
                 result.update(status="infrastructure_error", success=None, failure_role="auxiliary")
-            if account_failure(calls):
-                result.update(
-                    status="infrastructure_error", success=None, failure_reason="account_balance"
-                )
+
             stops_path = directory / "budget-stops.jsonl"
             stops = (
                 [json.loads(line) for line in stops_path.read_text().splitlines()]
@@ -318,6 +321,13 @@ def main():
             )
             if any(s["episode_id"] == e["episode_id"] and s["role"] == "agent" for s in stops):
                 result.update(status="budget_exhausted", success=None)
+            # Applied last so no later label can mask it, and sticky so the other
+            # lanes stop dispatching immediately rather than after their episode.
+            if account_failure(calls):
+                result.update(
+                    status="infrastructure_error", success=None, failure_reason="account_balance"
+                )
+                stopped.set()
             for role, key in [("agent", "agent_cost_usd"), ("auxiliary", "auxiliary_cost_usd")]:
                 selected = [c for c in calls if c["role"] == role]
                 unsettled = any(
@@ -348,6 +358,17 @@ def main():
                 result["agent_cost_usd"],
                 flush=True,
             )
+            # A host can accept a cache marker on an endpoint that does not cache and
+            # return zero cached tokens without an error, which reads as an expensive
+            # tier rather than an uncacheable API. Stop the run instead of paying for
+            # a whole study at uncached rates, once enough calls have asked to be sure.
+            asked = [c for c in calls_all if c.get("cache_requested") and c.get("usage")]
+            if len(asked) >= CACHE_GATE_MIN_CALLS:
+                verdict = cache_effectiveness(asked)
+                if verdict["requested_but_never_observed"]:
+                    print("HALT", verdict["warning"], flush=True)
+                    stopped.set()
+                    raise RuntimeError("prompt caching requested and never observed")
             if result["status"] == "infrastructure_error":
                 print("Stopping to repair infrastructure before further paid episodes.", flush=True)
                 raise RuntimeError("episode infrastructure failure")

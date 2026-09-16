@@ -1,0 +1,84 @@
+{
+  "endpoint": "https://api.doubleword.ai/v1/chat/completions",
+  "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "service_tier": "priority",
+  "reasoning_effort": "medium",
+  "captured_at": "2026-09-16T10:48:32Z",
+  "note": "two identical requests per variant; the second is the one that can read from cache",
+  "unmarked": [
+    {
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_24h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "completion_tokens": 16,
+      "completion_tokens_details": {
+        "reasoning_tokens": 16
+      },
+      "prompt_tokens": 7084,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "total_tokens": 7100
+    },
+    {
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_24h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 6912,
+      "completion_tokens": 16,
+      "completion_tokens_details": {
+        "reasoning_tokens": 16
+      },
+      "prompt_tokens": 7084,
+      "prompt_tokens_details": {
+        "cached_tokens": 6912
+      },
+      "total_tokens": 7100
+    }
+  ],
+  "marked": [
+    {
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_24h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 7005
+      },
+      "cache_creation_input_tokens": 7005,
+      "cache_read_input_tokens": 0,
+      "completion_tokens": 16,
+      "completion_tokens_details": {
+        "reasoning_tokens": 16
+      },
+      "prompt_tokens": 7084,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "total_tokens": 7100
+    },
+    {
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_24h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 7005,
+      "completion_tokens": 16,
+      "completion_tokens_details": {
+        "reasoning_tokens": 16
+      },
+      "prompt_tokens": 7084,
+      "prompt_tokens_details": {
+        "cached_tokens": 7005
+      },
+      "total_tokens": 7100
+    }
+  ]
+}
