@@ -1,0 +1,183 @@
+{
+  "openai/gpt-5.6-sol": [
+    {
+      "tag": "openai/flex",
+      "pricing": {
+        "prompt": "0.000001",
+        "completion": "0.000005",
+        "web_search": "0.01",
+        "input_cache_read": "0.0000001",
+        "input_cache_write": "0.00000125",
+        "discount": 0.5,
+        "overrides": [
+          {
+            "min_prompt_tokens": 272000,
+            "prompt": "0.000002",
+            "completion": "0.0000075",
+            "input_cache_read": "0.0000002",
+            "input_cache_write": "0.0000025"
+          }
+        ]
+      },
+      "supported_parameters": [
+        "reasoning",
+        "include_reasoning",
+        "seed",
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "tools",
+        "tool_choice",
+        "reasoning_effort"
+      ]
+    },
+    {
+      "tag": "openai",
+      "pricing": {
+        "prompt": "0.000002",
+        "completion": "0.00001",
+        "web_search": "0.01",
+        "input_cache_read": "0.0000002",
+        "input_cache_write": "0.0000025",
+        "discount": 0.5,
+        "overrides": [
+          {
+            "min_prompt_tokens": 272000,
+            "prompt": "0.000004",
+            "completion": "0.000015",
+            "input_cache_read": "0.0000004",
+            "input_cache_write": "0.000005"
+          }
+        ]
+      },
+      "supported_parameters": [
+        "reasoning",
+        "include_reasoning",
+        "seed",
+        "max_tokens",
+        "response_format",
+        "structured_outputs",
+        "tools",
+        "tool_choice",
+        "reasoning_effort"
+      ]
+    }
+  ],
+  "google/gemini-3.8-flash": [
+    {
+      "tag": "google-ai-studio/flex",
+      "pricing": {
+        "prompt": "0.000000375",
+        "completion": "0.000001875",
+        "image": "0.000000375",
+        "audio": "0.000000375",
+        "input_audio_cache": "0.0000000375",
+        "web_search": "0.014",
+        "internal_reasoning": "0.000001875",
+        "input_cache_read": "0.0000000375",
+        "input_cache_write": "0.0000000208333333333333",
+        "discount": 0.5
+      },
+      "supported_parameters": [
+        "reasoning",
+        "include_reasoning",
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "seed",
+        "response_format",
+        "structured_outputs",
+        "tool_choice",
+        "tools",
+        "reasoning_effort"
+      ]
+    },
+    {
+      "tag": "google-vertex/global/flex",
+      "pricing": {
+        "prompt": "0.000000375",
+        "completion": "0.000001875",
+        "image": "0.000000375",
+        "audio": "0.000000375",
+        "input_audio_cache": "0.0000000375",
+        "web_search": "0.014",
+        "internal_reasoning": "0.000001875",
+        "input_cache_read": "0.0000000375",
+        "input_cache_write": "0.0000000208333333333333",
+        "discount": 0.5
+      },
+      "supported_parameters": [
+        "reasoning",
+        "include_reasoning",
+        "max_tokens",
+        "seed",
+        "response_format",
+        "stop",
+        "structured_outputs",
+        "tools",
+        "tool_choice",
+        "reasoning_effort"
+      ]
+    },
+    {
+      "tag": "google-ai-studio",
+      "pricing": {
+        "prompt": "0.00000075",
+        "completion": "0.00000375",
+        "image": "0.00000075",
+        "audio": "0.00000075",
+        "input_audio_cache": "0.000000075",
+        "web_search": "0.014",
+        "internal_reasoning": "0.00000375",
+        "input_cache_read": "0.000000075",
+        "input_cache_write": "0.0000000416666666666667",
+        "discount": 0.5
+      },
+      "supported_parameters": [
+        "reasoning",
+        "include_reasoning",
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "seed",
+        "response_format",
+        "structured_outputs",
+        "tool_choice",
+        "tools",
+        "reasoning_effort"
+      ]
+    },
+    {
+      "tag": "google-vertex/global",
+      "pricing": {
+        "prompt": "0.00000075",
+        "completion": "0.00000375",
+        "image": "0.00000075",
+        "audio": "0.00000075",
+        "input_audio_cache": "0.000000075",
+        "web_search": "0.014",
+        "internal_reasoning": "0.00000375",
+        "input_cache_read": "0.000000075",
+        "input_cache_write": "0.0000000416666666666667",
+        "discount": 0.5
+      },
+      "supported_parameters": [
+        "reasoning",
+        "include_reasoning",
+        "max_tokens",
+        "seed",
+        "response_format",
+        "stop",
+        "structured_outputs",
+        "tools",
+        "tool_choice",
+        "reasoning_effort"
+      ]
+    }
+  ],
+  "doubleword_model_ids": [
+    "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "zai-org/GLM-5.3",
+    "zai-org/GLM-5.3-Flash"
+  ]
+}

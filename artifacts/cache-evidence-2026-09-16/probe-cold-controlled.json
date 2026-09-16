@@ -1,0 +1,86 @@
+{
+  "note": "each variant uses a unique nonce prefix, so neither can read a cache the other created",
+  "captured_at": "2026-09-16T10:49:03Z",
+  "unmarked_cold": {
+    "nonce": "4bb9dba14c7e4dad938fa66ec3c78317",
+    "usage": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_24h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 16
+        },
+        "prompt_tokens": 5007,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 5023
+      },
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_24h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 16
+        },
+        "prompt_tokens": 5007,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 5023
+      }
+    ]
+  },
+  "marked_cold": {
+    "nonce": "15684e7b8fa84d63bdc4d85f149feaa9",
+    "usage": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_24h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 4929
+        },
+        "cache_creation_input_tokens": 4929,
+        "cache_read_input_tokens": 0,
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 16
+        },
+        "prompt_tokens": 5008,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 5024
+      },
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_24h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 4929,
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 16
+        },
+        "prompt_tokens": 5008,
+        "prompt_tokens_details": {
+          "cached_tokens": 4929
+        },
+        "total_tokens": 5024
+      }
+    ]
+  }
+}

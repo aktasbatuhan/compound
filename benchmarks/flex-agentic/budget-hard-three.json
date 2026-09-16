@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "selection_seed": "flex-hard-20260910",
+  "trials": 2,
+  "deadlines_s": [
+    60,
+    300,
+    900
+  ],
+  "sources": {
+    "retail": {
+      "repo": "https://github.com/amazon-agi/tau2-bench-verified",
+      "revision": "864350a8971a8f8ee9e7b8472e2edc380a806b0c",
+      "data_path": ".compound/sources/tau2-bench-verified/data/tau2/domains/retail/tasks.json",
+      "data_sha256": "04cef2fdf59745e1c890d0e722726f103685ce94ba8cd63035d9ff9c2744b157",
+      "tasks": [
+        {
+          "id": "23",
+          "stratum": "cross_order_exchanges_and_modification",
+          "sha256": "29267acb2bfd71946464d84afd8e584acea2408c7bc0f07b8083440329a3149b"
+        },
+        {
+          "id": "30",
+          "stratum": "conditional_returns_and_cancellation",
+          "sha256": "67d1a782e78fd8ebef4de3b4c6e603697df99db3a1304bbfd796c4a82039e76c"
+        },
+        {
+          "id": "41",
+          "stratum": "address_corrections_and_product_substitution",
+          "sha256": "cf07d484e28f8c2b00cef5a252edd693cf036c2140bca80a805bc415c4f8bdba"
+        }
+      ],
+      "max_steps": 30,
+      "success_rule": "official reward == 1",
+      "selection_rule": "Three preregistered structurally more complex tasks, selected without paid outcome screening; reference replay qualified.",
+      "qualification_exclusions": [
+        {
+          "id": "54",
+          "reason": "reference find_user_id_by_email raises User not found"
+        }
+      ]
+    }
+  },
+  "models": [
+    {
+      "id": "gpt-astra",
+      "model": "openai/gpt-6-astra",
+      "provider": "openrouter",
+      "standard_endpoint": "openai",
+      "flex_endpoint": "openai/flex",
+      "episode_budget_usd": 0.4
+    },
+    {
+      "id": "gemini-vertex",
+      "model": "google/gemini-3.8-flash",
+      "provider": "openrouter",
+      "standard_endpoint": "google-vertex/global",
+      "flex_endpoint": "google-vertex/global/flex",
+      "episode_budget_usd": 0.1
+    },
+    {
+      "id": "gemini-studio",
+      "model": "google/gemini-3.8-flash",
+      "provider": "openrouter",
+      "standard_endpoint": "google-ai-studio",
+      "flex_endpoint": "google-ai-studio/flex",
+      "episode_budget_usd": 0.1
+    },
+    {
+      "id": "deepseek-dw",
+      "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+      "provider": "doubleword",
+      "standard_endpoint": "realtime",
+      "flex_endpoint": "flex",
+      "episode_budget_usd": 0.1
+    },
+    {
+      "id": "glm-flash-dw",
+      "model": "zai-org/GLM-5.3-Flash",
+      "provider": "doubleword",
+      "standard_endpoint": "realtime",
+      "flex_endpoint": "flex",
+      "episode_budget_usd": 0.1
+    }
+  ],
+  "controls": {
+    "max_output_tokens": 8192,
+    "max_episode_s": 900,
+    "reasoning_effort": "medium",
+    "retries": 0,
+    "concurrency": 1,
+    "cache": "OpenRouter ambient caching; Doubleword Responses uncached",
+    "simulator_model": "openai/gpt-5.6-sol",
+    "simulator_tier": "default",
+    "simulator_route": "gpt-sol",
+    "simulator_episode_budget_usd": 0.1,
+    "pair_order": "Seeded randomized paired tier order; one active episode per route",
+    "role_budget_usd": {
+      "agent": 6.4,
+      "auxiliary": 0.9
+    },
+    "reservation_policy": "observed_tokens_plus_changed_bytes"
+  },
+  "auxiliary_models": [
+    {
+      "id": "gpt-sol",
+      "model": "openai/gpt-5.6-sol",
+      "provider": "openrouter",
+      "standard_endpoint": "openai",
+      "flex_endpoint": "openai/flex"
+    }
+  ]
+}
