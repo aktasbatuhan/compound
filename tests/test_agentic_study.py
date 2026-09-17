@@ -152,3 +152,14 @@ def test_invalid_budget_grid_is_rejected(spec, budgets):
     spec["budget_levels_usd"] = budgets
     with pytest.raises(ValueError):
         plan(spec)
+
+
+def test_budget_curve_spec_does_not_clamp_the_harness_request():
+    """The study control must not silently cut the agent's own output budget.
+
+    The retail harness asks for 8192 output tokens. A lower spec ceiling clamps
+    that request inside the gateway, which truncates replies and makes them look
+    like wrong answers rather than cut-off ones.
+    """
+    spec = json.loads(Path("benchmarks/flex-agentic/budget-curve-v1.json").read_text())
+    assert spec["controls"]["max_output_tokens"] >= 8192

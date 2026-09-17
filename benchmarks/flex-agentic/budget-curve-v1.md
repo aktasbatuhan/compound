@@ -25,6 +25,30 @@ agent allowance but inside the total experiment cap and cost-per-success.
 Report both agent-only and agent-plus-simulator costs. This measures the current
 harness's budget policy, not an optimal allocation of inference compute.
 
+## Output cap and what it costs the small budgets
+
+`max_output_tokens` is 8192, which is exactly what the retail harness requests,
+so the study control no longer clamps the agent's own request. The previous 4096
+cut every reply in half inside the gateway, and a truncated reply is graded the
+same as a wrong one, so the cap was buying a measurement error rather than a
+saving.
+
+The cap is not free. Output is reserved in full before each call at the fixed
+policy, so the reservation per call doubles:
+
+| Output cap | Reserved per call, standard | Reserved per call, flex |
+|---|---:|---:|
+| 4096 | $0.00246 | $0.00197 |
+| 8192 | $0.00492 | $0.00393 |
+
+Against a $0.01 allowance the output side alone now reserves 49% (standard) or
+39% (flex) before any input is counted, and input is reserved at the 1h
+cache-write multiplier of 2.0. The $0.01 cell can therefore afford very few
+calls, possibly one. Read a low-budget cell as a statement about this harness's
+reservation policy at that allowance, not as evidence that the model cannot do
+the task. Report the budget stops for those cells rather than folding them into
+a success rate.
+
 ## Money and time bounds
 
 Planned agent ceilings sum to $4.80; simulator ceilings sum to $3.60. A $10
