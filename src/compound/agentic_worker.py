@@ -7,10 +7,51 @@ import json
 import subprocess
 import sys
 import time
+import traceback
 import urllib.request
 from pathlib import Path
 
 from compound.agentic_gateway import ProviderResponseError, check_response_errors
+
+
+def _persist_failure(directory: Path, exc: BaseException) -> dict[str, str]:
+    """Keep exception evidence beside the outcome even when worker.log is unavailable."""
+    message = str(exc) or repr(exc)
+    diagnostic = {
+        "error_type": type(exc).__name__,
+        "error_message": message,
+        "traceback": traceback.format_exc(),
+    }
+    path = directory / "failure.json"
+    temporary = directory / ".failure.json.tmp"
+    temporary.write_text(json.dumps(diagnostic, indent=2) + "\n")
+    temporary.replace(path)
+    return {
+        "error_type": diagnostic["error_type"],
+        "error_message": message,
+        "failure_artifact": path.name,
+    }
+
+
+def tau_checkpoint_path(stem: Path) -> Path:
+    """Where this tau revision will actually write the checkpoint for ``stem``.
+
+    ``run_domain`` rebuilds the path as ``DATA_DIR / "simulations" /
+    f"{save_to}.json"``. A relative stem is therefore silently relocated under
+    tau's package data directory, where the episode cannot find it. Resolving
+    the same expression up front turns that into an immediate, free failure
+    instead of one discovered after a paid episode has already run.
+    """
+    from tau2.utils.utils import DATA_DIR
+
+    expected = stem.parent / (stem.name + ".json")
+    actual = Path(DATA_DIR) / "simulations" / f"{stem}.json"
+    if actual != expected:
+        raise FileNotFoundError(
+            "tau would write its checkpoint to a relocated path; pass an "
+            f"absolute --out. expected={expected} tau_would_write={actual}"
+        )
+    return expected
 
 
 class LocalClient:
@@ -52,6 +93,13 @@ def retail(spec, episode, base, directory):
 
     litellm.completion = local_only
     tau_llm.completion = local_only
+    # This tau revision appends ``.json`` to save_to and joins the result under
+    # its own data directory: ``DATA_DIR / "simulations" / f"{save_to}.json"``.
+    # An absolute stem survives that join only because pathlib drops the base
+    # when the joined part is absolute. Verify the contract here rather than
+    # discovering a relocated checkpoint after paying for a full episode.
+    official_stem = (directory / "official").resolve()
+    official_path = tau_checkpoint_path(official_stem)
     config = RunConfig(
         domain="retail",
         task_ids=[episode["task_id"]],
@@ -69,10 +117,14 @@ def retail(spec, episode, base, directory):
         max_steps=spec["sources"]["retail"]["max_steps"],
         max_concurrency=1,
         seed=episode["trial"],
-        save_to=str(directory / "official"),
+        save_to=str(official_stem),
         log_level="ERROR",
     )
     result = run_domain(config)
+    if not official_path.is_file():
+        raise FileNotFoundError(
+            f"tau completed without its expected checkpoint: {official_path}"
+        )
     if len(result.simulations) != 1 or result.simulations[0].reward_info is None:
         raise ValueError("missing retail grade")
     sim = result.simulations[0]
@@ -257,22 +309,18 @@ def main():
         else:
             result = finance(spec, episode, args.base, directory)
     except ProviderResponseError as exc:
-        result = {
+        result = _persist_failure(directory, exc) | {
             "status": "provider_error" if exc.role == "agent" else "infrastructure_error",
             "success": None,
-            "error_type": type(exc).__name__,
             "provider_error_code": exc.code,
             "failure_role": exc.role,
             "embedded_provider_error": True,
         }
     except Exception as exc:
-        import traceback
-
         traceback.print_exc()
-        result = {
+        result = _persist_failure(directory, exc) | {
             "status": "infrastructure_error",
             "success": None,
-            "error_type": type(exc).__name__,
         }
         if (
             episode["suite"] == "retail"

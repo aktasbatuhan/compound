@@ -1,0 +1,150 @@
+{
+  "checked_at": "2026-09-16",
+  "doubleword": {
+    "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+    "source": "https://docs.doubleword.ai/inference-api/models/deepseek-ai-deepseek-v4-1-flash",
+    "rates": {
+      "standard": {
+        "input_per_million": 0.15,
+        "cache_read_per_million": 0.01,
+        "output_per_million": 0.6
+      },
+      "flex": {
+        "input_per_million": 0.12,
+        "cache_read_per_million": 0.01,
+        "output_per_million": 0.48
+      }
+    }
+  },
+  "simulator": {
+    "source": "https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints",
+    "endpoint": {
+      "name": "DeepSeek | deepseek/deepseek-v4.1-flash-20260910",
+      "model_id": "deepseek/deepseek-v4.1-flash",
+      "model_name": "DeepSeek: DeepSeek V4.1 Flash",
+      "context_length": 1048576,
+      "pricing": {
+        "prompt": "0.00000015",
+        "completion": "0.0000006",
+        "input_cache_read": "0.000000003",
+        "discount": 0,
+        "overrides": [
+          {
+            "utc_days": [
+              "saturday",
+              "sunday"
+            ],
+            "prompt": "0.00000015",
+            "completion": "0.0000006",
+            "input_cache_read": "0.000000003"
+          },
+          {
+            "utc_start": 0,
+            "utc_end": 100,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "prompt": "0.00000015",
+            "completion": "0.0000006",
+            "input_cache_read": "0.000000003"
+          },
+          {
+            "utc_start": 100,
+            "utc_end": 400,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "prompt": "0.0000003",
+            "completion": "0.0000012",
+            "input_cache_read": "0.000000006"
+          },
+          {
+            "utc_start": 400,
+            "utc_end": 600,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "prompt": "0.00000015",
+            "completion": "0.0000006",
+            "input_cache_read": "0.000000003"
+          },
+          {
+            "utc_start": 600,
+            "utc_end": 1000,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "prompt": "0.0000003",
+            "completion": "0.0000012",
+            "input_cache_read": "0.000000006"
+          },
+          {
+            "utc_start": 1000,
+            "utc_end": 0,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "prompt": "0.00000015",
+            "completion": "0.0000006",
+            "input_cache_read": "0.000000003"
+          }
+        ]
+      },
+      "provider_name": "DeepSeek",
+      "tag": "deepseek",
+      "quantization": "unknown",
+      "max_completion_tokens": 384000,
+      "max_prompt_tokens": null,
+      "supported_parameters": [
+        "reasoning",
+        "include_reasoning",
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "stop",
+        "frequency_penalty",
+        "presence_penalty",
+        "logprobs",
+        "top_logprobs",
+        "tools",
+        "tool_choice",
+        "response_format",
+        "reasoning_effort"
+      ],
+      "supports_tool_choice": {
+        "none": true,
+        "auto": true,
+        "required": false,
+        "function": false
+      },
+      "status": 0,
+      "uptime_last_30m": 99.99194256661484,
+      "uptime_last_5m": 99.9946466809422,
+      "uptime_last_1d": 99.99125757423765,
+      "supports_implicit_caching": true,
+      "supports_voice_cloning": false,
+      "latency_last_30m": null,
+      "throughput_last_30m": null
+    }
+  }
+}

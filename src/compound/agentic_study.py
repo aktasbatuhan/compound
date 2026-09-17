@@ -29,6 +29,16 @@ def plan(spec: dict) -> dict:
     ids = [m["id"] for m in spec["models"]]
     if not ids or len(ids) != len(set(ids)):
         raise ValueError("model route IDs must be nonempty and unique")
+    budgets = spec.get("budget_levels_usd")
+    if budgets is not None:
+        if not isinstance(budgets, list) or not budgets or len(set(budgets)) != len(budgets):
+            raise ValueError("budget levels must be a nonempty unique list")
+        for budget in budgets:
+            _number(budget, "budget level")
+            if budget <= 0:
+                raise ValueError("budget level must be positive")
+        if spec.get("controls", {}).get("budget_output_policy", "fixed") != "fixed":
+            raise ValueError("budget curves require the fixed output policy")
     episodes = []
     for suite, source in spec["sources"].items():
         task_ids = [t["id"] for t in source["tasks"]]
@@ -37,23 +47,23 @@ def plan(spec: dict) -> dict:
         for task in source["tasks"]:
             for trial in range(trials):
                 for model in spec["models"]:
-                    for tier in ("standard", "flex"):
-                        identity = [suite, task["id"], trial, model["id"], tier]
-                        episodes.append(
-                            {
-                                "episode_id": fingerprint(identity)[:24],
-                                "suite": suite,
-                                "task_id": task["id"],
-                                "trial": trial,
-                                "route": model["id"],
-                                "tier": tier,
-                                **(
-                                    {"budget_usd": model["episode_budget_usd"]}
-                                    if "episode_budget_usd" in model
-                                    else {}
-                                ),
-                            }
-                        )
+                    levels = budgets if budgets is not None else [model.get("episode_budget_usd")]
+                    for budget in levels:
+                        for tier in ("standard", "flex"):
+                            identity = [suite, task["id"], trial, model["id"], tier]
+                            if budgets is not None:
+                                identity.append(budget)
+                            episodes.append(
+                                {
+                                    "episode_id": fingerprint(identity)[:24],
+                                    "suite": suite,
+                                    "task_id": task["id"],
+                                    "trial": trial,
+                                    "route": model["id"],
+                                    "tier": tier,
+                                    **({"budget_usd": budget} if budget is not None else {}),
+                                }
+                            )
     rng = random.Random(spec["selection_seed"])
     if spec.get("controls", {}).get("pair_order"):
         pairs = [episodes[i : i + 2] for i in range(0, len(episodes), 2)]
@@ -154,10 +164,10 @@ def summarize(spec: dict, outcomes: list[dict]) -> dict:
 
     groups = {}
     for episode in expected.values():
-        key = (episode["suite"], episode["route"], episode["tier"])
+        key = (episode["suite"], episode["route"], episode["tier"], episode.get("budget_usd"))
         groups.setdefault(key, []).append(actual.get(episode["episode_id"]))
     summaries = []
-    for (suite, route, tier), rows in sorted(groups.items()):
+    for (suite, route, tier, budget), rows in sorted(groups.items()):
         present = [r for r in rows if r is not None]
         graded = [r for r in present if r["status"] == "graded"]
         successes = [r for r in graded if r["success"]]
@@ -177,6 +187,7 @@ def summarize(spec: dict, outcomes: list[dict]) -> dict:
                 "suite": suite,
                 "route": route,
                 "tier": tier,
+                "budget_usd": budget,
                 "planned": n,
                 "recorded": len(present),
                 "graded": len(graded),
@@ -186,7 +197,14 @@ def summarize(spec: dict, outcomes: list[dict]) -> dict:
                 "complete": complete,
                 "success_rate": good / n if complete else None,
                 "observed_success_fraction_of_planned": good / n,
-                "success_rate_wilson95": wilson(good, n) if complete else None,
+                "success_rate_wilson95": (
+                    wilson(good, n) if complete and spec["trials"] == 1 else None
+                ),
+                "uncertainty_note": (
+                    "Repeated trials require task-clustered uncertainty; no episode-level interval."
+                    if spec["trials"] > 1
+                    else None
+                ),
                 "graded_success_rate": good / len(graded) if graded else None,
                 "success_by_deadline": {
                     str(d): sum(r["duration_s"] <= d for r in successes) / n if complete else None

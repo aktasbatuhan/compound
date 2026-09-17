@@ -1,13 +1,7 @@
-"""Caching is not optional on opt-in hosts, and this file is what enforces it.
+"""Cache marker construction and selected request-path regression checks.
 
-A marker-less request to Doubleword or Anthropic gets a guaranteed 0% cache hit.
-On an agent loop that re-reads its context every turn that is most of the bill:
-measured on a real run, 59.3M input tokens at a 16:1 input-to-output ratio cost
-$5.37 uncached against roughly $1.70 with markers.
-
-The scan at the bottom is the part that matters. It fails the build when a new
-module learns to talk to a cacheable host without going through the one helper
-that marks requests.
+Static scans complement wire-level gateway tests; they are not proof that every
+upstream supports caching. Paid qualification must inspect provider usage.
 """
 
 import re
@@ -38,6 +32,22 @@ def test_marker_attaches_to_plain_string_content():
     assert block["text"] == "hello"
     assert block["cache_control"]["type"] == "ephemeral"
     assert is_marked({"messages": marked})
+
+
+def test_cache_ttl_preserves_original_tool_result():
+    import copy
+
+    import pytest
+
+    messages = [{"role": "tool", "tool_call_id": "abc", "content": "result"}]
+    original = copy.deepcopy(messages)
+    marked = mark_cache_prefix(messages, ttl="1h")
+    assert messages == original
+    assert marked[0]["tool_call_id"] == "abc"
+    assert marked[0]["content"][0]["text"] == "result"
+    assert marked[0]["content"][0]["cache_control"]["ttl"] == "1h"
+    with pytest.raises(ValueError):
+        mark_cache_prefix(messages, ttl="24h")
 
 
 def test_marker_lands_on_the_newest_message_so_the_whole_prefix_caches():
@@ -79,7 +89,7 @@ def test_the_agent_gateway_uses_the_caching_endpoint():
     source = (SRC / "agentic_gateway.py").read_text()
     assert "api.doubleword.ai/v1/chat/completions" in source
     assert "api.doubleword.ai/v1/responses" not in source
-    assert 'mark_cache_prefix(payload["messages"])' in source
+    assert 'mark_cache_prefix(payload["messages"], ttl=cache_ttl)' in source
 
 
 def test_no_module_talks_to_a_cacheable_host_without_marking_it():
@@ -143,7 +153,7 @@ def test_the_runner_halts_when_caching_is_asked_for_and_never_delivered():
 
     runner = (SRC / "agentic_run.py").read_text()
     assert "prompt caching requested and never observed" in runner, "the halt was removed"
-    assert "cache_effectiveness(asked)" in runner, "the gate must reuse the shared detector"
+    assert "cache_failures(calls_all" in runner, "the gate must check each route separately"
 
 
 def test_the_declared_reasoning_effort_reaches_doubleword():
@@ -155,6 +165,6 @@ def test_the_declared_reasoning_effort_reaches_doubleword():
 
 def test_missing_usage_never_settles_as_free_inference():
     gateway = (SRC / "agentic_gateway.py").read_text()
-    assert "CACHE_WRITE_MULTIPLIER = 1.25" in gateway
+    assert "CACHE_WRITE_MULTIPLIERS" in gateway
     assert "cache_creation_input_tokens" in gateway
     assert "derived_responses_no_cache" not in gateway, "stale cost label"

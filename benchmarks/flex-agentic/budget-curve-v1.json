@@ -1,0 +1,249 @@
+{
+  "schema_version": 1,
+  "selection_seed": "budget-curve-v1-2026-09-16",
+  "trials": 2,
+  "deadlines_s": [
+    60,
+    300,
+    900,
+    3600
+  ],
+  "sources": {
+    "retail": {
+      "repo": "https://github.com/amazon-agi/tau2-bench-verified",
+      "revision": "864350a8971a8f8ee9e7b8472e2edc380a806b0c",
+      "data_path": ".compound/sources/tau2-bench-verified/data/tau2/domains/retail/tasks.json",
+      "data_sha256": "04cef2fdf59745e1c890d0e722726f103685ce94ba8cd63035d9ff9c2744b157",
+      "tasks": [
+        {
+          "id": "20",
+          "sha256": "1155b316f234a3a1db2c086627033760d6c33fac9e6d132e088a12958bcc9028"
+        },
+        {
+          "id": "42",
+          "sha256": "388b23785f584daea792237497ea20897062b1f1ead7eb797c2b3d2e68f8a780"
+        },
+        {
+          "id": "48",
+          "sha256": "4916154a10e29ac8db9d958890e208a97eb39b04e03cede365775c0abb1167e2"
+        },
+        {
+          "id": "60",
+          "sha256": "8e3f345937bda8ee136d0b007c70fb15db1d162746324445688c3068f3d33aa1"
+        },
+        {
+          "id": "86",
+          "sha256": "6af247f6d522a2c0ea1752521b42169fa29f16ea08d6336ae4e5703cd5d0a191"
+        },
+        {
+          "id": "92",
+          "sha256": "a22d7e47b1d72ab617f8ac664a71911b16450c09469530129566d7cb6162f656"
+        },
+        {
+          "id": "93",
+          "sha256": "2da07f71e437495726be60cb779d2b6c5babb62aa8b53ba30b4d623fa3969349"
+        },
+        {
+          "id": "101",
+          "sha256": "818265539e2343a8615065f11a885f263353f6f4cec0dfe01b634c4c98fc2f63"
+        },
+        {
+          "id": "107",
+          "sha256": "bbdf090496c3b64f13b7968ede6ee7475d729eb21f1838ae490e3aba24553907"
+        },
+        {
+          "id": "108",
+          "sha256": "3d9c9d0cd4348f00320ee62760760e09767b50e9d0640c9d7dd521e72eca2e49"
+        }
+      ],
+      "max_steps": 30,
+      "success_rule": "official reward == 1",
+      "selection_rule": "Every retail task that passes offline gold replay with a database mutation. The complete qualified pool, so there is no outcome-based or difficulty-based screening.",
+      "qualification_exclusions": [
+        {
+          "id": "2",
+          "reason": "ValueError: Product not found"
+        },
+        {
+          "id": "3",
+          "reason": "ValueError: Product not found"
+        },
+        {
+          "id": "4",
+          "reason": "ValueError: Product not found"
+        },
+        {
+          "id": "18",
+          "reason": "ValueError: New item 3609437808 not found or available"
+        },
+        {
+          "id": "21",
+          "reason": "TypeError: RetailTools.get_item_details() got an unexpected keyword argument 'product_id'"
+        },
+        {
+          "id": "35",
+          "reason": "ValueError: User not found"
+        },
+        {
+          "id": "37",
+          "reason": "ValueError: User not found"
+        },
+        {
+          "id": "38",
+          "reason": "ValueError: User not found"
+        },
+        {
+          "id": "39",
+          "reason": "ValueError: User not found"
+        },
+        {
+          "id": "46",
+          "reason": "ValueError: Order not found"
+        },
+        {
+          "id": "47",
+          "reason": "ValueError: Order not found"
+        },
+        {
+          "id": "54",
+          "reason": "ValueError: User not found"
+        },
+        {
+          "id": "55",
+          "reason": "ValueError: User not found"
+        },
+        {
+          "id": "64",
+          "reason": "ValueError: Non-delivered order cannot be exchanged"
+        },
+        {
+          "id": "67",
+          "reason": "ValueError: User not found"
+        },
+        {
+          "id": "68",
+          "reason": "ValueError: User not found"
+        },
+        {
+          "id": "91",
+          "reason": "ValueError: New item 6268080249 not found or available"
+        },
+        {
+          "id": "105",
+          "reason": "ValueError: Insufficient gift card balance to pay for the price difference"
+        },
+        {
+          "id": "10",
+          "reason": "gold replay clean but leaves the database unchanged"
+        },
+        {
+          "id": "12",
+          "reason": "gold replay clean but leaves the database unchanged"
+        },
+        {
+          "id": "24",
+          "reason": "gold replay clean but leaves the database unchanged"
+        },
+        {
+          "id": "25",
+          "reason": "gold replay clean but leaves the database unchanged"
+        },
+        {
+          "id": "50",
+          "reason": "gold replay clean but leaves the database unchanged"
+        },
+        {
+          "id": "57",
+          "reason": "gold replay clean but leaves the database unchanged"
+        },
+        {
+          "id": "62",
+          "reason": "gold replay clean but leaves the database unchanged"
+        },
+        {
+          "id": "65",
+          "reason": "gold replay clean but leaves the database unchanged"
+        }
+      ],
+      "selection": "Seeded random 10 of the historical 88 reference-qualified tasks; requalify on the target runtime before inference."
+    }
+  },
+  "models": [
+    {
+      "id": "deepseek-dw",
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider": "doubleword",
+      "standard_endpoint": "realtime",
+      "flex_endpoint": "flex",
+      "rate_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "rates": {
+        "standard": {
+          "input_per_million": 0.15,
+          "cache_read_per_million": 0.01,
+          "output_per_million": 0.6
+        },
+        "flex": {
+          "input_per_million": 0.12,
+          "cache_read_per_million": 0.01,
+          "output_per_million": 0.48
+        }
+      },
+      "rate_source": "https://docs.doubleword.ai/inference-api/models/deepseek-ai-deepseek-v4-1-flash",
+      "rate_checked_at": "2026-09-16"
+    }
+  ],
+  "controls": {
+    "max_output_tokens": 8192,
+    "max_episode_s": 3600,
+    "reasoning_effort": "medium",
+    "retries": 0,
+    "concurrency": 1,
+    "cache": "Enabled; qualify hits separately for each tier and simulator",
+    "simulator_model": "deepseek/deepseek-v4.1-flash",
+    "simulator_tier": "default",
+    "simulator_route": "ds-sim",
+    "simulator_episode_budget_usd": 0.03,
+    "pair_order": "Seeded randomized adjacent tier pairs; a pair runs back to back in one lane",
+    "role_budget_usd": {
+      "agent": 6.0,
+      "auxiliary": 4.0
+    },
+    "reservation_policy": "observed_tokens_plus_changed_bytes",
+    "simulator_note": "Fixed across both arms. Same model family as the agent under test, which is a generalisation caveat, not a threat to the tier contrast.",
+    "cache_ttl": "1h",
+    "budget_output_policy": "fixed",
+    "budget_policy": "One fresh episode per allowance, fixed output cap, no external success feedback or retry selection; actual spend may be below allowance.",
+    "require_runtime_pins": true
+  },
+  "auxiliary_models": [
+    {
+      "id": "ds-sim",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "openrouter",
+      "standard_endpoint": "deepseek",
+      "flex_endpoint": "deepseek",
+      "rate_model": "deepseek/deepseek-v4.1-flash",
+      "rates": {
+        "standard": {
+          "input_per_million": 0.3,
+          "cache_read_per_million": 0.006,
+          "output_per_million": 1.2
+        },
+        "flex": {
+          "input_per_million": 0.3,
+          "cache_read_per_million": 0.006,
+          "output_per_million": 1.2
+        }
+      },
+      "rate_source": "https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints",
+      "rate_checked_at": "2026-09-16",
+      "rate_note": "Reservation ceilings use the maximum listed time-of-day rate. Actual charges come from per-call usage.cost. Simulator always uses standard."
+    }
+  ],
+  "budget_levels_usd": [
+    0.01,
+    0.03,
+    0.08
+  ],
+  "study_intent": "Exploratory success versus agent-dollar allowance; one fresh continuous episode per budget, no oracle retries."
+}

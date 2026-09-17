@@ -6,19 +6,24 @@ import argparse
 import fcntl
 import json
 import os
-import shutil
 import signal
 import subprocess
 import sys
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 
 from compound.agentic_gateway import Gateway, missing_rates
+from compound.agentic_safety import (
+    cache_failures,
+    preparation_errors,
+    qualification_errors,
+    seal_run,
+)
 from compound.agentic_study import plan, summarize, verify_sources
-from compound.serving_metrics import cache_effectiveness
 
 
 def attempt_calls(calls, episode_id, since):
@@ -54,7 +59,13 @@ def work_units(episodes):
     """
     units = []
     for episode in episodes:
-        key = (episode["suite"], episode["task_id"], episode["trial"], episode["route"])
+        key = (
+            episode["suite"],
+            episode["task_id"],
+            episode["trial"],
+            episode["route"],
+            episode.get("budget_usd"),
+        )
         if units and units[-1][0] == key:
             units[-1][1].append(episode)
         else:
@@ -82,6 +93,8 @@ def main():
     )
     parser.add_argument("--stop-at", help="Stop starting episodes at this ISO UTC timestamp")
     args = parser.parse_args()
+    if args.count < 1:
+        parser.error("--count must be positive")
     if args.lanes < 1:
         parser.error("--lanes must be at least 1")
     if args.parallel_routes and args.lanes > 1:
@@ -113,6 +126,15 @@ def main():
     runner_lock = (directory / "runner.lock").open("a")
     fcntl.flock(runner_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     if args.stage != "oracle":
+        preparation = preparation_errors(spec, directory)
+        if preparation:
+            raise ValueError("paid execution blocked: " + "; ".join(preparation))
+    seal_run(directory, spec, study, execution_mode)
+    if args.stage == "run":
+        qualification = qualification_errors(spec, directory)
+        if qualification:
+            raise ValueError("paid run blocked pending qualification: " + "; ".join(qualification))
+    if args.stage != "oracle":
         os.environ.update(json.loads(Path("keys.json").read_text()))
     for model in spec["models"]:
         for tier in ["standard", "flex"]:
@@ -126,7 +148,19 @@ def main():
                     "trial": 0,
                 }
             )
-    gateway = Gateway(spec, study, directory, limit=args.inference_limit)
+    if "retail" in spec["sources"]:
+        study["episodes"].append(
+            {
+                "episode_id": "probe-simulator-standard",
+                "suite": "finance",
+                "route": spec["controls"].get("simulator_route", "gpt-sol"),
+                "tier": "standard",
+                "task_id": "probe",
+                "trial": 0,
+            }
+        )
+    stopped = threading.Event()
+    gateway = Gateway(spec, study, directory, limit=args.inference_limit, stop_event=stopped)
     server = gateway.serve()
     base = f"http://127.0.0.1:{server.server_port}"
     try:
@@ -134,44 +168,57 @@ def main():
             probe_path = directory / "probes.json"
             probes = json.loads(probe_path.read_text()) if probe_path.exists() else []
             for e in study["episodes"]:
-                if not e["episode_id"].startswith("probe-") or any(
-                    r["episode_id"] == e["episode_id"] for r in probes
-                ):
+                role = "auxiliary" if e["episode_id"] == "probe-simulator-standard" else "agent"
+                if not e["episode_id"].startswith("probe-"):
                     continue
+                if stopped.is_set():
+                    break
                 try:
-                    raw = gateway.call(
-                        e["episode_id"],
-                        "agent",
-                        {
-                            "messages": [
-                                {"role": "user", "content": "Call the echo tool with value READY."}
-                            ],
-                            "max_tokens": 512,
-                            "tools": [
-                                {
-                                    "type": "function",
-                                    "function": {
-                                        "name": "echo",
-                                        "description": "Echo a value",
-                                        "parameters": {
-                                            "type": "object",
-                                            "properties": {"value": {"type": "string"}},
-                                            "required": ["value"],
-                                        },
+                    body = {
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": "Reference context for a cache qualification test. "
+                                * 1500
+                                + "\nCall the echo tool with value READY.",
+                            }
+                        ],
+                        "max_tokens": 512,
+                        "tools": [
+                            {
+                                "type": "function",
+                                "function": {
+                                    "name": "echo",
+                                    "description": "Echo a value",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {"value": {"type": "string"}},
+                                        "required": ["value"],
                                     },
-                                }
-                            ],
-                        },
-                    )
+                                },
+                            }
+                        ],
+                    }
+                    gateway.active_attempts[e["episode_id"]] = uuid.uuid4().hex
+                    # Both requests carry the same cache-enabled prefix, including
+                    # the first cache write. No uncached control is sent.
+                    gateway.call(e["episode_id"], role, body)
+                    raw = gateway.call(e["episode_id"], role, body)
                     tool_calls = raw["choices"][0]["message"].get("tool_calls") or []
                     ok = any(
                         c["function"]["name"] == "echo"
                         and json.loads(c["function"]["arguments"]).get("value") == "READY"
                         for c in tool_calls
                     )
-                    row = {"episode_id": e["episode_id"], "ok": ok, "reply": raw}
+                    row = {"episode_id": e["episode_id"], "role": role, "ok": ok, "reply": raw}
                 except Exception as exc:
-                    row = {"episode_id": e["episode_id"], "ok": False, "error": str(exc)}
+                    row = {
+                        "episode_id": e["episode_id"],
+                        "role": role,
+                        "ok": False,
+                        "error": str(exc),
+                    }
+                row["attempt_id"] = gateway.active_attempts.get(e["episode_id"])
                 probes.append(row)
                 probe_path.write_text(json.dumps(probes, indent=2) + "\n")
                 print(e["episode_id"], row["ok"], flush=True)
@@ -196,10 +243,23 @@ def main():
             else []
         )
         completed = {r["episode_id"] for r in rows}
-        episodes = [e for e in episodes if e["episode_id"] not in completed][: args.count]
+        if args.stage != "oracle":
+            summarize(spec, rows)  # Reject foreign, duplicated, or malformed outcomes before calls.
+        remaining = [e for e in episodes if e["episode_id"] not in completed]
+        pending_ids = {e["episode_id"] for e in remaining}
+        interrupted = {x["episode_id"] for x in gateway.guard.entries} & pending_ids
+        if interrupted:
+            raise ValueError(
+                "interrupted episodes have paid reservations but no outcome; reconcile their "
+                "evidence before resuming: " + ", ".join(sorted(interrupted))
+            )
+        episodes = []
+        for unit in work_units(remaining):
+            if len(episodes) + len(unit) > args.count:
+                break
+            episodes.extend(unit)
         rows_lock = threading.Lock()
         coding_lock = threading.Lock()
-        stopped = threading.Event()
 
         def execute(e):
             if stop_at is not None and datetime.now(UTC) >= stop_at:
@@ -218,19 +278,12 @@ def main():
                 )
                 stopped.set()
                 return
-            output = directory / e["episode_id"]
-            # An episode reaching here is not recorded, so anything left in its
-            # directory belongs to an attempt that was interrupted. Upstream
-            # harnesses prompt on stdin when they find their own artefacts, which
-            # blocks forever under a non-interactive runner, so clear it first and
-            # keep the remains for audit.
-            if output.exists() and any(output.iterdir()):
-                stale = directory / "interrupted-episodes" / e["episode_id"]
-                stale.parent.mkdir(parents=True, exist_ok=True)
-                if stale.exists():
-                    shutil.rmtree(stale)
-                shutil.move(str(output), str(stale))
-            output.mkdir(parents=True, exist_ok=True)
+            attempt_id = uuid.uuid4().hex
+            gateway.active_attempts[e["episode_id"]] = attempt_id
+            output = directory / "attempts" / e["episode_id"] / attempt_id
+            output.mkdir(parents=True, exist_ok=False)
+            log_path = directory / "worker-logs" / (attempt_id + ".log")
+            log_path.parent.mkdir(exist_ok=True)
             env = os.environ.copy()
             for key in ["OPENROUTER_API_KEY", "DOUBLEWORD_API_KEY"]:
                 env.pop(key, None)
@@ -258,7 +311,7 @@ def main():
                 cmd.append("--oracle")
             attempt_started = datetime.now(UTC).isoformat()
             print("START", e["episode_id"], e["suite"], e.get("route"), e.get("tier"), flush=True)
-            with (output / "worker.log").open("w") as log:
+            with log_path.open("x") as log:
                 child = subprocess.Popen(
                     cmd,
                     env=env,
@@ -302,7 +355,11 @@ def main():
                     else []
                 )
             calls_all = calls
-            calls = attempt_calls(calls, e["episode_id"], attempt_started)
+            calls = [
+                c
+                for c in attempt_calls(calls, e["episode_id"], attempt_started)
+                if c.get("attempt_id") == attempt_id
+            ]
             auxiliary_failed = any(c["status"] != 200 and c["role"] == "auxiliary" for c in calls)
             if (
                 result["status"] == "infrastructure_error"
@@ -319,7 +376,15 @@ def main():
                 if stops_path.exists()
                 else []
             )
-            if any(s["episode_id"] == e["episode_id"] and s["role"] == "agent" for s in stops):
+            if (
+                any(
+                    s["episode_id"] == e["episode_id"]
+                    and s["role"] == "agent"
+                    and s.get("attempt_id") == attempt_id
+                    for s in stops
+                )
+                and not auxiliary_failed
+            ):
                 result.update(status="budget_exhausted", success=None)
             # Applied last so no later label can mask it, and sticky so the other
             # lanes stop dispatching immediately rather than after their episode.
@@ -328,10 +393,24 @@ def main():
                     status="infrastructure_error", success=None, failure_reason="account_balance"
                 )
                 stopped.set()
+            if any(
+                c.get("failure_reason") == "invalid_provider_evidence"
+                or (c.get("status") == 200 and c.get("tier_confirmed") is not True)
+                for c in calls
+            ):
+                result.update(
+                    status="infrastructure_error",
+                    success=None,
+                    failure_reason="unverified_or_invalid_provider_evidence",
+                )
+                stopped.set()
             for role, key in [("agent", "agent_cost_usd"), ("auxiliary", "auxiliary_cost_usd")]:
                 selected = [c for c in calls if c["role"] == role]
                 unsettled = any(
-                    x["episode_id"] == e["episode_id"] and x["role"] == role and not x["settled"]
+                    x["episode_id"] == e["episode_id"]
+                    and x["role"] == role
+                    and x.get("attempt_id") == attempt_id
+                    and not x["settled"]
                     for x in gateway.guard.entries
                 )
                 result[key] = (
@@ -340,7 +419,12 @@ def main():
                     else None
                 )
             result.update(
-                episode_id=e["episode_id"], spec_sha256=study["spec_sha256"], sandbox_cost_usd=None
+                episode_id=e["episode_id"],
+                spec_sha256=study["spec_sha256"],
+                sandbox_cost_usd=None,
+                attempt_id=attempt_id,
+                artifact_dir=str(output.relative_to(directory)),
+                worker_log=str(log_path.relative_to(directory)),
             )
             result["execution_mode"] = execution_mode
             with rows_lock:
@@ -362,14 +446,15 @@ def main():
             # return zero cached tokens without an error, which reads as an expensive
             # tier rather than an uncacheable API. Stop the run instead of paying for
             # a whole study at uncached rates, once enough calls have asked to be sure.
-            asked = [c for c in calls_all if c.get("cache_requested") and c.get("usage")]
-            if len(asked) >= CACHE_GATE_MIN_CALLS:
-                verdict = cache_effectiveness(asked)
-                if verdict["requested_but_never_observed"]:
-                    print("HALT", verdict["warning"], flush=True)
-                    stopped.set()
-                    raise RuntimeError("prompt caching requested and never observed")
+            failures = cache_failures(calls_all, CACHE_GATE_MIN_CALLS)
+            if failures:
+                stopped.set()
+                raise RuntimeError(
+                    "prompt caching requested and never observed, or usage missing: "
+                    + json.dumps(failures)
+                )
             if result["status"] == "infrastructure_error":
+                stopped.set()
                 print("Stopping to repair infrastructure before further paid episodes.", flush=True)
                 raise RuntimeError("episode infrastructure failure")
 
@@ -429,6 +514,7 @@ def main():
                     break
                 execute(e)
     finally:
+        stopped.set()
         server.shutdown()
         server.server_close()
         runner_lock.close()

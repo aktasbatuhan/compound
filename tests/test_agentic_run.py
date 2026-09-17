@@ -8,12 +8,30 @@ from types import SimpleNamespace
 from compound import agentic_run
 
 
+def test_unqualified_run_is_blocked_before_credentials_or_gateway(tmp_path, monkeypatch):
+    import pytest
+
+    spec_path = Path("benchmarks/flex-agentic/budget-curve-v1.json").resolve()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agentic_run, "verify_sources", lambda spec: [])
+    monkeypatch.setattr(agentic_run, "preparation_errors", lambda spec, directory: [])
+    monkeypatch.setattr(
+        agentic_run.Gateway, "__init__", lambda *a, **k: pytest.fail("gateway started")
+    )
+    monkeypatch.setattr("sys.argv", ["runner", "run", "--go", "--spec", str(spec_path)])
+    with pytest.raises(ValueError, match="blocked pending qualification"):
+        agentic_run.main()
+    assert not (tmp_path / "keys.json").exists()
+
+
 def test_parallel_execution_serializes_each_route_and_coding(tmp_path, monkeypatch):
     spec_path = Path("benchmarks/flex-agentic/pilot.json").resolve()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENROUTER_API_KEY", "parent-only-test-key")
     (tmp_path / "keys.json").write_text(json.dumps({"OPENROUTER_API_KEY": "parent-only-test-key"}))
     monkeypatch.setattr(agentic_run, "verify_sources", lambda spec: [])
+    monkeypatch.setattr(agentic_run, "qualification_errors", lambda spec, directory: [])
+    monkeypatch.setattr(agentic_run, "preparation_errors", lambda spec, directory: [])
     monkeypatch.setattr(
         agentic_run.Gateway,
         "serve",
@@ -107,6 +125,8 @@ def test_lanes_overlap_episodes_inside_one_route_without_exceeding_the_lane_coun
     monkeypatch.chdir(tmp_path)
     (tmp_path / "keys.json").write_text(json.dumps({"DOUBLEWORD_API_KEY": "parent-only-test-key"}))
     monkeypatch.setattr(agentic_run, "verify_sources", lambda spec: [])
+    monkeypatch.setattr(agentic_run, "qualification_errors", lambda spec, directory: [])
+    monkeypatch.setattr(agentic_run, "preparation_errors", lambda spec, directory: [])
     monkeypatch.setattr(
         agentic_run.Gateway,
         "serve",

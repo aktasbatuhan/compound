@@ -4,21 +4,47 @@ Run with the selected benchmark checkout on PYTHONPATH; see benchmarks/flex-agen
 """
 
 import argparse
+import json
+from pathlib import Path
+
+from compound.agentic_safety import runtime_identity
+from compound.agentic_study import fingerprint
+
+DEFAULT_SPEC = Path("benchmarks/flex-agentic/pilot.json")
+DEFAULT_OUTPUTS = {
+    "retail": Path("artifacts/flex-agentic-preflight/retail-qualification.json"),
+    "finance": Path("artifacts/flex-agentic-preflight/finance-qualification.json"),
+}
 
 
-def qualify_retail():
-    import json
-    from pathlib import Path
+def _write_envelope(spec, suite, results, ok, out):
+    envelope = {
+        "spec_sha256": fingerprint(spec),
+        "suite": suite,
+        "results": results,
+        "ok": ok,
+        "runtime": runtime_identity(),
+    }
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(envelope, indent=2, allow_nan=False) + "\n")
+    return envelope
+
+
+def qualify_retail(spec_path=DEFAULT_SPEC, out=DEFAULT_OUTPUTS["retail"]):
+    """Replay selected retail reference actions locally; performs no inference."""
 
     from tau2.data_model.tasks import Task
     from tau2.domains.retail.environment import get_environment
 
-    spec = json.loads(Path("benchmarks/flex-agentic/pilot.json").read_text())
+    spec = json.loads(Path(spec_path).read_text())
     ids = {x["id"] for x in spec["sources"]["retail"]["tasks"]}
     rows = json.loads(Path(spec["sources"]["retail"]["data_path"]).read_text())
     results = []
     for row in rows:
         t = Task.model_validate(row)
+        if t.id not in ids:
+            continue
         e = get_environment()
         init = t.initial_state
         e.set_state(
@@ -47,29 +73,32 @@ def qualify_retail():
                 "reward_basis": [x.value for x in t.evaluation_criteria.reward_basis],
             }
         )
-    Path("artifacts/flex-agentic-preflight/retail-qualification.json").write_text(
-        json.dumps(results, indent=2) + "\n"
+    selected_ids = {r["task_id"] for r in results}
+    ok = (
+        len(results) == len(ids)
+        and selected_ids == ids
+        and all(not r["gold_replay_errors"] and r["state_changed"] for r in results)
     )
+    envelope = _write_envelope(spec, "retail", results, ok, out)
     print(
         {
             "checked": len(results),
             "valid_mutating": sum(
                 not r["gold_replay_errors"] and r["state_changed"] for r in results
             ),
-            "selected": [r for r in results if r["task_id"] in ids],
+            "selected": results,
+            "ok": ok,
+            "out": str(out),
         }
     )
-    selected = [r for r in results if r["task_id"] in ids]
-    if len(selected) != len(ids) or any(
-        r["gold_replay_errors"] or not r["state_changed"] for r in selected
-    ):
+    if not ok:
         raise ValueError("Selected retail tasks failed reference replay qualification")
+    return envelope
 
 
-def qualify_finance():
+def qualify_finance(spec_path=DEFAULT_SPEC, out=DEFAULT_OUTPUTS["finance"]):
+    """Exercise selected finance references with a local test double; no inference."""
     import copy
-    import json
-    from pathlib import Path
 
     from finbalance.benchmark.analysis import posting_to_dict, serialize_balance_sheet
     from finbalance.benchmark.dataset import load_records
@@ -81,7 +110,7 @@ def qualify_finance():
     from compound.adapters.finbalance import run_case
     from compound.agentic_study import finance_success
 
-    spec = json.loads(Path("benchmarks/flex-agentic/pilot.json").read_text())
+    spec = json.loads(Path(spec_path).read_text())
     ids = {x["id"] for x in spec["sources"]["finance"]["tasks"]}
     results = []
     for r in load_records(spec["sources"]["finance"]["data_path"]):
@@ -166,22 +195,30 @@ def qualify_finance():
                 "native_tool_loop_reference_passes": True,
             }
         )
-    Path("artifacts/flex-agentic-preflight/finance-qualification.json").write_text(
-        json.dumps(results, indent=2) + "\n"
-    )
-    print(results)
-    if {r["task_id"] for r in results} != ids:
+    ok = len(results) == len(ids) and {r["task_id"] for r in results} == ids
+    envelope = _write_envelope(spec, "finance", results, ok, out)
+    print({"results": results, "ok": ok, "out": str(out)})
+    if not ok:
         raise ValueError("Finance qualification did not cover all selected tasks")
+    return envelope
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("suite", choices=("retail", "finance"))
+    parser.add_argument("--spec", type=Path, default=DEFAULT_SPEC)
+    parser.add_argument(
+        "--out",
+        type=Path,
+        help="Exact qualification JSON path (default remains suite-specific preflight path)",
+    )
+    args = parser.parse_args()
+    out = args.out or DEFAULT_OUTPUTS[args.suite]
+    if args.suite == "retail":
+        qualify_retail(args.spec, out)
+    else:
+        qualify_finance(args.spec, out)
 
 
 if __name__ == "__main__":
-    from pathlib import Path
-
-    Path("artifacts/flex-agentic-preflight").mkdir(parents=True, exist_ok=True)
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("suite", choices=("retail", "finance"))
-    args = parser.parse_args()
-    if args.suite == "retail":
-        qualify_retail()
-    else:
-        qualify_finance()
+    main()
