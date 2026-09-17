@@ -1,3 +1,9 @@
+# Historical protocol
+
+For the next pilot see [budget-curve-v1.md](budget-curve-v1.md). This frozen
+protocol remains for interpreting its original results; do not silently update
+its model or pricing and resume an old run.
+
 # Does the async tier change answer quality?
 
 The pilot and its replication measured five routes on three tasks. They settled

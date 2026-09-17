@@ -1,19 +1,12 @@
-"""One place that decides how a paid request opts into prompt caching.
+"""Request opt-in caching without changing message text.
 
-Doubleword and Anthropic-style endpoints cache only when the request carries an
-explicit ``cache_control`` marker. A marker-less agent loop re-reads its whole
-context at full price on every turn, which on a 16:1 input-to-output workload is
-most of the bill. Every module that builds a paid request for a cacheable host
-must route through :func:`mark_cache_prefix`, and ``tests/test_cache_policy.py``
-fails the build if one does not.
-
-Caching does not change the tokens a model sees, so it never changes an answer.
-It changes what the run costs, which is why it is not optional.
+Markers request caching; only provider usage establishes a cache hit. This helper
+is not proof that every request path or upstream supports caching.
 """
 
 from typing import Any
 
-#: Hosts whose caching is opt-in: no marker means a guaranteed 0% hit rate.
+#: Hosts whose documented cache policy requires explicit opt-in.
 MARKER_REQUIRED_HOSTS = ("api.doubleword.ai", "api.anthropic.com")
 
 #: Doubleword serves prompt caching on chat completions only. Its Responses
@@ -30,24 +23,27 @@ def needs_marker(base_url: str) -> bool:
     return any(host in base_url for host in MARKER_REQUIRED_HOSTS)
 
 
-def mark_cache_prefix(messages: Any) -> Any:
+def mark_cache_prefix(messages: Any, *, ttl: str = "5m") -> Any:
     """Attach ``cache_control`` to the last content block of the last message.
 
     The marker is a breakpoint: everything up to and including it is cached, so
     marking the newest message caches the entire conversation prefix that the
     next turn will re-send.
     """
+    if ttl not in {"5m", "1h"}:
+        raise ValueError("cache TTL must be 5m or 1h")
+    marker = {"type": "ephemeral", "ttl": ttl}
     if not isinstance(messages, list) or not messages:
         return messages
     msgs = list(messages)
     last = dict(msgs[-1])
     content = last.get("content")
     if isinstance(content, str):
-        last["content"] = [{"type": "text", "text": content, "cache_control": dict(CACHE_MARKER)}]
+        last["content"] = [{"type": "text", "text": content, "cache_control": dict(marker)}]
     elif isinstance(content, list) and content:
         blocks = list(content)
         final = dict(blocks[-1])
-        final["cache_control"] = dict(CACHE_MARKER)
+        final["cache_control"] = dict(marker)
         blocks[-1] = final
         last["content"] = blocks
     else:

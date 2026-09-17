@@ -124,3 +124,31 @@ def test_finance_requires_citations_and_correct_inconsistency_handling():
     }
     assert finance_success(inconsistent)
     assert not finance_success({**inconsistent, "inconsistency_empty_answer": False})
+
+
+def test_budget_grid_has_distinct_pairs_and_separate_report_cells():
+    spec = json.loads(Path("benchmarks/flex-agentic/budget-curve-v1.json").read_text())
+    study = plan(spec)
+    assert study["episode_count"] == 120
+    assert len({e["episode_id"] for e in study["episodes"]}) == 120
+    for i in range(0, 120, 2):
+        a, b = study["episodes"][i : i + 2]
+        assert (a["task_id"], a["trial"], a["budget_usd"]) == (
+            b["task_id"],
+            b["trial"],
+            b["budget_usd"],
+        )
+        assert {a["tier"], b["tier"]} == {"standard", "flex"}
+    rows = [outcome(study, e, success=e["budget_usd"] > 0.01) for e in study["episodes"]]
+    groups = summarize(spec, rows)["groups"]
+    assert len(groups) == 6
+    assert all(g["planned"] == 20 for g in groups)
+    assert all(g["success_rate"] == (0 if g["budget_usd"] == 0.01 else 1) for g in groups)
+    assert all(g["success_rate_wilson95"] is None for g in groups)
+
+
+@pytest.mark.parametrize("budgets", [[], [0], [-1], [0.1, 0.1], [True], [float("nan")]])
+def test_invalid_budget_grid_is_rejected(spec, budgets):
+    spec["budget_levels_usd"] = budgets
+    with pytest.raises(ValueError):
+        plan(spec)
