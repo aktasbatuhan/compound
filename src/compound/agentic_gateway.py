@@ -426,13 +426,10 @@ class Gateway:
                 payload["reasoning"] = {"effort": effort}
             base, key = "https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY"
         else:
-            # Chat completions, not Responses: Doubleword's Responses endpoint
-            # accepts a cache marker and never reports a hit (measured
-            # 2026-09-15), so an agent loop there re-reads its whole context at
-            # full price every turn. Chat completions caches at ~99% with the
-            # marker. The cost of the switch is that chat completions does not
-            # echo service_tier. Such calls remain explicitly unverified here;
-            # a separate reconciliation may later add real billing evidence.
+            # This adapter uses explicit Chat Completions cache markers. Current
+            # Responses caching uses a different top-level control; the older
+            # no-hit Responses probe did not establish permanent lack of support.
+            # Missing tier echoes remain unverified under either study policy.
             payload["messages"] = mark_cache_prefix(payload["messages"], ttl=cache_ttl)
             payload["service_tier"] = "priority" if tier == "standard" else "flex"
             # Chat completions takes a flat reasoning_effort; the Responses API

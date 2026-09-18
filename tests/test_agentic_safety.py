@@ -226,3 +226,33 @@ def test_qualification_accepts_dedicated_simulator_probe_identity(tmp_path):
     _write_qualification(tmp_path, calls, probes)
 
     assert agentic_safety.qualification_errors(spec, tmp_path) == []
+
+
+def test_requested_policy_allows_absence_but_never_contradiction():
+    from compound.agentic_safety import tier_evidence_errors
+
+    spec = {"controls": {"tier_evidence_policy": "requested_policy"}}
+    call = {"status": 200, "requested_tier": "flex", "tier_confirmed": False}
+    assert not tier_evidence_errors(spec, [call])
+    assert call["tier_confirmed"] is False
+    assert tier_evidence_errors({}, [call])
+    assert tier_evidence_errors(spec, [call | {"served_tier": "priority"}])
+    with pytest.raises(ValueError, match="unknown tier evidence policy"):
+        tier_evidence_errors({"controls": {"tier_evidence_policy": "typo"}}, [])
+
+
+def test_requested_policy_qualification_keeps_cache_and_tools_required(tmp_path):
+    spec = _qualification_spec()
+    spec.setdefault("controls", {})["tier_evidence_policy"] = "requested_policy"
+    calls, probes = [], []
+    for tier in ("standard", "flex"):
+        rows = _qualified_rows("deepseek-dw", "deepseek-ai/DeepSeek-V4.1-Flash", tier)
+        for row in rows:
+            row["tier_confirmed"] = False
+        calls.extend(rows)
+        probes.append({"episode_id": f"probe-deepseek-dw-{tier}", "role": "agent", "ok": True})
+    _write_qualification(tmp_path, calls, probes)
+    assert not agentic_safety.qualification_errors(spec, tmp_path)
+    calls[-1]["usage"]["prompt_tokens_details"]["cached_tokens"] = 0
+    _write_qualification(tmp_path, calls, probes)
+    assert agentic_safety.qualification_errors(spec, tmp_path)

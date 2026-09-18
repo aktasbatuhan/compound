@@ -1,7 +1,7 @@
 # Flex agentic pilot
 
 For the next experiment start with [the Claude execution handoff](../claude-experiment-handoff.md)
-and [the budget-first protocol](budget-curve-v1.md).
+and [the budget-first protocol](budget-curve-v2.md).
 The configurations described below are historical. The current runner requires
 fresh cache/tool/tier qualification and refuses to adopt an unsealed old run.
 

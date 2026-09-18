@@ -6,18 +6,18 @@ is not proof that every request path or upstream supports caching.
 
 from typing import Any
 
-#: Hosts whose documented cache policy requires explicit opt-in.
+#: Hosts for which this benchmark requires explicit cache markers.
 MARKER_REQUIRED_HOSTS = ("api.doubleword.ai", "api.anthropic.com")
 
-#: Doubleword serves prompt caching on chat completions only. Its Responses
-#: endpoint accepts the marker and never reports a hit, measured 2026-09-15.
+#: Legacy exclusion for this message-block helper. Current Doubleword Responses
+#: supports top-level cache_control; it needs a different request builder.
 UNCACHEABLE_ENDPOINTS = ("/v1/responses",)
 
 CACHE_MARKER = {"type": "ephemeral", "ttl": "5m"}
 
 
 def needs_marker(base_url: str) -> bool:
-    """True when this endpoint caches, but only if asked explicitly."""
+    """Whether our message-block request policy requires an explicit marker."""
     if any(path in base_url for path in UNCACHEABLE_ENDPOINTS):
         return False
     return any(host in base_url for host in MARKER_REQUIRED_HOSTS)

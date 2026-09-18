@@ -1,0 +1,398 @@
+{
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "cap_usd": 0.15,
+  "reserved_usd": 0.0687828,
+  "calls": [
+    {
+      "requested_tier": "priority",
+      "repeat": 0,
+      "before": {
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "total_request_count": 0,
+        "total_batch_count": 0,
+        "avg_requests_per_batch": 0.0,
+        "total_cost": "0",
+        "estimated_realtime_cost": "0",
+        "by_model": []
+      },
+      "reservation_usd": 0.017196299999999998,
+      "request_sha256": "34b25cfa51be30c3848c762e2ad1f594df0d5b70152f965f2c8a23e9b71f5022",
+      "duration_s": 0.9639918330358341,
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "OK",
+              "reasoning_content": "We need answer user. Need parse. User provided huge list starting with hex string then \"item-00000 record sequence entry ... item-01599 record sequence entry\". Then says \"Reply with OK.\" We need reply with OK. Ensure exactly? They want OK. We can simply output OK.",
+              "reasoning_details": [
+                {
+                  "format": "unknown",
+                  "index": 0,
+                  "text": "We need answer user. Need parse. User provided huge list starting with hex string then \"item-00000 record sequence entry ... item-01599 record sequence entry\". Then says \"Reply with OK.\" We need reply with OK. Ensure exactly? They want OK. We can simply output OK.",
+                  "type": "reasoning.text"
+                }
+              ],
+              "refusal": null,
+              "role": "assistant"
+            }
+          }
+        ],
+        "created": 1789748845,
+        "id": "resp_4b12a22b-b1d8-40bd-bb57-4ab4819de162",
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "object": "chat.completion",
+        "system_fingerprint": "default",
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 11255,
+            "ephemeral_24h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 11255,
+          "cache_read_input_tokens": 0,
+          "completion_tokens": 63,
+          "completion_tokens_details": {
+            "audio_tokens": 0,
+            "image_tokens": 0,
+            "reasoning_tokens": 60
+          },
+          "prompt_tokens": 11255,
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "video_tokens": 0
+          },
+          "total_tokens": 11318
+        }
+      },
+      "derived_usd": 0.0034143000000000003,
+      "after": {
+        "total_input_tokens": 11255,
+        "total_output_tokens": 63,
+        "total_request_count": 1,
+        "total_batch_count": 0,
+        "avg_requests_per_batch": 0.0,
+        "total_cost": "0.003414300000000",
+        "estimated_realtime_cost": "0.00172605",
+        "by_model": [
+          {
+            "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+            "input_tokens": 11255,
+            "output_tokens": 63,
+            "cost": "0.003414300000000",
+            "request_count": 1
+          }
+        ]
+      },
+      "meter_delta_usd": 0.0034143,
+      "request_delta": 1,
+      "input_delta": 11255,
+      "output_delta": 63,
+      "reconciled": true
+    },
+    {
+      "requested_tier": "priority",
+      "repeat": 1,
+      "before": {
+        "total_input_tokens": 11255,
+        "total_output_tokens": 63,
+        "total_request_count": 1,
+        "total_batch_count": 0,
+        "avg_requests_per_batch": 0.0,
+        "total_cost": "0.003414300000000",
+        "estimated_realtime_cost": "0.00172605",
+        "by_model": [
+          {
+            "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+            "input_tokens": 11255,
+            "output_tokens": 63,
+            "cost": "0.003414300000000",
+            "request_count": 1
+          }
+        ]
+      },
+      "reservation_usd": 0.017196299999999998,
+      "request_sha256": "34b25cfa51be30c3848c762e2ad1f594df0d5b70152f965f2c8a23e9b71f5022",
+      "duration_s": 0.6281582498922944,
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "OK",
+              "reasoning_content": "We need answer user asks \"Reply with OK.\" We need just OK? They provided huge list and hash. Need comply. Final only OK.",
+              "reasoning_details": [
+                {
+                  "format": "unknown",
+                  "index": 0,
+                  "text": "We need answer user asks \"Reply with OK.\" We need just OK? They provided huge list and hash. Need comply. Final only OK.",
+                  "type": "reasoning.text"
+                }
+              ],
+              "refusal": null,
+              "role": "assistant"
+            }
+          }
+        ],
+        "created": 1789748857,
+        "id": "resp_db6ca663-dfa9-4a1f-9c22-69c01a4f9e9c",
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "object": "chat.completion",
+        "system_fingerprint": "default",
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_24h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 11255,
+          "completion_tokens": 32,
+          "completion_tokens_details": {
+            "audio_tokens": 0,
+            "image_tokens": 0,
+            "reasoning_tokens": 29
+          },
+          "prompt_tokens": 11255,
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": 0,
+            "cached_tokens": 11255,
+            "video_tokens": 0
+          },
+          "total_tokens": 11287
+        }
+      },
+      "derived_usd": 0.00013175,
+      "after": {
+        "total_input_tokens": 22510,
+        "total_output_tokens": 95,
+        "total_request_count": 2,
+        "total_batch_count": 0,
+        "avg_requests_per_batch": 0.0,
+        "total_cost": "0.003467270000000",
+        "estimated_realtime_cost": "0.00343350",
+        "by_model": [
+          {
+            "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+            "input_tokens": 22510,
+            "output_tokens": 95,
+            "cost": "0.003467270000000",
+            "request_count": 2
+          }
+        ]
+      },
+      "meter_delta_usd": 5.2970000000000274e-05,
+      "request_delta": 1,
+      "input_delta": 11255,
+      "output_delta": 32,
+      "reconciled": true
+    },
+    {
+      "requested_tier": "flex",
+      "repeat": 0,
+      "before": {
+        "total_input_tokens": 22510,
+        "total_output_tokens": 95,
+        "total_request_count": 2,
+        "total_batch_count": 0,
+        "avg_requests_per_batch": 0.0,
+        "total_cost": "0.003467270000000",
+        "estimated_realtime_cost": "0.00343350",
+        "by_model": [
+          {
+            "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+            "input_tokens": 22510,
+            "output_tokens": 95,
+            "cost": "0.003467270000000",
+            "request_count": 2
+          }
+        ]
+      },
+      "reservation_usd": 0.0171951,
+      "request_sha256": "d6de529ff53d5f6c3203ca348e44ddc7a8b9157e64ed944585a96e7ff38ae831",
+      "duration_s": 1.2708611660636961,
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "OK",
+              "reasoning_content": "We need answer user asks \"Reply with OK.\" So just OK. Need obey.",
+              "reasoning_details": [
+                {
+                  "format": "unknown",
+                  "index": 0,
+                  "text": ".",
+                  "type": "reasoning.text"
+                }
+              ],
+              "role": "assistant"
+            }
+          }
+        ],
+        "created": 1789748868,
+        "id": "gen-1789748868-XJ9WGUy5wVXpWCZot73X",
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "object": "chat.completion",
+        "system_fingerprint": "default",
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 11257,
+            "ephemeral_24h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 11257,
+          "cache_read_input_tokens": 0,
+          "completion_tokens": 20,
+          "completion_tokens_details": {
+            "audio_tokens": 0,
+            "image_tokens": 0,
+            "reasoning_tokens": 17
+          },
+          "prompt_tokens": 11257,
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "video_tokens": 0
+          },
+          "total_tokens": 11277
+        }
+      },
+      "derived_usd": 0.00271128,
+      "after": {
+        "total_input_tokens": 33767,
+        "total_output_tokens": 115,
+        "total_request_count": 3,
+        "total_batch_count": 0,
+        "avg_requests_per_batch": 0.0,
+        "total_cost": "0.006178550000000",
+        "estimated_realtime_cost": "0.00513405",
+        "by_model": [
+          {
+            "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+            "input_tokens": 33767,
+            "output_tokens": 115,
+            "cost": "0.006178550000000",
+            "request_count": 3
+          }
+        ]
+      },
+      "meter_delta_usd": 0.0027112799999999995,
+      "request_delta": 1,
+      "input_delta": 11257,
+      "output_delta": 20,
+      "reconciled": true
+    },
+    {
+      "requested_tier": "flex",
+      "repeat": 1,
+      "before": {
+        "total_input_tokens": 33767,
+        "total_output_tokens": 115,
+        "total_request_count": 3,
+        "total_batch_count": 0,
+        "avg_requests_per_batch": 0.0,
+        "total_cost": "0.006178550000000",
+        "estimated_realtime_cost": "0.00513405",
+        "by_model": [
+          {
+            "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+            "input_tokens": 33767,
+            "output_tokens": 115,
+            "cost": "0.006178550000000",
+            "request_count": 3
+          }
+        ]
+      },
+      "reservation_usd": 0.0171951,
+      "request_sha256": "d6de529ff53d5f6c3203ca348e44ddc7a8b9157e64ed944585a96e7ff38ae831",
+      "duration_s": 50.39133945805952,
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "OK",
+              "reasoning_content": "We need answer user asks \"Reply with OK.\" Need just OK. But need ensure no hidden? They provided huge list and asks Reply with OK. So final should be OK.",
+              "reasoning_details": [
+                {
+                  "format": "unknown",
+                  "index": 0,
+                  "text": " final should be OK.",
+                  "type": "reasoning.text"
+                }
+              ],
+              "role": "assistant"
+            }
+          }
+        ],
+        "created": 1789748928,
+        "id": "gen-1789748928-r2SSJ3pXgesQPkOUeiEA",
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "object": "chat.completion",
+        "system_fingerprint": "default",
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_24h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 11257,
+          "completion_tokens": 39,
+          "completion_tokens_details": {
+            "audio_tokens": 0,
+            "image_tokens": 0,
+            "reasoning_tokens": 36
+          },
+          "prompt_tokens": 11257,
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": 0,
+            "cached_tokens": 11257,
+            "video_tokens": 0
+          },
+          "total_tokens": 11296
+        }
+      },
+      "derived_usd": 0.00013129000000000003,
+      "after": {
+        "total_input_tokens": 45024,
+        "total_output_tokens": 154,
+        "total_request_count": 4,
+        "total_batch_count": 0,
+        "avg_requests_per_batch": 0.0,
+        "total_cost": "0.006224290000000",
+        "estimated_realtime_cost": "0.00684600",
+        "by_model": [
+          {
+            "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+            "input_tokens": 45024,
+            "output_tokens": 154,
+            "cost": "0.006224290000000",
+            "request_count": 4
+          }
+        ]
+      },
+      "meter_delta_usd": 4.574000000000071e-05,
+      "request_delta": 1,
+      "input_delta": 11257,
+      "output_delta": 39,
+      "reconciled": true
+    }
+  ],
+  "execution": "local diagnostic, not a benchmark run",
+  "rate_source": "https://docs.doubleword.ai/inference-api/models/deepseek-ai-deepseek-v4-1-flash",
+  "tier_evidence": "requested policy; meter has no tier field",
+  "status": "complete",
+  "billed_usd": 0.00622429
+}

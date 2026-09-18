@@ -215,6 +215,7 @@ def summarize(spec: dict, outcomes: list[dict]) -> dict:
         )
     return {
         "schema_version": 1,
+        "tier_evidence_policy": spec.get("controls", {}).get("tier_evidence_policy", "verified"),
         "spec_sha256": study["spec_sha256"],
         "episode_count": len(expected),
         "recorded": len(actual),

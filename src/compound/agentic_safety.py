@@ -148,11 +148,29 @@ def seal_run(directory, spec, study, execution_mode):
             handle.write("\n")
 
 
-def qualification_errors(spec, directory):
-    """A probe must demonstrate tools, cache usage, and actual tier echoes per arm.
+def tier_evidence_errors(spec, calls):
+    """Separate requested-policy studies from verified-serving studies."""
+    policy = spec.get("controls", {}).get("tier_evidence_policy", "verified")
+    if policy not in {"verified", "requested_policy"}:
+        raise ValueError("unknown tier evidence policy")
+    errors = []
+    for call in calls:
+        if call.get("status") != 200:
+            continue
+        expected = {"flex"} if call.get("requested_tier") == "flex" else {"priority", "default"}
+        served = call.get("served_tier")
+        if served is not None and served not in expected:
+            errors.append("contradictory tier echo")
+        elif policy == "verified" and call.get("tier_confirmed") is not True:
+            errors.append("served tier unverified")
+    return errors
 
-    A missing echo is not inferred from prices. Such routes need a separately
-    implemented and tested provider-receipt verifier before scaled execution.
+
+def qualification_errors(spec, directory):
+    """A probe must demonstrate tools, cache usage, and the declared tier policy.
+
+    Missing echoes never become confirmations. Requested-policy studies may
+    proceed without them; verified-serving studies still require evidence.
     """
     path = directory / "calls.jsonl"
     calls = [json.loads(s) for s in path.read_text().splitlines()] if path.exists() else []
@@ -186,7 +204,7 @@ def qualification_errors(spec, directory):
         if latest.get("attempt_id"):
             rows = [c for c in rows if c.get("attempt_id") == latest["attempt_id"]]
         tool_ok = latest.get("ok") is True
-        if len(rows) < 2 or not tool_ok or not all(c.get("tier_confirmed") is True for c in rows):
+        if len(rows) < 2 or not tool_ok or tier_evidence_errors(spec, rows):
             errors.append(f"{model['id']}/{tier}/{role}: tools or tier evidence unqualified")
         if not cache_effectiveness(rows)["cache_observed_cells"]:
             errors.append(f"{model['id']}/{tier}/{role}: no verified repeated-prefix cache hit")

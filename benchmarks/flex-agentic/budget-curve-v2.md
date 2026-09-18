@@ -1,5 +1,3 @@
-> Historical v1: mandatory tier echo. Use [v2](budget-curve-v2.md) for new requested-policy studies.
-
 # Budget-first Flex pilot
 
 Status: repaired offline setup, awaiting target-runtime and paid qualification.
@@ -10,7 +8,7 @@ Historical configurations and results remain unchanged.
 
 For the same model, tasks and harness, does Flex solve more tasks at a given
 agent-dollar allowance? Report the time required alongside the budget curve.
-`budget-curve-v1.json` uses DeepSeek V4.1 Flash on Doubleword realtime and Flex,
+`budget-curve-v2.json` uses DeepSeek V4.1 Flash on Doubleword realtime and Flex,
 10 seeded tasks from the previously reference-qualified retail pool, two trials,
 and $0.01, $0.03 and $0.08 agent allowances: 120 episodes total.
 
@@ -48,8 +46,8 @@ Against a $0.01 allowance the output side alone now reserves 49% (standard) or
 cache-write multiplier of 2.0. The $0.01 cell can therefore afford very few
 calls, possibly one. Read a low-budget cell as a statement about this harness's
 reservation policy at that allowance, not as evidence that the model cannot do
-the task. Report the budget stops for those cells rather than folding them into
-a success rate.
+the task. Report budget stops separately and retain them as no delivered success in
+the planned-denominator rate; do not interpret them as graded model failures.
 
 ## Money and time bounds
 
@@ -77,14 +75,15 @@ must not be reported as completed episodes with a one-hour latency.
    OpenRouter rate; its actual cost comes from the usage receipt.
 3. Run the cache-enabled tool probes using the same spec and output directory.
    Both requests carry markers on opt-in APIs. Qualify standard, Flex and the
-   simulator independently. Missing usage or tier evidence is not a pass.
+   simulator independently. Missing usage fails qualification. Missing tier echoes
+   remain unverified under the declared requested-policy design.
 4. Run one complete task pair as the smoke test, inspect official grader output,
    per-call receipts, logs and costs, then continue the same sealed run.
 
 Offline plan:
 
 ```sh
-uv run python -m compound.agentic_study plan --spec benchmarks/flex-agentic/budget-curve-v1.json --out /tmp/budget-curve-plan.json
+uv run python -m compound.agentic_study plan --spec benchmarks/flex-agentic/budget-curve-v2.json --out /tmp/budget-curve-plan.json
 ```
 
 Prepare an isolated target runtime first. The base Compound environment does
@@ -92,32 +91,49 @@ not include tau2's dependencies (the local check currently stops at missing
 `toml`); do not run this with a bare `uv run` environment. Install the pinned
 checkout, freeze the resolved packages, and keep this environment unchanged:
 
+On a fresh GCP checkout, first obtain the source revision frozen in the spec:
+
+```sh
+mkdir -p .compound/sources
+git clone https://github.com/amazon-agi/tau2-bench-verified .compound/sources/tau2-bench-verified
+git -C .compound/sources/tau2-bench-verified checkout --detach 864350a8971a8f8ee9e7b8472e2edc380a806b0c
+git -C .compound/sources/tau2-bench-verified status --porcelain
+git -C .compound/sources/tau2-bench-verified rev-parse HEAD
+```
+
+If the source checkout already exists, inspect it before reuse; preserve local
+changes and require a clean checkout at the pinned revision. Then install:
+
 ```sh
 uv venv --python 3.12 .compound/venvs/flex-retail
 uv pip install --python .compound/venvs/flex-retail/bin/python -e . -e .compound/sources/tau2-bench-verified
-mkdir -p artifacts/budget-curve-v1
-uv pip freeze --python .compound/venvs/flex-retail/bin/python > artifacts/budget-curve-v1/runtime-requirements.txt
+mkdir -p artifacts/budget-curve-v2
+uv pip freeze --python .compound/venvs/flex-retail/bin/python > artifacts/budget-curve-v2/runtime-requirements.txt
 ```
 
 Reference qualification on the target runtime (no inference):
 
 ```sh
-PYTHONPATH=src:.compound/sources/tau2-bench-verified/src TAU2_DATA_DIR=.compound/sources/tau2-bench-verified/data .compound/venvs/flex-retail/bin/python scripts/qualify_agentic_study.py retail --spec benchmarks/flex-agentic/budget-curve-v1.json --out artifacts/budget-curve-v1/reference-qualification.json
+PYTHONPATH=src:.compound/sources/tau2-bench-verified/src TAU2_DATA_DIR=.compound/sources/tau2-bench-verified/data .compound/venvs/flex-retail/bin/python scripts/qualify_agentic_study.py retail --spec benchmarks/flex-agentic/budget-curve-v2.json --out artifacts/budget-curve-v2/reference-qualification.json
 ```
 
 Paid commands, for the qualification stage after GCP preparation:
 
 ```sh
-.compound/venvs/flex-retail/bin/python -m compound.agentic_run probe --spec benchmarks/flex-agentic/budget-curve-v1.json --out artifacts/budget-curve-v1 --inference-limit 10 --go
-.compound/venvs/flex-retail/bin/python -m compound.agentic_run run --spec benchmarks/flex-agentic/budget-curve-v1.json --out artifacts/budget-curve-v1 --inference-limit 10 --count 2 --go
-.compound/venvs/flex-retail/bin/python -m compound.agentic_run run --spec benchmarks/flex-agentic/budget-curve-v1.json --out artifacts/budget-curve-v1 --inference-limit 10 --count 120 --go
+.compound/venvs/flex-retail/bin/python -m compound.agentic_run probe --spec benchmarks/flex-agentic/budget-curve-v2.json --out artifacts/budget-curve-v2 --inference-limit 9.85 --go
+.compound/venvs/flex-retail/bin/python -m compound.agentic_run run --spec benchmarks/flex-agentic/budget-curve-v2.json --out artifacts/budget-curve-v2 --inference-limit 9.85 --count 2 --go
+.compound/venvs/flex-retail/bin/python -m compound.agentic_run run --spec benchmarks/flex-agentic/budget-curve-v2.json --out artifacts/budget-curve-v2 --inference-limit 9.85 --count 120 --go
 ```
 
-**Current live blocker:** Doubleword Chat Completions has previously omitted the
-tier echo. Such calls are now `unverified`, not `billing_meter`. The scaled runner
-will stop at qualification unless actual tier echoes are present. If still
-absent, a tested verifier for provider-side, request-linked tier receipts is
-needed. Do not bypass this gate using a price-derived tier or a hand-set flag.
+**Tier evidence policy:** v2 explicitly studies the documented requested policies.
+Missing tier echoes remain unverified but no longer stop this exploratory pilot.
+Contradictory echoes still stop execution. Cache and tool qualification remain
+mandatory. Token-derived costs are conditional on requested-tier rates; independent
+billing reconciliation is a separate evidence source, not a fabricated tier echo.
+The September 18 pricing diagnostic is separately logged under
+`artifacts/dw-pricing-2026-09-18`; deduct its spend (or unresolved reservation)
+from the shared $10 allowance before launching. The commands above conservatively
+reserve $0.15 for it, leaving $9.85 for this run.
 
 ## Reporting
 
@@ -146,3 +162,13 @@ separate from this retail budget pilot. If those details remain unavailable,
 label the eventual run an independent comparison under our published harness.
 Do not substitute our retail setup and call it a replication of their DeepSWE
 result, or extrapolate a paid-run budget from their aggregate token count.
+
+## September 18 pricing correction
+
+The four-call diagnostic billed $0.00622429. Read charges matched $0.003/M
+realtime and $0.0024/M Flex, consistent with the documented 0.02 multiplier,
+not the displayed $0.01/M used in v1. v2 contains the corrected rates. See
+`artifacts/dw-pricing-2026-09-18/README.md` for the reconciliation and its limits.
+Current documentation also describes implicit and Responses caching; historical
+no-hit probes are not evidence that those capabilities are permanently absent.
+This experiment continues to use explicit Chat Completions markers.

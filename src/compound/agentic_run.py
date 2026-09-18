@@ -22,6 +22,7 @@ from compound.agentic_safety import (
     preparation_errors,
     qualification_errors,
     seal_run,
+    tier_evidence_errors,
 )
 from compound.agentic_study import plan, summarize, verify_sources
 
@@ -395,7 +396,7 @@ def main():
                 stopped.set()
             if any(
                 c.get("failure_reason") == "invalid_provider_evidence"
-                or (c.get("status") == 200 and c.get("tier_confirmed") is not True)
+                or tier_evidence_errors(spec, [c])
                 for c in calls
             ):
                 result.update(

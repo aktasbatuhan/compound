@@ -1,15 +1,15 @@
 # Claude execution handoff
 
-Updated 2026-09-17. This document prepares execution; it does not launch a job.
+Updated 2026-09-18. This document prepares execution; it does not launch a job.
+See [the September 18 evidence check](setup-evidence-check-2026-09-18.md) for corrections to the tier-echo and DeepSWE assumptions.
 Claude owns setup and execution. Codex reviews the frozen design, exceptions and
 result artifacts. Preserve the user's existing work and all historical evidence.
 
 ## Start here
 
-1. Read this file, `flex-agentic/budget-curve-v1.md` and its matching JSON.
-2. Inspect `git status`. The repaired implementation is currently local work;
-   do not assume a fresh remote clone contains it. Transfer a reviewed commit or
-   explicit source bundle to GCP. Record its commit or SHA-256 inventory. Include
+1. Read this file, `flex-agentic/budget-curve-v2.md` and its matching JSON.
+2. Fetch the reviewed revision from `origin/main` and inspect `git status`.
+   Transfer that committed revision to GCP and record its exact commit SHA. Include
    the new `agentic_safety.py`, spec and qualification scripts. Do not transfer
    unrelated working-tree changes or credentials in the bundle.
 3. Run the relevant offline checks below. Do not spend inference credit to debug
@@ -31,7 +31,8 @@ result artifacts. Preserve the user's existing work and all historical evidence.
 - Keep the standard-tier simulator fixed. Agent allowance excludes simulator
   spend; total experiment spend and total cost per success include it.
 - $10 is the inference ceiling for probes, smoke and continuation together,
-  not $10 per stage. Agent and auxiliary role caps are $6 and $4. Do not raise
+  not $10 per stage. Deduct the separately logged September 18 pricing
+  diagnostic as well; the v2 commands reserve $0.15 and cap this run at $9.85. Agent and auxiliary role caps are $6 and $4. Do not raise
   caps or create a fresh spend ledger to get around an exhausted reserve.
 - GCP compute is additional. Account for it against the user's remaining total
   authorization; this document grants no new compute allowance. Record VM type,
@@ -49,15 +50,13 @@ result artifacts. Preserve the user's existing work and all historical evidence.
 2. **Paid API qualification.** Use the `probe` command. It sends two requests per
    agent tier and two for the simulator. Re-running `probe` spends again. Inspect
    tool correctness, cache-read usage, costs and actual tier evidence separately
-   for each arm. Never remove markers or switch to Responses to obtain a tier
-   echo at the expense of prompt caching.
-3. **Resolve the known blocker.** Cached Doubleword Chat Completions previously
-   omitted tier echoes. The current runner accepts response echoes only; there
-   is no implemented billing-receipt verifier. A price-derived cost, requested
-   tier, dashboard aggregate or hand-edited `tier_confirmed` field is not a fix.
-   If echoes remain absent, stop and return the probe evidence for a design/code
-   decision. Do not repeatedly probe or bypass the gate. A provider receipt
-   verifier would need implementation and tests before another scaled run.
+   for each arm. Keep the pinned Chat Completions request shape and explicit markers. Responses
+   now documents top-level caching but changing APIs requires separate qualification.
+3. **Apply the declared tier policy.** v2 compares requested service policies.
+   An absent echo stays unverified and is allowed; a contradictory echo is fatal.
+   Never label a requested tier or price-derived cost as independently verified
+   serving/billing. Cache usage and tool qualification remain required. Keep
+   any billing reconciliation separate from tier confirmation.
 4. **Paired smoke.** Run `--count 2` only after qualification passes. Inspect both
    official grader artifacts, traces, errors, budget stops and costs. Record
    observed wall time and projected remaining runtime. Missing checkpoints,
@@ -84,7 +83,7 @@ Use the canonical runbook for environment preparation, reference replay, probes
 and paid commands. Afterwards, generate the descriptive budget report offline:
 
 ```sh
-.compound/venvs/flex-retail/bin/python -m compound.agentic_study report --spec benchmarks/flex-agentic/budget-curve-v1.json --outcomes artifacts/budget-curve-v1/outcomes.jsonl --out artifacts/budget-curve-v1/report-final.json
+.compound/venvs/flex-retail/bin/python -m compound.agentic_study report --spec benchmarks/flex-agentic/budget-curve-v2.json --outcomes artifacts/budget-curve-v2/outcomes.jsonl --out artifacts/budget-curve-v2/report-final.json
 ```
 
 The report writer refuses to overwrite an existing output. Use a new report
@@ -129,8 +128,10 @@ is context, not an executable configuration supplied by this repository.
 Before execution, document task IDs, harness commit, prompts/tools, reasoning
 settings, sampling controls, retries/termination, grader, runtime images, cache
 policy and cost boundaries. If the original setup is unavailable, propose an
-independent comparison with our pinned harness and label it accordingly. Do not
-call SWE-bench/mini-SWE-agent a DeepSWE replication. Do not silently replace the
+independent comparison with our pinned harness and label it accordingly. The public [DeepSWE repository](https://github.com/datacurve-ai/deep-swe)
+provides tasks, verifiers and a Pier/mini-SWE-agent quickstart. Using mini-SWE-agent
+is compatible with DeepSWE; substituting SWE-bench tasks is not. Fireworks' exact
+run configuration remains unverified. Do not silently replace the
 quality comparison with token-price arithmetic.
 
 There is currently no frozen runnable Fireworks spec or approved launch budget
@@ -143,7 +144,7 @@ smoke-first budget for review. Do not add Astra or a batch arm by assumption.
 > protocol. Prepare the GCP execution setup and complete the offline checks.
 > Use my existing spending authorization only; do not increase it. Execute the
 > paid qualification and paired smoke only when their documented prerequisites
-> are satisfied. Stop on missing tier evidence or infrastructure problems,
+> are satisfied. Stop on contradictory tier evidence or infrastructure problems,
 > preserve the ledger and return the evidence. Continue the pilot only after a
 > sound smoke, without changing its frozen design. Keep Fireworks at preparation
 > stage pending a reviewed spec. Return the evidence package and REVIEW.md for

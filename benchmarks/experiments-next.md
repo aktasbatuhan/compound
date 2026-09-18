@@ -6,8 +6,8 @@ and evidence required for independent review.
 
 ## 1. Budget-first Flex pilot
 
-Canonical protocol: [budget-curve-v1](flex-agentic/budget-curve-v1.md).
-Canonical specification: [budget-curve-v1.json](flex-agentic/budget-curve-v1.json).
+Canonical protocol: [budget-curve-v2](flex-agentic/budget-curve-v2.md).
+Canonical specification: [budget-curve-v2.json](flex-agentic/budget-curve-v2.json).
 
 The primary question is delivered task success at a fixed agent-dollar allowance,
 comparing realtime and Flex within the same model and workload. Time and delivery

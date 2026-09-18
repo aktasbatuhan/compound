@@ -1,0 +1,50 @@
+{
+  "billed_usd": 0.00622429,
+  "rows": [
+    {
+      "tier": "priority",
+      "phase": "write",
+      "input_tokens": 11255,
+      "output_tokens": 63,
+      "cache_read_tokens": 0,
+      "meter_usd": 0.0034143,
+      "corrected_estimate_usd": 0.0034143000000000003,
+      "residual_usd": -4.336808689942018e-19,
+      "implied_cache_read_per_million": null
+    },
+    {
+      "tier": "priority",
+      "phase": "read",
+      "input_tokens": 11255,
+      "output_tokens": 32,
+      "cache_read_tokens": 11255,
+      "meter_usd": 5.2970000000000274e-05,
+      "corrected_estimate_usd": 5.2965000000000005e-05,
+      "residual_usd": 5.0000000002684616e-09,
+      "implied_cache_read_per_million": 0.003000444247001358
+    },
+    {
+      "tier": "flex",
+      "phase": "write",
+      "input_tokens": 11257,
+      "output_tokens": 20,
+      "cache_read_tokens": 0,
+      "meter_usd": 0.0027112799999999995,
+      "corrected_estimate_usd": 0.00271128,
+      "residual_usd": -4.336808689942018e-19,
+      "implied_cache_read_per_million": null
+    },
+    {
+      "tier": "flex",
+      "phase": "read",
+      "input_tokens": 11257,
+      "output_tokens": 39,
+      "cache_read_tokens": 11257,
+      "meter_usd": 4.574000000000071e-05,
+      "corrected_estimate_usd": 4.5736800000000006e-05,
+      "residual_usd": 3.200000000704972e-09,
+      "implied_cache_read_per_million": 0.002400284267566911
+    }
+  ],
+  "limitation": "Aggregate model meter matched one request and exact input/output counts per interval. No request-linked receipts or served-tier echo. Read-price inference conditions on published output rates."
+}
