@@ -208,3 +208,29 @@ def test_only_the_current_attempts_calls_are_classified_or_costed():
     assert agentic_run.account_failure(
         agentic_run.attempt_calls(ledger, "a", "2026-09-15T09:00:00+00:00")
     )
+
+
+def test_simulator_probe_fits_its_budget_before_network(tmp_path, monkeypatch):
+    import pytest
+
+    from compound.agentic_gateway import Gateway
+    from compound.agentic_study import plan
+
+    spec = json.loads(Path("benchmarks/flex-agentic/budget-curve-v2.json").read_text())
+    study = plan(spec)
+    eid = "probe-simulator-standard"
+    study["episodes"].append({"episode_id": eid, "route": "ds-sim", "tier": "standard"})
+    gateway = Gateway(spec, study, tmp_path, limit=9.84)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-only")
+    reached = []
+
+    def stop_at_network(request, timeout):
+        reached.append(True)
+        raise RuntimeError("network boundary reached")
+
+    monkeypatch.setattr("urllib.request.urlopen", stop_at_network)
+    with pytest.raises(RuntimeError, match="network boundary reached"):
+        gateway.call(eid, "auxiliary", agentic_run.qualification_body())
+    assert reached == [True]
+    ledger = json.loads((tmp_path / "spend.json").read_text())
+    assert 0 < ledger[0]["reservation_usd"] < 0.015

@@ -27,6 +27,35 @@ from compound.agentic_safety import (
 from compound.agentic_study import plan, summarize, verify_sources
 
 
+def qualification_body():
+    """Repeated prefix large enough for caching, within the simulator probe cap."""
+    return {
+        "messages": [
+            {
+                "role": "user",
+                "content": "Reference context for a cache qualification test. "
+                * 300
+                + "\nCall the echo tool with value READY.",
+            }
+        ],
+        "max_tokens": 512,
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "echo",
+                    "description": "Echo a value",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"value": {"type": "string"}},
+                        "required": ["value"],
+                    },
+                },
+            }
+        ],
+    }
+
+
 def attempt_calls(calls, episode_id, since):
     """Calls belonging to this attempt only.
 
@@ -175,31 +204,7 @@ def main():
                 if stopped.is_set():
                     break
                 try:
-                    body = {
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": "Reference context for a cache qualification test. "
-                                * 1500
-                                + "\nCall the echo tool with value READY.",
-                            }
-                        ],
-                        "max_tokens": 512,
-                        "tools": [
-                            {
-                                "type": "function",
-                                "function": {
-                                    "name": "echo",
-                                    "description": "Echo a value",
-                                    "parameters": {
-                                        "type": "object",
-                                        "properties": {"value": {"type": "string"}},
-                                        "required": ["value"],
-                                    },
-                                },
-                            }
-                        ],
-                    }
+                    body = qualification_body()
                     gateway.active_attempts[e["episode_id"]] = uuid.uuid4().hex
                     # Both requests carry the same cache-enabled prefix, including
                     # the first cache write. No uncached control is sent.
