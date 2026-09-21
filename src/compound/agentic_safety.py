@@ -23,6 +23,25 @@ def runtime_identity():
 def preparation_errors(spec, directory):
     """Require exact reference coverage and pinned clean harnesses before paid probes."""
     errors = []
+    if spec.get("controls", {}).get("require_admission_qualification"):
+        path = directory / "admission-qualification.json"
+        admission = json.loads(path.read_text()) if path.exists() else {}
+        expected = {
+            (task["id"], tier, role)
+            for task in spec["sources"]["retail"]["tasks"]
+            for tier in ("standard", "flex")
+            for role in ("agent", "auxiliary")
+        }
+        checks = admission.get("checks", [])
+        if (
+            admission.get("spec_sha256") != fingerprint(spec)
+            or admission.get("runtime") != runtime_identity()
+            or admission.get("ok") is not True
+            or len(checks) != len(expected)
+            or {(c.get("task_id"), c.get("tier"), c.get("role")) for c in checks} != expected
+            or any(c.get("admitted") is not True for c in checks)
+        ):
+            errors.append("opening-request admission qualification missing or failed")
     if "retail" in spec["sources"]:
         path = directory / "reference-qualification.json"
         evidence = json.loads(path.read_text()) if path.exists() else {}

@@ -1,0 +1,224 @@
+{
+  "schema_version": 1,
+  "selection_seed": "tier-validation-v3-2026-09-21",
+  "trials": 3,
+  "deadlines_s": [
+    60,
+    300,
+    900,
+    3600
+  ],
+  "sources": {
+    "retail": {
+      "repo": "https://github.com/amazon-agi/tau2-bench-verified",
+      "revision": "864350a8971a8f8ee9e7b8472e2edc380a806b0c",
+      "data_path": ".compound/sources/tau2-bench-verified/data/tau2/domains/retail/tasks.json",
+      "data_sha256": "04cef2fdf59745e1c890d0e722726f103685ce94ba8cd63035d9ff9c2744b157",
+      "tasks": [
+        {
+          "id": "43",
+          "sha256": "3e447c661ee0790bf4e0f0e2ceac72c746545f1f2afe46246aa0e464ad3d333d"
+        },
+        {
+          "id": "104",
+          "sha256": "1dc79706146c65c750c34828da89824b09a3c420a93140d623fa34875c4dc515"
+        },
+        {
+          "id": "15",
+          "sha256": "4ce37e35d9a956052aef667f9f9e96d22ea3aaa7586b98604b801feb06ce4a27"
+        },
+        {
+          "id": "58",
+          "sha256": "38a64ac8b51ecbb69b704f74c361300af3a5432af4d470a0187f5212005612ed"
+        },
+        {
+          "id": "80",
+          "sha256": "12544acd7687c1f80ff48fac0110b01facc2a4b8e61046736fc935099591d4ee"
+        },
+        {
+          "id": "63",
+          "sha256": "f88400e4c68b9c6ab1d2d7b023b1de86c333e1b1817e3763ade57b86bf68c2b2"
+        },
+        {
+          "id": "23",
+          "sha256": "29267acb2bfd71946464d84afd8e584acea2408c7bc0f07b8083440329a3149b"
+        },
+        {
+          "id": "8",
+          "sha256": "51b515ba94f6d92ceb8c979a2e4dcd9ce2b87c74cd111d903f40b01acc4c3a2e"
+        },
+        {
+          "id": "61",
+          "sha256": "98c91936684fd10a66dc90aca053cb6af9c8fef0ad7e255936aa3bec5b279204"
+        },
+        {
+          "id": "40",
+          "sha256": "7e0246d7b5df0fb7c7aa9d92a70698bd56308eb48cd5837fff0bafb4c22e7d0d"
+        },
+        {
+          "id": "84",
+          "sha256": "34d4eb5c58cf7c7b158f00f472f6617abb75163261d45b0d6e171f075c6705d2"
+        },
+        {
+          "id": "83",
+          "sha256": "e8e9ab7ac8169b97f9ac04c952e3ecc19b891f94ec4f0936e89009f8741549d6"
+        },
+        {
+          "id": "111",
+          "sha256": "6a3ffca7963feed7d0422a2b2b3db0d30e61bb131f044bba5309afe886a900ad"
+        },
+        {
+          "id": "102",
+          "sha256": "115193446b5ad8d25c9ffa8cbec8c60bf5835035aed69e75db18a0a86c9707e0"
+        },
+        {
+          "id": "51",
+          "sha256": "fbc55c677f409f3dc509cf63c706b4b091a0d119a8f35f4455688c8364673100"
+        },
+        {
+          "id": "22",
+          "sha256": "1d6b41e4673d0249acf7b287a66b04f6da5d848915af04b88d058157f371a052"
+        },
+        {
+          "id": "28",
+          "sha256": "eb87d8258b9d83974bb7eedc27546aedcf12acbbff63092ab68495ed6e148379"
+        },
+        {
+          "id": "72",
+          "sha256": "2e52bf29a10fe22fe8e04565a0317ad86137e592a2f3bd9485df391141918d30"
+        },
+        {
+          "id": "75",
+          "sha256": "cf18edccc35323baa707e29a431290589dc994c9e5eb82c5f5d5feb7fc9e503a"
+        },
+        {
+          "id": "56",
+          "sha256": "ccf09c31f7dbe8a59e51be39273a44a05bbf2cd21e79ead6cf10560feeb9b846"
+        },
+        {
+          "id": "88",
+          "sha256": "da20e14d3de1417298bf0f005bcb9b7f5db72f8d5998d134370aef851f15fefd"
+        },
+        {
+          "id": "81",
+          "sha256": "a469103cabf10965d308bfaee3723ed9ee0bd415e2d3f90121a6fd9e8fc93edb"
+        },
+        {
+          "id": "110",
+          "sha256": "d0322730311a3c85a8fbcfb49a502739f7050cd38dda625a2494a6b192091018"
+        },
+        {
+          "id": "5",
+          "sha256": "ebf83b08589cf918c6479846509c69a1aea5b34ad5fe939f7dd7ec5c1ab8e4f3"
+        },
+        {
+          "id": "85",
+          "sha256": "c7ceb1bc97b7e32c02d0a693d639f2bb648776331eb2594f9b37a3d6d9833d02"
+        },
+        {
+          "id": "113",
+          "sha256": "3ad882d498de4d1fc8e086b6e662304eac690bb2e5cb98acfeb5b36a11791db5"
+        },
+        {
+          "id": "45",
+          "sha256": "d6ea4fb2fc854aa2ecf4537e1bd0ba9193cd55e6e06d5ebfa9170f1a00a04c1a"
+        },
+        {
+          "id": "26",
+          "sha256": "d875b72dafa114ac28df2bfce73dd3e56e86d3711b4d3878aeebc99fd88b433f"
+        },
+        {
+          "id": "106",
+          "sha256": "11f9b1412911e40d3561849fce32dbea9c9c452db349c41d8a8445c3c741904f"
+        },
+        {
+          "id": "94",
+          "sha256": "92bbf0de18e8c49ed98c0893a44e1fad26692c3681ca3f7b71da7822b6b84cd4"
+        }
+      ],
+      "max_steps": 30,
+      "success_rule": "official reward == 1",
+      "selection_rule": "Seeded random 30 tasks passing offline gold DB/communication and negative empty-trajectory checks; excludes all ten v2 pilot tasks.",
+      "selection": "Seeded random 30 tasks passing offline gold DB/communication and negative empty-trajectory checks; excludes all ten v2 pilot tasks."
+    }
+  },
+  "models": [
+    {
+      "id": "deepseek-dw",
+      "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "provider": "doubleword",
+      "standard_endpoint": "realtime",
+      "flex_endpoint": "flex",
+      "rate_model": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "rates": {
+        "standard": {
+          "input_per_million": 0.15,
+          "cache_read_per_million": 0.003,
+          "output_per_million": 0.6
+        },
+        "flex": {
+          "input_per_million": 0.12,
+          "cache_read_per_million": 0.0024,
+          "output_per_million": 0.48
+        }
+      },
+      "rate_source": "https://docs.doubleword.ai/inference-api/models/deepseek-ai-deepseek-v4-1-flash",
+      "rate_checked_at": "2026-09-18",
+      "rate_note": "Cache read uses 0.02 x tier input rate, consistent with isolated billing checks in artifacts/dw-pricing-2026-09-18/reconciliation.json; website displayed dollar cache prices were too coarsely rounded.",
+      "episode_budget_usd": 0.1
+    }
+  ],
+  "controls": {
+    "max_output_tokens": 8192,
+    "max_episode_s": 3600,
+    "reasoning_effort": "medium",
+    "retries": 0,
+    "concurrency": 1,
+    "cache": "Enabled; qualify hits separately for each tier and simulator",
+    "simulator_model": "deepseek/deepseek-v4.1-flash",
+    "simulator_tier": "default",
+    "simulator_route": "ds-sim",
+    "simulator_episode_budget_usd": 0.06,
+    "pair_order": "Seeded randomized adjacent tier pairs; a pair runs back to back in one lane",
+    "role_budget_usd": {
+      "agent": 7.0,
+      "auxiliary": 2.4
+    },
+    "reservation_policy": "observed_tokens_plus_changed_bytes",
+    "simulator_note": "Fixed across both arms. Same model family as the agent under test, which is a generalisation caveat, not a threat to the tier contrast.",
+    "cache_ttl": "1h",
+    "budget_output_policy": "fixed",
+    "budget_policy": "Safety ceilings only; budget stops invalidate performance interpretation. No budget-scaling claim.",
+    "require_runtime_pins": true,
+    "tier_evidence_policy": "requested_policy",
+    "temperature": 0,
+    "require_admission_qualification": true,
+    "stop_on_budget_exhaustion": true
+  },
+  "auxiliary_models": [
+    {
+      "id": "ds-sim",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "openrouter",
+      "standard_endpoint": "deepseek",
+      "flex_endpoint": "deepseek",
+      "rate_model": "deepseek/deepseek-v4.1-flash",
+      "rates": {
+        "standard": {
+          "input_per_million": 0.3,
+          "cache_read_per_million": 0.006,
+          "output_per_million": 1.2
+        },
+        "flex": {
+          "input_per_million": 0.3,
+          "cache_read_per_million": 0.006,
+          "output_per_million": 1.2
+        }
+      },
+      "rate_source": "https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints",
+      "rate_checked_at": "2026-09-16",
+      "rate_note": "Reservation ceilings use the maximum listed time-of-day rate. Actual charges come from per-call usage.cost. Simulator always uses standard."
+    }
+  ],
+  "study_intent": "Fresh held-out paired retail validation of requested realtime vs async: correctness, cost per successful task, and success by deadline. Descriptive task-clustered uncertainty; no claim of equivalence or general benchmark superiority."
+}

@@ -1,5 +1,7 @@
 # Claude execution handoff
 
+**September 21 update:** the next run is [held-out tier validation v3](flex-agentic/tier-validation-v3.md), not another v2 budget curve. Its opening-request admission gate and stop-on-budget-exhaustion policy are mandatory. The v2 instructions below describe the completed historical pilot.
+
 Updated 2026-09-18. This document prepares execution; it does not launch a job.
 See [the September 18 evidence check](setup-evidence-check-2026-09-18.md) for corrections to the tier-echo and DeepSWE assumptions.
 Claude owns setup and execution. Codex reviews the frozen design, exceptions and

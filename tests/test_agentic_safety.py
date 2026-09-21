@@ -256,3 +256,32 @@ def test_requested_policy_qualification_keeps_cache_and_tools_required(tmp_path)
     calls[-1]["usage"]["prompt_tokens_details"]["cached_tokens"] = 0
     _write_qualification(tmp_path, calls, probes)
     assert agentic_safety.qualification_errors(spec, tmp_path)
+
+
+def test_admission_gate_requires_exact_coverage_and_runtime(tmp_path, monkeypatch):
+    spec = {
+        "sources": {"retail": {"tasks": [{"id": "a"}]}},
+        "controls": {"require_admission_qualification": True},
+    }
+    monkeypatch.setattr(agentic_safety, "runtime_identity", lambda: {"python": "pinned"})
+
+    def blocked():
+        return any("admission" in x for x in agentic_safety.preparation_errors(spec, tmp_path))
+
+    assert blocked()
+    proof = {
+        "spec_sha256": agentic_safety.fingerprint(spec),
+        "ok": True,
+        "runtime": {"python": "pinned"},
+        "checks": [
+            {"task_id": "a", "tier": t, "role": r, "admitted": True}
+            for t in ("standard", "flex")
+            for r in ("agent", "auxiliary")
+        ],
+    }
+    path = tmp_path / "admission-qualification.json"
+    path.write_text(json.dumps(proof))
+    assert not blocked()
+    proof["checks"].pop()
+    path.write_text(json.dumps(proof))
+    assert blocked()

@@ -33,8 +33,7 @@ def qualification_body():
         "messages": [
             {
                 "role": "user",
-                "content": "Reference context for a cache qualification test. "
-                * 300
+                "content": "Reference context for a cache qualification test. " * 300
                 + "\nCall the echo tool with value READY.",
             }
         ],
@@ -463,6 +462,14 @@ def main():
                 stopped.set()
                 print("Stopping to repair infrastructure before further paid episodes.", flush=True)
                 raise RuntimeError("episode infrastructure failure")
+            if (
+                spec["controls"].get("stop_on_budget_exhaustion")
+                and result["status"] == "budget_exhausted"
+            ):
+                stopped.set()
+                raise RuntimeError(
+                    "safety allowance reached; stop before interpreting a budget-limited run"
+                )
 
         if (args.parallel_routes or args.lanes > 1) and args.stage == "run":
             amendment = {

@@ -234,3 +234,43 @@ def test_simulator_probe_fits_its_budget_before_network(tmp_path, monkeypatch):
     assert reached == [True]
     ledger = json.loads((tmp_path / "spend.json").read_text())
     assert 0 < ledger[0]["reservation_usd"] < 0.015
+
+
+def test_validation_run_stops_on_first_budget_exhaustion(tmp_path, monkeypatch):
+    import pytest
+
+    spec = json.loads(Path("benchmarks/flex-agentic/tier-validation-v3.json").read_text())
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(spec))
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "keys.json").write_text("{}")
+    monkeypatch.setattr(agentic_run, "verify_sources", lambda spec: [])
+    monkeypatch.setattr(agentic_run, "preparation_errors", lambda *args: [])
+    monkeypatch.setattr(agentic_run, "qualification_errors", lambda *args: [])
+    monkeypatch.setattr(
+        agentic_run.Gateway,
+        "serve",
+        lambda self: SimpleNamespace(
+            server_port=1, shutdown=lambda: None, server_close=lambda: None
+        ),
+    )
+    started = []
+
+    class Process:
+        def __init__(self, cmd, **kwargs):
+            self.output = Path(cmd[cmd.index("--out") + 1])
+            started.append(cmd)
+
+        def wait(self, timeout):
+            (self.output / "outcome.json").write_text(
+                json.dumps({"status": "budget_exhausted", "success": None, "duration_s": 0})
+            )
+            return 0
+
+    monkeypatch.setattr(agentic_run.subprocess, "Popen", Process)
+    monkeypatch.setattr(
+        "sys.argv", ["runner", "run", "--spec", str(spec_path), "--count", "180", "--go"]
+    )
+    with pytest.raises(RuntimeError, match="safety allowance reached"):
+        agentic_run.main()
+    assert len(started) == 1

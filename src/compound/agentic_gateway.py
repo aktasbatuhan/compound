@@ -401,6 +401,8 @@ class Gateway:
         if output < 1:
             raise ValueError("invalid output token limit")
         payload = {"model": model["model"], "messages": body["messages"], "max_tokens": output}
+        if "temperature" in self.spec["controls"]:
+            payload["temperature"] = self.spec["controls"]["temperature"]
         # Some upstream harness message types discard opaque provider fields.
         # Restore only details returned for this episode and these exact call IDs.
         for message in payload["messages"]:
