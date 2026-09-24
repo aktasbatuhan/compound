@@ -216,7 +216,8 @@ usage: compound.bench serving [-h] [--go] --providers PROVIDERS --shapes
                               [--interval INTERVAL] [--reps REPS]
                               [--cache-mode {cold,warm,both}]
                               [--reasoning-modes {on,off,both}]
-                              [--temperature TEMPERATURE] [--out OUT]
+                              [--temperature TEMPERATURE]
+                              [--min-call-interval SECONDS] [--out OUT]
 
 options:
   -h, --help            show this help message and exit
@@ -252,6 +253,11 @@ options:
                         token: at temperature 0 a divergence between two hosts
                         serving the same weights is a difference in numerics,
                         not in sampling.
+  --min-call-interval SECONDS
+                        start each route's calls at least this far apart. For
+                        accounts whose tokens-per-minute cap is below a burst
+                        of long prompts, so a cap 429 does not stand in for
+                        the host's behaviour. Default 0 (unpaced).
   --out OUT             output dir for results.jsonl
 ```
 
