@@ -770,6 +770,16 @@ def render(manifest: dict, cells: list[dict], rows: list[dict]) -> str:
     later = [
         s for s in manifest["sources"] if s["id"] not in ("original", "marked", "auto_followup")
     ]
+    # A bundle that mixes run dates lists its limitations on the page, since the
+    # date gap changes how the charts can be read; single-date bundles keep them
+    # in the downloadable manifest.
+    limits_html = (
+        '<section id="limitations"><h2>Limitations</h2><ul>'
+        + "".join(f"<li>{esc(x)}</li>" for x in manifest["limitations"])
+        + "</ul></section>"
+        if later
+        else ""
+    )
     later_note = "".join(
         f" {esc(s['id'].replace('_', ' ').title())} was added later, measured {s['start'][:10]} "
         "from the same zone and request grid; see the limitations below."
@@ -806,7 +816,7 @@ compound-bench serving --model-or YOUR_MODEL \\
   --reasoning-modes off --temperature 0 --reps 5</code></pre>
 <p>The command previews the call count without spending. Replace <code>YOUR_MODEL</code> and <code>HOST</code> with discovery results, set <code>OPENROUTER_API_KEY</code> in <code>.env</code>, then add <code>--go</code>. Executed requests bill at provider rates; serving runs have no dollar cap.</p>
 <p><a href="../../docs/serving/">Read the serving guide →</a> · <a href="https://github.com/aktasbatuhan/compound">Get Compound on GitHub ↗</a></p></section>
-<section id="data"><h2>Explore the data</h2><p>Download per-call timings, token usage, status codes and reported costs, or use the computed summaries. The manifest records the run windows and source provenance.</p><p class="downloads"><a href="calls.jsonl.gz" download>Per-call measurements ↓</a><a href="summary.json" download>Summary data ↓</a><a href="manifest.json" download>Data manifest ↓</a></p>
+{limits_html}<section id="data"><h2>Explore the data</h2><p>Download per-call timings, token usage, status codes and reported costs, or use the computed summaries. The manifest records the run windows and source provenance.</p><p class="downloads"><a href="calls.jsonl.gz" download>Per-call measurements ↓</a><a href="summary.json" download>Summary data ↓</a><a href="manifest.json" download>Data manifest ↓</a></p>
 <details><summary>How to read these measurements</summary><p>Routes describe the tested access path. Quantization suffixes are discovery labels. Calls were collected in controlled runs, so results describe this sample, not a provider-wide guarantee. Zero observed failures does not establish perfect reliability. Repeated calls are dependent observations, and runs at different times can see different capacity.</p><p>Cost uses the sum of request charges divided by the corresponding input-token total, multiplied by one million. It includes output charges. Telnyx appears in timing, cache and failure charts; its cost is not available in this report. The manifest contains full source selection details.</p></details></section></main><footer>Compound · <a href="https://github.com/aktasbatuhan/compound">Open source experiments for choosing where to run your model</a></footer>
 """,
     )
