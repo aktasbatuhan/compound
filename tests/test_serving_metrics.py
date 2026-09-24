@@ -935,3 +935,45 @@ def test_cache_effectiveness_handles_empty_and_missing_usage():
     only_missing = [{"cache_requested": True, "usage": None}]
     assert cache_effectiveness(only_missing)["cells"] == 0
     assert cache_effectiveness(only_missing)["warning"] is None
+
+
+def test_min_call_interval_spaces_one_routes_call_starts(tmp_path, monkeypatch):
+    import threading
+
+    from compound import serving_metrics as sm
+    from compound.providers_registry import parse_provider
+
+    now = [0.0]
+    starts: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        now[0] += seconds
+
+    def fake_call(spec, route_model, mode, sname, shape, round_no, rep, **kw):
+        starts.append(now[0])
+        return {"route": spec.label, "shape": sname, "rep": rep}
+
+    monkeypatch.setattr(sm, "one_call", fake_call)
+    spec = parse_provider("doubleword/realtime")
+    sm.run_round(
+        [spec], None, "m", {"s": {"messages": []}}, 1, 4, tmp_path / "r.jsonl", threading.Lock(),
+        modes=(sm.REASONING_OFF,), cache_modes=(sm.CACHE_WARM,),
+        min_call_interval=6.0, clock=lambda: now[0], sleep=fake_sleep,
+    )
+    assert starts == [0.0, 6.0, 12.0, 18.0]
+
+
+def test_unpaced_by_default(tmp_path, monkeypatch):
+    import threading
+
+    from compound import serving_metrics as sm
+    from compound.providers_registry import parse_provider
+
+    slept: list[float] = []
+    monkeypatch.setattr(sm, "one_call", lambda *a, **k: {"route": "x"})
+    sm.run_round(
+        [parse_provider("doubleword/realtime")], None, "m", {"s": {"messages": []}}, 1, 3,
+        tmp_path / "r.jsonl", threading.Lock(), modes=(sm.REASONING_OFF,),
+        cache_modes=(sm.CACHE_WARM,), sleep=slept.append,
+    )
+    assert slept == []

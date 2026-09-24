@@ -279,3 +279,35 @@ def test_proxy_refuses_a_messages_dialect_host():
     with pytest.raises(RuntimeError, match="chat completions only"):
         with serve_provider(spec):
             pass
+
+
+def _repo_config() -> dict:
+    import pathlib
+
+    import yaml
+
+    return yaml.safe_load((pathlib.Path(__file__).parents[1] / "compound.yaml").read_text())
+
+
+def test_boundless_is_a_direct_openai_host_with_implicit_cache():
+    spec = parse_provider("direct/boundless", providers_config=_repo_config()["providers"])
+    assert spec.kind == "direct"
+    assert spec.base_url == "https://api.inference.boundless.network/v1"
+    assert spec.required_key_env() == "BOUNDLESS_API_KEY"
+    assert spec.dialect == "openai"
+    # Measured 2026-09-23: a repeated prefix is cached without any marker.
+    assert spec.cache_strategy == "implicit"
+    assert spec.label == "boundless"
+    assert spec.proxy_injection() == {}
+
+
+def test_boundless_cost_is_derived_from_its_rate_card():
+    from compound.serving_metrics import derived_cost_usd
+
+    rates = _repo_config()["serving_rates_usd_per_million_tokens"]
+    # Token counts from a live deepseek-v4.1-flash call on 2026-09-23 (no cost field).
+    rec = {"route": "boundless", "model": "deepseek-v4.1-flash", "prompt_tokens": 1977,
+           "cached_tokens": 0, "completion_tokens": 621}
+    assert derived_cost_usd(rec, rates) == round((1977 * 0.20 + 621 * 1.00) / 1e6, 8)
+    cached = dict(rec, cached_tokens=1024)
+    assert derived_cost_usd(cached, rates) == round((953 * 0.20 + 1024 * 0.01 + 621 * 1.00) / 1e6, 8)

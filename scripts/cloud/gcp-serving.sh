@@ -36,7 +36,20 @@ MODEL_DW="${SERVING_MODEL_DW:-deepseek-ai/DeepSeek-V4-Flash-0731}"
 # the three precisions OpenRouter labels for this model, plus DeepSeek's own
 # first-party endpoint as the reference, so "some providers quantize" is a
 # measured variable rather than an assumption.
-ROUTES="${SERVING_ROUTES:-openrouter/deepseek,openrouter/morph/bf16,openrouter/together,openrouter/novita/fp8,openrouter/siliconflow/fp8,openrouter/gmicloud/fp8,openrouter/parasail/fp8,openrouter/coreweave/fp8,openrouter/relace/fp4,openrouter/atlas-cloud/fp4,openrouter/auto,direct/telnyx,doubleword/realtime,doubleword/flex}"
+ROUTES="${SERVING_ROUTES:-openrouter/deepseek,openrouter/morph/bf16,openrouter/together,openrouter/novita/fp8,openrouter/siliconflow/fp8,openrouter/gmicloud/fp8,openrouter/parasail/fp8,openrouter/coreweave/fp8,openrouter/relace/fp4,openrouter/atlas-cloud/fp4,openrouter/auto,direct/telnyx,doubleword/realtime,doubleword/flex,direct/boundless}"
+# Hosts that name the weights with their own id. Boundless serves DeepSeek V4
+# Flash as "dsv4" and does not publish which checkpoint that is, so its rows are
+# "Boundless's DeepSeek V4 Flash", not proven to be the 0731 weights the other
+# hosts serve. Comma-separated HOST=MODEL pairs, passed as --host-model.
+HOST_MODELS="${SERVING_HOST_MODELS:-boundless=dsv4}"
+HOST_MODEL_FLAGS=""
+IFS=',' read -ra _HM <<< "$HOST_MODELS"
+for hm in "${_HM[@]}"; do
+  [ -n "$hm" ] && HOST_MODEL_FLAGS="$HOST_MODEL_FLAGS --host-model $(printf '%q' "$hm")"
+done
+# Seconds between one route's call starts; 0 is unpaced. Use it for a host whose
+# account cap is below a burst of 100k prompts (Boundless: 1.25M tokens/min).
+MIN_CALL_INTERVAL="${SERVING_MIN_CALL_INTERVAL:-0}"
 
 REPS_SMALL="${SERVING_REPS_SMALL:-100}"   # 1k and 10k profiles: cheap, buy a real p90
 REPS_LARGE="${SERVING_REPS_LARGE:-30}"    # 100k profiles: ~90% of the token bill
@@ -53,11 +66,15 @@ if [ -f .env ]; then set -a; . ./.env; set +a; fi
 : "${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}"
 : "${DOUBLEWORD_API_KEY:?set DOUBLEWORD_API_KEY}"
 : "${TELNYX_API_KEY:?set TELNYX_API_KEY}"
+case ",$ROUTES," in
+  *,direct/boundless,*) : "${BOUNDLESS_API_KEY:?set BOUNDLESS_API_KEY}" ;;
+esac
 
 mkdir -p "$OUT_ROOT"
 echo "== serving comparison from $ZONE"
 echo "== model:  $MODEL_OR"
 echo "== routes: $(echo "$ROUTES" | tr ',' '\n' | wc -l | tr -d ' ')"
+echo "== host models: $HOST_MODELS"
 echo "== out:    $OUT_ROOT"
 
 cleanup() {
@@ -124,13 +141,13 @@ rm -f RUN_DONE
     SHAPES=\$1; CMODE=\$2; REPS=\$3
     echo "===== PASS \$SHAPES/\$CMODE reps=\$REPS \$(date -u +%H:%M:%S) ====="
     OPENROUTER_API_KEY='$OPENROUTER_API_KEY' DOUBLEWORD_API_KEY='$DOUBLEWORD_API_KEY' \
-    TELNYX_API_KEY='$TELNYX_API_KEY' \
+    TELNYX_API_KEY='$TELNYX_API_KEY' BOUNDLESS_API_KEY='${BOUNDLESS_API_KEY:-}' \
     uv run python -m compound.bench serving --go \
-      --providers '$ROUTES' \
+      --providers '$ROUTES' $HOST_MODEL_FLAGS \
       --shapes "\$SHAPES.json" \
       --model-or '$MODEL_OR' --model '$MODEL_DW' \
       --reps "\$REPS" --cache-mode "\$CMODE" \
-      --reasoning-modes off --temperature 0 \
+      --reasoning-modes off --temperature 0 --min-call-interval $MIN_CALL_INTERVAL \
       --out "out/\$SHAPES-\$CMODE"
     echo "===== exit \$? \$(date -u +%H:%M:%S) ====="
   done

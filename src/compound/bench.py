@@ -586,6 +586,7 @@ def cmd_serving(args: argparse.Namespace) -> int:
         modes=modes,
         cache_modes=cache_modes,
         temperature=args.temperature,
+        min_call_interval=args.min_call_interval,
     )
     print(f"results -> {out}")
     return 0
@@ -927,6 +928,15 @@ def main() -> int:
         help="sampling temperature. Use 0 to compare hosts token for token: at "
         "temperature 0 a divergence between two hosts serving the same weights "
         "is a difference in numerics, not in sampling.",
+    )
+    serving.add_argument(
+        "--min-call-interval",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help="start each route's calls at least this far apart. For accounts whose "
+        "tokens-per-minute cap is below a burst of long prompts, so a cap 429 does "
+        "not stand in for the host's behaviour. Default 0 (unpaced).",
     )
     serving.add_argument(
         "--out",

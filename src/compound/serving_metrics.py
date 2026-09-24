@@ -613,12 +613,33 @@ def run_round(
     modes: tuple[str, ...] = MODES,
     cache_modes: tuple[str, ...] = (CACHE_COLD,),
     temperature: float = 0.7,
+    min_call_interval: float = 0.0,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> None:
-    """Run every (route, mode, cache mode, shape, rep) cell once, routes in parallel."""
+    """Run every (route, mode, cache mode, shape, rep) cell once, routes in parallel.
+
+    ``min_call_interval`` spaces the *starts* of one route's calls at least that many
+    seconds apart, whatever the concurrency. It exists for accounts whose
+    tokens-per-minute cap is below what a burst of long prompts needs (Boundless
+    admits 1.25M tokens/min on a new team, about twelve 100k-token calls): an unpaced
+    burst there measures our account tier as a 429 rate, not the host.
+    """
     shape_names = list(shapes)
 
     def route_worker(spec: ProviderSpec) -> None:
         route_model = model_for(spec, model_or, model)
+        pace_lock = threading.Lock()
+        next_start = [clock()]
+
+        def paced_call(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            if min_call_interval > 0:
+                with pace_lock:
+                    wait = next_start[0] - clock()
+                    if wait > 0:
+                        sleep(wait)
+                    next_start[0] = clock() + min_call_interval
+            return one_call(*args, **kwargs)
         cells = [
             (mode, cmode, sname, rep)
             for mode in modes
@@ -633,7 +654,7 @@ def run_round(
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = [
                 pool.submit(
-                    one_call,
+                    paced_call,
                     spec,
                     route_model,
                     mode,
@@ -673,6 +694,7 @@ def run_serving(
     modes: tuple[str, ...] = MODES,
     cache_modes: tuple[str, ...] = (CACHE_COLD,),
     temperature: float = 0.7,
+    min_call_interval: float = 0.0,
     sleep: Callable[[float], None] = time.sleep,
     log: Callable[[str], None] = print,
 ) -> Path:
@@ -702,6 +724,7 @@ def run_serving(
             modes=modes,
             cache_modes=cache_modes,
             temperature=temperature,
+            min_call_interval=min_call_interval,
         )
         n = _round_count(out_path, r)
         log(f"round {r}/{rounds}: {n} calls in {time.time() - t0:.0f}s -> {out_path}")
