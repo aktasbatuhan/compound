@@ -977,3 +977,41 @@ def test_unpaced_by_default(tmp_path, monkeypatch):
         cache_modes=(sm.CACHE_WARM,), sleep=slept.append,
     )
     assert slept == []
+
+
+class _HeaderResponse(_FakeResponse):
+    def __init__(self, lines, headers):
+        super().__init__(lines)
+        self.headers = headers
+
+
+def test_one_call_records_billing_headers(monkeypatch):
+    monkeypatch.setenv("DOUBLEWORD_API_KEY", "sekret")
+    lines = [
+        b'data: {"choices": [{"delta": {"content": "ok"}, "finish_reason": "stop"}], '
+        b'"usage": {"prompt_tokens": 6, "completion_tokens": 2}}',
+        b"data: [DONE]",
+    ]
+    headers = {"X-Response-Cost": "0.00000066", "X-Key-Spend": "0.7618004"}
+    monkeypatch.setattr(
+        sm.urlrequest, "urlopen", lambda req, timeout=None: _HeaderResponse(lines, headers)
+    )
+    rec = sm.one_call(parse_provider("doubleword/realtime"), "m", sm.REASONING_OFF, "S", SHAPE_NO_RF, 1, 0)
+    assert rec["cost_usd"] == 0.00000066  # billed, not derived
+    assert rec["key_spend_usd"] == 0.7618004
+
+
+def test_streamed_billing_has_spend_but_no_call_cost(monkeypatch):
+    monkeypatch.setenv("DOUBLEWORD_API_KEY", "sekret")
+    lines = [
+        b'data: {"choices": [{"delta": {"content": "ok"}, "finish_reason": "stop"}], '
+        b'"usage": {"prompt_tokens": 6, "completion_tokens": 2}}',
+        b"data: [DONE]",
+    ]
+    monkeypatch.setattr(
+        sm.urlrequest, "urlopen",
+        lambda req, timeout=None: _HeaderResponse(lines, {"X-Key-Spend": "1.5"}),
+    )
+    rec = sm.one_call(parse_provider("doubleword/realtime"), "m", sm.REASONING_OFF, "S", SHAPE_NO_RF, 1, 0)
+    assert rec["cost_usd"] is None
+    assert rec["key_spend_usd"] == 1.5
