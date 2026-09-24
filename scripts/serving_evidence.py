@@ -177,6 +177,65 @@ def export(archives: Path, bundle: Path) -> None:
     (bundle / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
+def write_bundle(bundle: Path, manifest: dict, records: list[dict]) -> None:
+    payload = "".join(
+        json.dumps(r, sort_keys=True, separators=(",", ":")) + "\n" for r in records
+    ).encode()
+    packed = gzip.compress(payload, mtime=0)
+    (bundle / "calls.jsonl.gz").write_bytes(packed)
+    manifest.update(
+        included_rows=len(records), calls_sha256=digest(packed), decoded_sha256=digest(payload)
+    )
+    (bundle / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+
+def append_source(
+    bundle: Path, name: str, path: Path, rates: dict | None, notes: list[str]
+) -> None:
+    """Add one later run (e.g. a new host on the same grid) as its own source.
+
+    The earlier archives stay as they are; the new rows are sanitized and excluded
+    by the same rules as ``export``. ``rates`` is a published rate card for a host
+    that bills no per-call cost; its cells are priced from token counts and marked
+    derived, never mixed with reported charges.
+    """
+    manifest, records = load(bundle)
+    if any(s["id"] == name for s in manifest["sources"]):
+        raise SystemExit(f"source {name!r} is already in the bundle")
+    data = path.read_bytes()
+    excluded: Counter = Counter()
+    count, times, routes = 0, [], set()
+    for line, raw in enumerate(data.decode().splitlines(), 1):
+        if not raw.strip():
+            continue
+        row = json.loads(raw)
+        count += 1
+        times.append(row["iso"])
+        routes.add(row["route"])
+        reason = exclude(name, row)
+        if reason:
+            excluded[reason] += 1
+            continue
+        records.append(sanitize(name, line, row))
+    manifest["sources"].append(
+        {
+            "id": name,
+            "archive": path.name,
+            "sha256": digest(data),
+            "rows": count,
+            "excluded": dict(excluded),
+            "included": count - sum(excluded.values()),
+            "start": min(times),
+            "end": max(times),
+        }
+    )
+    if rates:
+        for route in routes:
+            manifest.setdefault("derived_rates", {})[route] = rates
+    manifest["limitations"].extend(notes)
+    write_bundle(bundle, manifest, records)
+
+
 def load(bundle: Path) -> tuple[dict, list[dict]]:
     manifest = json.loads((bundle / "manifest.json").read_text())
     packed = (bundle / "calls.jsonl.gz").read_bytes()
@@ -218,7 +277,9 @@ def wilson(k: int, n: int) -> list[float]:
     return [max(0, centre - half), min(1, centre + half)]
 
 
-def summarize(rows: list[dict], calibration: list[dict] | None = None) -> list[dict]:
+def summarize(
+    rows: list[dict], calibration: list[dict] | None = None, derived_rates: dict | None = None
+) -> list[dict]:
     groups: dict[tuple, list] = defaultdict(list)
     for row in rows:
         groups[row["source"], row["shape"], row["cache_mode"], row["route"]].append(row)
@@ -273,6 +334,26 @@ def summarize(rows: list[dict], calibration: list[dict] | None = None) -> list[d
         if matches:
             cell["cost_per_m_prompt"] = matches[0]["cost_per_m_prompt"]
             cell["cost_calibration_samples"] = matches[0]["calls"]
+    for cell in result:
+        card = (derived_rates or {}).get(cell["route"])
+        if cell["cost_per_m_prompt"] is not None or not card:
+            continue
+        good = [
+            r
+            for r in groups[cell["source"], cell["shape"], cell["cache_mode"], cell["route"]]
+            if r["status"] == 200 and not r["error_class"] and r["prompt_tokens"] is not None
+        ]
+        prompt = sum(r["prompt_tokens"] for r in good)
+        if not prompt:
+            continue
+        usd = sum(
+            (r["prompt_tokens"] - (r["cached_tokens"] or 0)) * card["input"]
+            + (r["cached_tokens"] or 0) * card.get("cached_input", card["input"])
+            + (r["completion_tokens"] or 0) * card["output"]
+            for r in good
+        ) / 1e6
+        cell["cost_per_m_prompt"] = usd / prompt * 1e6
+        cell["cost_derived_samples"] = len(good)
     return result
 
 
@@ -324,17 +405,18 @@ def charts(cells: list[dict], rows: list[dict]) -> str:
         x = 65 + tick / 0.5 * 505
         art += text(x, 438, f"${tick:.2f}", "middle")
     for i, c in enumerate(priced):
+        usd = "~$" if c.get("cost_derived_samples") else "$"
         art += interactive(
             c["route"],
-            f"{c['route']} · cost ${c['cost_per_m_prompt']:.4f}/1M input tokens · median TTFT {c['ttft_s']:.2f}s",
+            f"{c['route']} · cost {usd}{c['cost_per_m_prompt']:.4f}/1M input tokens · median TTFT {c['ttft_s']:.2f}s",
         )
         x, y = 65 + c["cost_per_m_prompt"] / 0.5 * 505, 410 - c["ttft_s"] / 7 * 355
         art += dot(
-            x, y, f"{c['route']}: ${c['cost_per_m_prompt']:.4f}, {c['ttft_s']:.2f}s", radius=5
+            x, y, f"{c['route']}: {usd}{c['cost_per_m_prompt']:.4f}, {c['ttft_s']:.2f}s", radius=5
         )
         art += text(x, y + 19 if c["route"] == "together" else y - 9, i + 1, "middle")
         art += text(610, 60 + i * 29, f"{i + 1:2}. {c['route']}") + text(
-            1030, 60 + i * 29, f"${c['cost_per_m_prompt']:.3f} · {c['ttft_s']:.1f}s", "end"
+            1030, 60 + i * 29, f"{usd}{c['cost_per_m_prompt']:.3f} · {c['ttft_s']:.1f}s", "end"
         )
         art += "</g>"
     art += text(65, 478, "Request cost per million input tokens →")
@@ -343,7 +425,14 @@ def charts(cells: list[dict], rows: list[dict]) -> str:
             "Cost and first-token latency",
             "10k input target, 100 output-token budget, cold cache. Lower and further left means cheaper requests and a shorter wait for the first token. The list is ordered by cost.",
             svg("Cost versus median time to first token", art, height=500),
-            "Cost = total request charges ÷ input tokens × 1M, including output charges. It is not the listed input-token price. Cost points cover 13 routes. Hover a point for its route and values.",
+            "Cost = total request charges ÷ input tokens × 1M, including output charges. It is not the listed input-token price. "
+            f"Cost points cover {len(priced)} routes. "
+            + (
+                "~ marks a host that bills no per-call cost, priced from its published rate card. "
+                if any(c.get("cost_derived_samples") for c in priced)
+                else ""
+            )
+            + "Hover a point for its route and values.",
         )
     )
 
@@ -640,7 +729,7 @@ def render(manifest: dict, cells: list[dict], rows: list[dict]) -> str:
                 lo, hi = c["failure_ci"]
                 cost = f(c["cost_per_m_prompt"], 5)
                 if c["cost_per_m_prompt"] is not None:
-                    cost = "$" + cost
+                    cost = ("~$" if c.get("cost_derived_samples") else "$") + cost
                 cache_value = (
                     f(c["cache_share"] * 100, 1) + "%"
                     if c["cache_share"] is not None
@@ -649,6 +738,8 @@ def render(manifest: dict, cells: list[dict], rows: list[dict]) -> str:
                 cost_samples = (
                     f"n={c['cost_calibration_samples']}"
                     if c.get("cost_calibration_samples")
+                    else f"derived from rate card, n={c['cost_derived_samples']}"
+                    if c.get("cost_derived_samples")
                     else f"{c['priced_samples']}/{c['successes']} successes priced"
                 )
                 body.append(
@@ -675,14 +766,23 @@ def render(manifest: dict, cells: list[dict], rows: list[dict]) -> str:
                 + "</tbody></table></div></section>"
             )
     primary_n = sum(c["n"] for c in primary)
+    n_routes = len({c["route"] for c in primary})
+    later = [
+        s for s in manifest["sources"] if s["id"] not in ("original", "marked", "auto_followup")
+    ]
+    later_note = "".join(
+        f" {esc(s['id'].replace('_', ' ').title())} was added later, measured {s['start'][:10]} "
+        "from the same zone and request grid; see the limitations below."
+        for s in later
+    )
     return TEMPLATE.replace(
         "{{CONTENT}}",
         f"""
 <header><a href="https://github.com/aktasbatuhan/compound">compound</a><nav><a href="#charts">Explore the results</a><a href="#experiment">Run your own experiment ↗</a></nav></header>
 <main><h1>The same model.<br>Different serving tradeoffs.</h1>
 <p class="intro">Where you send a prompt changes what you pay, how long you wait, and whether the call succeeds.</p>
-<p>DeepSeek V4 Flash · 14 serving routes · {primary_n:,} measured calls</p>
-<p class="setup">One controlled setup: 1k, 10k and 100k input-token targets, each with a 100 or 1k output-token budget. Temperature 0, reasoning off. Cold requests use a unique prefix; warm requests repeat the same prompt. These are serving measurements, not task-quality scores.</p>
+<p>DeepSeek V4 Flash · {n_routes} serving routes · {primary_n:,} measured calls</p>
+<p class="setup">One controlled setup: 1k, 10k and 100k input-token targets, each with a 100 or 1k output-token budget. Temperature 0, reasoning off. Cold requests use a unique prefix; warm requests repeat the same prompt. These are serving measurements, not task-quality scores.{later_note}</p>
 <div class="finding"><h2>A repeated prompt can change the winner.</h2><p>DeepSeek’s 100k-input, 100-output-budget requests cost <strong>{cold / warm:.1f}× less</strong> warm than cold in this sample. Telnyx led median generation speed in <strong>{leaders.count("telnyx")}/{len(leaders)} conditions</strong>. The fastest first token depended on the request shape.</p></div>
 <div id="charts">{charts(primary, rows)}</div>
 <section id="measurements"><h2>The measurements</h2><p>Choose the request shape and cache condition. Input sizes are targets and output sizes are budgets; actual token usage is retained in the downloadable records.</p>
@@ -755,6 +855,19 @@ def main() -> None:
     parser.add_argument("--export-from", type=Path, help="maintainer: private artifact root")
     parser.add_argument("--bundle", type=Path, default=BUNDLE)
     parser.add_argument(
+        "--append-source",
+        metavar="NAME=RESULTS_JSONL",
+        help="maintainer: add a later serving run to the bundle as its own source",
+    )
+    parser.add_argument(
+        "--rates",
+        help='with --append-source: JSON rate card for a host that bills no cost, e.g. '
+        '\'{"input": 0.04, "cached_input": 0.02, "output": 0.21, "source": "..."}\' (USD per 1M)',
+    )
+    parser.add_argument(
+        "--note", action="append", default=[], help="with --append-source: limitation to record"
+    )
+    parser.add_argument(
         "--check", action="store_true", help="verify generated outputs without writing"
     )
     args = parser.parse_args()
@@ -762,8 +875,14 @@ def main() -> None:
         if args.check:
             parser.error("--check cannot be combined with --export-from")
         export(args.export_from, args.bundle)
+    if args.append_source:
+        if args.check:
+            parser.error("--check cannot be combined with --append-source")
+        name, _, path = args.append_source.partition("=")
+        rates = json.loads(args.rates) if args.rates else None
+        append_source(args.bundle, name, Path(path), rates, args.note)
     manifest, rows = load(args.bundle)
-    cells = summarize(rows, manifest.get("cost_calibration"))
+    cells = summarize(rows, manifest.get("cost_calibration"), manifest.get("derived_rates"))
     outputs = {
         "summary.json": json.dumps(cells, indent=2) + "\n",
         "index.html": render(manifest, cells, rows),

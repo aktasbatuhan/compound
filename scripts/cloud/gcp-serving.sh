@@ -44,7 +44,12 @@ ROUTES="${SERVING_ROUTES:-openrouter/deepseek,openrouter/morph/bf16,openrouter/t
 HOST_MODELS="${SERVING_HOST_MODELS:-boundless=dsv4}"
 HOST_MODEL_FLAGS=""
 IFS=',' read -ra _HM <<< "$HOST_MODELS"
-for hm in "${_HM[@]}"; do [ -n "$hm" ] && HOST_MODEL_FLAGS="$HOST_MODEL_FLAGS --host-model $hm"; done
+for hm in "${_HM[@]}"; do
+  [ -n "$hm" ] && HOST_MODEL_FLAGS="$HOST_MODEL_FLAGS --host-model $(printf '%q' "$hm")"
+done
+# Seconds between one route's call starts; 0 is unpaced. Use it for a host whose
+# account cap is below a burst of 100k prompts (Boundless: 1.25M tokens/min).
+MIN_CALL_INTERVAL="${SERVING_MIN_CALL_INTERVAL:-0}"
 
 REPS_SMALL="${SERVING_REPS_SMALL:-100}"   # 1k and 10k profiles: cheap, buy a real p90
 REPS_LARGE="${SERVING_REPS_LARGE:-30}"    # 100k profiles: ~90% of the token bill
@@ -61,7 +66,9 @@ if [ -f .env ]; then set -a; . ./.env; set +a; fi
 : "${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}"
 : "${DOUBLEWORD_API_KEY:?set DOUBLEWORD_API_KEY}"
 : "${TELNYX_API_KEY:?set TELNYX_API_KEY}"
-: "${BOUNDLESS_API_KEY:?set BOUNDLESS_API_KEY}"
+case ",$ROUTES," in
+  *,direct/boundless,*) : "${BOUNDLESS_API_KEY:?set BOUNDLESS_API_KEY}" ;;
+esac
 
 mkdir -p "$OUT_ROOT"
 echo "== serving comparison from $ZONE"
@@ -134,13 +141,13 @@ rm -f RUN_DONE
     SHAPES=\$1; CMODE=\$2; REPS=\$3
     echo "===== PASS \$SHAPES/\$CMODE reps=\$REPS \$(date -u +%H:%M:%S) ====="
     OPENROUTER_API_KEY='$OPENROUTER_API_KEY' DOUBLEWORD_API_KEY='$DOUBLEWORD_API_KEY' \
-    TELNYX_API_KEY='$TELNYX_API_KEY' BOUNDLESS_API_KEY='$BOUNDLESS_API_KEY' \
+    TELNYX_API_KEY='$TELNYX_API_KEY' BOUNDLESS_API_KEY='${BOUNDLESS_API_KEY:-}' \
     uv run python -m compound.bench serving --go \
       --providers '$ROUTES' $HOST_MODEL_FLAGS \
       --shapes "\$SHAPES.json" \
       --model-or '$MODEL_OR' --model '$MODEL_DW' \
       --reps "\$REPS" --cache-mode "\$CMODE" \
-      --reasoning-modes off --temperature 0 \
+      --reasoning-modes off --temperature 0 --min-call-interval $MIN_CALL_INTERVAL \
       --out "out/\$SHAPES-\$CMODE"
     echo "===== exit \$? \$(date -u +%H:%M:%S) ====="
   done
