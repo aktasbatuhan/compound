@@ -477,6 +477,28 @@ def measure_stream(
     }
 
 
+def _billing_headers(rec: dict[str, Any], headers: Any) -> None:
+    """Record billing a host reports in response headers (Boundless does).
+
+    ``X-Response-Cost`` is the call's own charge; Boundless sends it only on
+    non-streamed responses, since a stream's headers leave before generation.
+    ``X-Key-Spend`` is the key's cumulative billed spend *before* this call, on
+    every response, so the spend read at the start and end of a run is that
+    run's billed total. Measured 2026-09-24: 1,057 calls priced from the rate
+    card summed to $0.7616 against $0.7618 of key spend.
+    """
+    if headers is None:
+        return
+    for field, name in (("cost_usd", "X-Response-Cost"), ("key_spend_usd", "X-Key-Spend")):
+        value = headers.get(name)
+        if value is None:
+            continue
+        try:
+            rec[field] = float(value)
+        except ValueError:
+            pass
+
+
 def one_call(
     spec: ProviderSpec,
     model: str,
@@ -553,6 +575,7 @@ def one_call(
     try:
         with urlrequest.urlopen(req, timeout=timeout_s) as r:
             rec["status"] = getattr(r, "status", None)
+            _billing_headers(rec, getattr(r, "headers", None))
             m = (measure_messages_stream if anthropic else measure_stream)(r, time.monotonic)
             if m.get("error"):
                 # A Messages stream can fail mid-way with an ``error`` event
@@ -591,7 +614,8 @@ def one_call(
             rec["cache_write_tokens"] = usage["cache_write_tokens"]
         if usage.get("service_tier"):
             rec["service_tier_echo"] = usage["service_tier"]
-        rec["cost_usd"] = usage.get("cost")
+        if rec.get("cost_usd") is None:
+            rec["cost_usd"] = usage.get("cost")
         ct = usage.get("completion_tokens")
         if ct and first_delta and last_delta and last_delta > first_delta:
             rec["decode_tps"] = round(ct / (last_delta - first_delta), 2)
