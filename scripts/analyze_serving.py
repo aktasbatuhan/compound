@@ -16,8 +16,8 @@ with a Wilson interval, and the latency columns say how many calls they cover.
 **Cost is per profile.** A host's effective rate moves with context length,
 because what gets cached moves with context length, so one $/1M figure for a
 host is a rate card rather than a bill. Hosts that return a per-call cost
-(OpenRouter) are measured; hosts that return none (OpenAI, Anthropic, Telnyx)
-are priced from the rate cards in ``compound.yaml`` and shown with a ``~``
+(OpenRouter) are measured; hosts that return none (OpenAI, Anthropic, Telnyx,
+Boundless) are priced from the rate cards in ``compound.yaml`` and shown with a ``~``
 prefix, because a derived number and a billed number must never sit in one
 column looking alike. Doubleword's cost comes from its billing meter, see
 ``scripts/dw_snapshot.py``.
@@ -304,7 +304,7 @@ def main() -> int:
         "\nProvenance: latency and token counts are measured per call from the "
         "stream.\nCost without a ~ is the provider-reported figure (OpenRouter). "
         "A ~ marks cost derived\nfrom the rate cards in compound.yaml (OpenAI, "
-        "Anthropic, Telnyx); Doubleword's comes\nfrom its billing meter, see "
+        "Anthropic, Telnyx, Boundless); Doubleword's comes\nfrom its billing meter, see "
         "scripts/dw_snapshot.py.\n"
         "Divergence shows hosts are not bit-identical. It does not say which is "
         "correct, and\nit is not by itself evidence of quantization: batching, kernels "

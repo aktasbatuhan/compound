@@ -92,6 +92,99 @@ providers:
     api_key_env: TELNYX_API_KEY
     type: openai_compatible
     cache_strategy: implicit
+  # Boundless (inference.boundless.network): open-weight and some proprietary
+  # models behind one OpenAI-compatible gateway, prepaid credits, zero data
+  # retention. Model ids are bare (deepseek-v4.1-flash, glm-5.3-flash), so an arm
+  # sent from an OpenRouter-style id needs --host-model boundless=<id>.
+  # Measured 2026-09-23 with the documented anonymous agent key:
+  # - Caches prompt prefixes on its own: a repeated 2,212-token prefix read 2,048
+  #   cached tokens (prompt_tokens_details.cached_tokens, plus cache_write_tokens).
+  # - Bills no cost field; per-call cost is derived from the rate card below,
+  #   which /v1/model/info publishes per token (input, cache read, output).
+  # - reasoning_effort takes none|low|medium|high. Models that always reason
+  #   (glm-5.3-flash, qwen3.8-flash) 400 on "none"; "low" is their floor.
+  # - Over-limit requests are HTTP 429 with Retry-After and are not charged.
+  # Only the on-demand "asap" window exists today; 1h/24h batch windows at 25%/50%
+  # off are announced for the models Boundless serves on its own fleet.
+  boundless:
+    base_url: https://api.inference.boundless.network/v1
+    api_key_env: BOUNDLESS_API_KEY
+    type: openai_compatible
+    cache_strategy: implicit
+    # /v1/model/info, 2026-09-23. USD per 1M tokens.
+    pricing_usd_per_million_tokens:
+      deepseek-v4.1-flash:
+        input: 0.2
+        cached_input: 0.01
+        output: 1
+      dsv4:
+        input: 0.04
+        cached_input: 0.02
+        output: 0.21
+      glm-5.2:
+        input: 0.34
+        cached_input: 0.17
+        output: 2.3
+      qwen3.6:
+        input: 0.04
+        cached_input: 0.02
+        output: 0.35
+      nemotron3-super:
+        input: 0.12
+        cached_input: 0.06
+        output: 0.52
+      kimi-k3:
+        input: 2.3
+        cached_input: 0.23
+        output: 11.4
+      glm-5.3-flash:
+        input: 0.12
+        cached_input: 0.024
+        output: 0.4
+      deepseek-v4-pro-0813:
+        input: 1.04
+        cached_input: 0.0352
+        output: 2.08
+      gpt-6-luna:
+        input: 0.1
+        cached_input: 0.01
+        output: 0.5
+      mimo-v2.5:
+        input: 0.119
+        cached_input: 0.0026
+        output: 0.238
+      minimax-m3:
+        input: 0.28
+        cached_input: 0.056
+        output: 1.1
+      qwen3.8-flash:
+        input: 0.15
+        cached_input: 0.016
+        output: 0.47
+      claude-opus-5:
+        input: 5
+        cached_input: 0.5
+        output: 25
+      gpt-5.6-luna:
+        input: 0.2
+        cached_input: 0.02
+        output: 1.2
+      gpt-5.6-sol:
+        input: 2
+        cached_input: 0.2
+        output: 10
+      claude-fable-5.1:
+        input: 10
+        cached_input: 0.25
+        output: 50
+      gpt-6-sol:
+        input: 2
+        cached_input: 0.2
+        output: 10
+      claude-opus-5.5:
+        input: 4
+        cached_input: 0.2
+        output: 20
   zai:
     base_url: https://api.z.ai/api/paas/v4
     api_key_env: ZAI_API_KEY
@@ -210,6 +303,81 @@ serving_rates_usd_per_million_tokens:
       cached_input: 0.20
       cache_write: 2.50
       output: 10.00
+  # Boundless /v1/model/info, 2026-09-23 (same numbers as the provider block's
+  # pricing table). Derived cost; Boundless returns token counts, not a charge.
+  boundless:
+    deepseek-v4.1-flash:
+      input: 0.2
+      cached_input: 0.01
+      output: 1
+    dsv4:
+      input: 0.04
+      cached_input: 0.02
+      output: 0.21
+    glm-5.2:
+      input: 0.34
+      cached_input: 0.17
+      output: 2.3
+    qwen3.6:
+      input: 0.04
+      cached_input: 0.02
+      output: 0.35
+    nemotron3-super:
+      input: 0.12
+      cached_input: 0.06
+      output: 0.52
+    kimi-k3:
+      input: 2.3
+      cached_input: 0.23
+      output: 11.4
+    glm-5.3-flash:
+      input: 0.12
+      cached_input: 0.024
+      output: 0.4
+    deepseek-v4-pro-0813:
+      input: 1.04
+      cached_input: 0.0352
+      output: 2.08
+    gpt-6-luna:
+      input: 0.1
+      cached_input: 0.01
+      output: 0.5
+    mimo-v2.5:
+      input: 0.119
+      cached_input: 0.0026
+      output: 0.238
+    minimax-m3:
+      input: 0.28
+      cached_input: 0.056
+      output: 1.1
+    qwen3.8-flash:
+      input: 0.15
+      cached_input: 0.016
+      output: 0.47
+    claude-opus-5:
+      input: 5
+      cached_input: 0.5
+      output: 25
+    gpt-5.6-luna:
+      input: 0.2
+      cached_input: 0.02
+      output: 1.2
+    gpt-5.6-sol:
+      input: 2
+      cached_input: 0.2
+      output: 10
+    claude-fable-5.1:
+      input: 10
+      cached_input: 0.25
+      output: 50
+    gpt-6-sol:
+      input: 2
+      cached_input: 0.2
+      output: 10
+    claude-opus-5.5:
+      input: 4
+      cached_input: 0.2
+      output: 20
 
 benchmarks:
   ds1000:
