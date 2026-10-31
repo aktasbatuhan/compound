@@ -196,3 +196,9 @@ def test_bundled_tokenizer_table_loads():
     card = PriceCard(model="x", route="openrouter", provider="x", prompt=1, completion=1,
                      hugging_face_id="zai-org/GLM-5.3")
     assert table.density(card, "tr").basis == "measured"
+    gpt = PriceCard(model="openai/gpt-6-sol", route="openrouter", provider="x", prompt=1,
+                    completion=1, tokenizer="GPT")
+    assert table.density(gpt, "tr").basis == "measured"
+    newer = PriceCard(model="openai/gpt-7", route="openrouter", provider="x", prompt=1,
+                      completion=1, tokenizer="GPT")
+    assert table.density(newer, "tr").basis == "assumed"

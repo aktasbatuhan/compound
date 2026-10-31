@@ -73,15 +73,19 @@ shows both.</p>
 allow, which is the "cache could serve" share from the workload profile. The
 expensive end assumes only what your current host already serves.</p>
 <p><strong>Tokens.</strong> The same text is a different number of tokens on different
-models, and Turkish varies far more than English. On the same Turkish text,
-DeepSeek V4's tokenizer produces about 399 tokens per 1,000 characters,
-against 256 to 316 for Mistral Large, Gemma, gpt-oss, Qwen and GLM, while
-English sits between 184 and 190 for all of them. The estimate moves your
-token counts with these measured ratios. Claude and Gemini do not publish
-their tokenizers, so for them the range covers every tokenizer we measured
-instead of assuming a match. OpenAI models are assumed to use <code>o200k_base</code>.</p>
-<p>The ratios come from <code>scripts/measure_tokenizers.py</code>, which records the exact
-Wikipedia article revisions it used, so the numbers can be checked and redone.</p>
+models, and Turkish varies far more than English. On 1,012 FLORES sentences
+with the same meaning in both languages, every tokenizer we measured needs
+26,900 to 27,800 tokens for the English, but the Turkish takes 36,800 on
+Mistral Large 4, 38,400 on GPT-6 and 55,200 on DeepSeek V4. The estimate
+moves your token counts with these measured ratios, per language. GPT models
+are measured through OpenAI's token counter; other OpenAI models fall back to
+<code>o200k_base</code>, which matched those to within a few tokens. Claude and Gemini do
+not publish their tokenizers and are not measured yet, so for them the range
+covers every tokenizer we measured instead of assuming a match.</p>
+<p>The ratios come from <code>scripts/measure_tokenizers.py</code>, which records the
+dataset revision and every per-sentence count, and
+<a href="https://github.com/aktasbatuhan/compound/tree/main/benchmarks/tokenizers"><code>benchmarks/tokenizers/</code></a>
+has the full tables, including Arabic, Azerbaijani, Kazakh and Uzbek.</p>
 <h2 id="what-it-does-not-model-yet">What it does not model yet</h2>
 <p>The result lists these every time:</p>
 <ul>

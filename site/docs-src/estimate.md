@@ -45,16 +45,20 @@ allow, which is the "cache could serve" share from the workload profile. The
 expensive end assumes only what your current host already serves.
 
 **Tokens.** The same text is a different number of tokens on different
-models, and Turkish varies far more than English. On the same Turkish text,
-DeepSeek V4's tokenizer produces about 399 tokens per 1,000 characters,
-against 256 to 316 for Mistral Large, Gemma, gpt-oss, Qwen and GLM, while
-English sits between 184 and 190 for all of them. The estimate moves your
-token counts with these measured ratios. Claude and Gemini do not publish
-their tokenizers, so for them the range covers every tokenizer we measured
-instead of assuming a match. OpenAI models are assumed to use `o200k_base`.
+models, and Turkish varies far more than English. On 1,012 FLORES sentences
+with the same meaning in both languages, every tokenizer we measured needs
+26,900 to 27,800 tokens for the English, but the Turkish takes 36,800 on
+Mistral Large 4, 38,400 on GPT-6 and 55,200 on DeepSeek V4. The estimate
+moves your token counts with these measured ratios, per language. GPT models
+are measured through OpenAI's token counter; other OpenAI models fall back to
+`o200k_base`, which matched those to within a few tokens. Claude and Gemini do
+not publish their tokenizers and are not measured yet, so for them the range
+covers every tokenizer we measured instead of assuming a match.
 
-The ratios come from `scripts/measure_tokenizers.py`, which records the exact
-Wikipedia article revisions it used, so the numbers can be checked and redone.
+The ratios come from `scripts/measure_tokenizers.py`, which records the
+dataset revision and every per-sentence count, and
+[`benchmarks/tokenizers/`](https://github.com/aktasbatuhan/compound/tree/main/benchmarks/tokenizers)
+has the full tables, including Arabic, Azerbaijani, Kazakh and Uzbek.
 
 ## What it does not model yet
 
