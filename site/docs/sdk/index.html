@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recording SDK · Compound</title>
+<meta name="description" content="If you have no logs to export, compound-sdk records them for you. It is a
+small Python package with no dependencies, in sdk/python of this repo. It
+writes one shape record per model call: token counts, timing,
+cache hits and salted prompt-prefix hashes, and never the text of a prompt or
+an answer.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../../docs/" class="cur">docs</a>
+      <a href="../../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../../docs/">Overview</a>
+    <a href="../../docs/providers/">Providers</a>
+    <a href="../../docs/benchmarks/">Benchmarks</a>
+    <a href="../../docs/harbor/">Terminal-Bench 4.0</a>
+    <a href="../../docs/reports/">Reports and ledgers</a>
+    <a href="../../docs/serving/">Serving metrics</a>
+    <a href="../../docs/sdk/" class="cur">Recording SDK</a>
+    <a href="../../docs/shape/">Workload shape</a>
+    <a href="../../docs/estimate/">Cost estimate</a>
+    <a href="../../docs/traces/">Your own traces</a>
+    <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/development/">Implementation and development</a>
+    <a href="../../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="recording-sdk">Recording SDK</h1>
+<p>If you have no logs to export, <code>compound-sdk</code> records them for you. It is a
+small Python package with no dependencies, in <code>sdk/python</code> of this repo. It
+writes one <a href="../shape/">shape</a> record per model call: token counts, timing,
+cache hits and salted prompt-prefix hashes, and never the text of a prompt or
+an answer.</p>
+<pre><code class="language-python">from openai import OpenAI
+from compound_sdk import Recorder
+
+recorder = Recorder(task_key=&quot;support&quot;)    # writes ~/.compound/shapes.jsonl
+client = recorder.wrap_openai(OpenAI())     # records every chat.completions call
+</code></pre>
+<p>The wrapped client returns exactly what it returned before, streams included.
+A stream is recorded when it ends, and its usage is only known if the request
+set <code>stream_options={"include_usage": True}</code>. Async clients work the same way.</p>
+<p>For LiteLLM, as a library or as the proxy:</p>
+<pre><code class="language-python">import litellm
+from compound_sdk.litellm import compound_logger
+
+litellm.callbacks = [compound_logger()]
+</code></pre>
+<p>For anything else, call <code>recorder.record(messages=..., model=...,
+started_at=..., usage=...)</code> after the call returns.</p>
+<h2 id="it-stays-out-of-the-way">It stays out of the way</h2>
+<p>Recording happens after the call, and a background thread writes the file.
+If the queue fills up, a record is dropped and counted in <code>recorder.dropped</code>.
+If building a record fails, it is counted in <code>recorder.errors</code>. Your app never
+sees an exception from the recorder.</p>
+<h2 id="privacy">Privacy</h2>
+<p>The prefix hashes are salted with a random secret in <code>~/.compound/salt</code>,
+readable only by your user. Records from one machine compare with each other,
+which is how repeated prompts show up in the profile, but nobody without that
+file can test a guessed prompt against them. Share <code>shapes.jsonl</code>, never
+<code>salt</code>.</p>
+<p>Then read the records like any other input:</p>
+<pre><code class="language-bash">compound shape ~/.compound/shapes.jsonl --out profile.json
+compound estimate ~/.compound/shapes.jsonl --current &lt;model in use&gt; --candidates &lt;models&gt;
+</code></pre>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../../docs/">docs</a> <a href="../../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>
