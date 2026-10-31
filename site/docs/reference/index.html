@@ -29,6 +29,7 @@
     <a href="../../docs/harbor/">Terminal-Bench 4.0</a>
     <a href="../../docs/reports/">Reports and ledgers</a>
     <a href="../../docs/serving/">Serving metrics</a>
+    <a href="../../docs/shape/">Workload shape</a>
     <a href="../../docs/traces/">Your own traces</a>
     <a href="../../docs/config/">Configuration</a>
     <a href="../../docs/development/">Implementation and development</a>
@@ -278,6 +279,27 @@ positional arguments:
 options:
   -h, --help  show this help message and exit
   --hosts     also list which upstreams answered each route, with counts
+</code></pre>
+<h2 id="compound-shape">compound shape</h2>
+<pre><code class="language-text">usage: compound shape [-h] [--out OUT] [--calls-out CALLS_OUT]
+                      [--cache-ttl CACHE_TTL]
+                      [--min-prefix-tokens MIN_PREFIX_TOKENS]
+                      paths [paths ...]
+
+positional arguments:
+  paths                 trace, request-log, ledger or shape files
+                        (.json/.jsonl) or folders
+
+options:
+  -h, --help            show this help message and exit
+  --out OUT             write the workload profile as JSON
+  --calls-out CALLS_OUT
+                        write one content-free shape record per call (JSONL),
+                        safe to share
+  --cache-ttl CACHE_TTL
+                        seconds a cached prefix lives (default 300)
+  --min-prefix-tokens MIN_PREFIX_TOKENS
+                        shortest prefix a host caches (default 1024)
 </code></pre>
 <h2 id="compound-trace-pipeline-typescript">compound (trace pipeline, TypeScript)</h2>
 <pre><code class="language-text">compound — turn production traces into gated optimization evidence
