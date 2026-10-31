@@ -3,7 +3,7 @@ import json
 import pytest
 import yaml
 
-from compound.adapters.terminal_bench import (
+from compound.bench.adapters.terminal_bench import (
     TIMEOUT_BASE_FILE,
     apply_timeout_mult,
     build_manifest,

@@ -3,7 +3,7 @@
  *
  * These models (GLM, DeepSeek, Nemotron) are served through the OpenAI
  * Responses API with `background=true, service_tier=flex`, not chat completions
- * — established in the benchmark phase (src/compound/flex.py). The call is
+ * — established in the benchmark phase (src/compound/core/flex.py). The call is
  * submit-then-poll: create a background response, then GET it until terminal.
  *
  * It satisfies the same `Provider` interface as `HttpProvider`, so the runner

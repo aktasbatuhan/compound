@@ -86,7 +86,7 @@ def test_pinned_version_here_matches_pyproject() -> None:
     )
 
 
-@pytest.mark.parametrize("module_name", ["compound", "compound.gepa_v2"])
+@pytest.mark.parametrize("module_name", ["compound", "compound.bench.ds1000_gepa"])
 def test_engine_modules_come_from_this_checkout(module_name: str) -> None:
     """The engine under test must be this working tree, not another checkout."""
     module = __import__(module_name, fromlist=["__file__"])

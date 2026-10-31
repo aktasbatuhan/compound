@@ -4,7 +4,7 @@ import io
 
 import pytest
 
-from compound.providers_registry import (
+from compound.core.providers_registry import (
     DOUBLEWORD_BASE,
     OPENROUTER_BASE,
     parse_provider,
@@ -150,7 +150,7 @@ def test_direct_without_config_block_raises():
 
 
 def test_apply_host_models_matches_kind_label_and_token():
-    from compound.providers_registry import apply_host_models, parse_providers
+    from compound.core.providers_registry import apply_host_models, parse_providers
 
     specs = parse_providers("openrouter/deepinfra,doubleword/realtime,doubleword/flex")
     out = apply_host_models(specs, {"doubleword": "zai-org/GLM-5.3-Flash", "doubleword/flex": "other"})
@@ -161,7 +161,7 @@ def test_apply_host_models_matches_kind_label_and_token():
 
 def test_apply_host_models_ignores_a_kind_this_arm_does_not_use():
     """One grid fans the same mapping to every arm; only some arms are Doubleword."""
-    from compound.providers_registry import apply_host_models, parse_providers
+    from compound.core.providers_registry import apply_host_models, parse_providers
 
     specs = parse_providers("openrouter/deepinfra")
     out = apply_host_models(specs, {"doubleword": "zai-org/GLM-5.3-Flash"})
@@ -171,7 +171,7 @@ def test_apply_host_models_ignores_a_kind_this_arm_does_not_use():
 def test_apply_host_models_rejects_a_misspelled_kind():
     import pytest
 
-    from compound.providers_registry import apply_host_models, parse_providers
+    from compound.core.providers_registry import apply_host_models, parse_providers
 
     with pytest.raises(ValueError, match="no known provider"):
         apply_host_models(parse_providers("openrouter/auto"), {"doubelword": "x"})
@@ -181,7 +181,7 @@ def test_probe_endpoint_reports_a_rate_limited_host_as_not_answering(monkeypatch
     """OpenRouter's "up" is its own belief; only a real call settles it."""
     import urllib.error
 
-    from compound import openrouter_discovery as disc
+    from compound.core import openrouter_discovery as disc
 
     def raise_429(*_args, **_kwargs):
         raise urllib.error.HTTPError(
@@ -200,7 +200,7 @@ def test_apply_host_models_accepts_a_configured_direct_host_this_arm_lacks():
     # the z.ai arm and unused on all the others. Without known_names the typo
     # guard would reject it and kill those arms, which is how six arms died on
     # the 2026-09-03 grid via the `doubleword` key.
-    from compound.providers_registry import apply_host_models, parse_providers
+    from compound.core.providers_registry import apply_host_models, parse_providers
 
     config = {"zai": {"base_url": "https://api.z.ai/api/paas/v4", "api_key_env": "ZAI_API_KEY"}}
     specs = parse_providers("openrouter/novita", providers_config=config)
@@ -213,7 +213,7 @@ def test_apply_host_models_accepts_a_configured_direct_host_this_arm_lacks():
 
 
 def test_apply_host_models_still_rejects_a_typo_among_configured_names():
-    from compound.providers_registry import apply_host_models, parse_providers
+    from compound.core.providers_registry import apply_host_models, parse_providers
 
     config = {"zai": {"base_url": "https://x", "api_key_env": "K"}}
     with pytest.raises(ValueError, match="no known provider"):
@@ -243,7 +243,7 @@ ANTHROPIC_CFG = {
 
 
 def test_proxy_renames_the_output_cap_for_hosts_that_need_it():
-    from compound.orproxy import inject
+    from compound.core.orproxy import inject
 
     spec = parse_provider("direct/openai-flex", providers_config=ANTHROPIC_CFG)
     out = inject({"model": "m", "max_tokens": 50, "messages": []}, spec)
@@ -273,7 +273,7 @@ def test_openai_compatible_hosts_default_to_chat_completions():
 
 
 def test_proxy_refuses_a_messages_dialect_host():
-    from compound.orproxy import serve_provider
+    from compound.core.orproxy import serve_provider
 
     spec = parse_provider("direct/anthropic", providers_config=ANTHROPIC_CFG)
     with pytest.raises(RuntimeError, match="chat completions only"):
@@ -302,7 +302,7 @@ def test_boundless_is_a_direct_openai_host_with_implicit_cache():
 
 
 def test_boundless_cost_is_derived_from_its_rate_card():
-    from compound.serving_metrics import derived_cost_usd
+    from compound.serving.metrics import derived_cost_usd
 
     rates = _repo_config()["serving_rates_usd_per_million_tokens"]
     # Token counts from a live deepseek-v4.1-flash call on 2026-09-23 (no cost field).

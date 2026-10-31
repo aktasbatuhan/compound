@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from compound.tb_report import build_report, iter_trials
+from compound.report.terminal_bench import build_report, iter_trials
 
 
 def _results(trials):

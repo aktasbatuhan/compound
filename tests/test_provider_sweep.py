@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from compound.provider_sweep import plan
-from compound.providers_registry import parse_providers
+from compound.bench.provider_sweep import plan
+from compound.core.providers_registry import parse_providers
 
 
 def test_plan_lists_one_line_per_host_with_pinning():

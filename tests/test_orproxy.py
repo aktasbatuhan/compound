@@ -9,8 +9,8 @@ from urllib import request as urlrequest
 
 import pytest
 
-from compound.orproxy import inject, serve_provider, target_url
-from compound.providers_registry import ProviderSpec, parse_provider
+from compound.core.orproxy import inject, serve_provider, target_url
+from compound.core.providers_registry import ProviderSpec, parse_provider
 
 PIN = {"only": ["deepinfra"], "allow_fallbacks": False, "require_parameters": True}
 
@@ -108,7 +108,7 @@ def test_inject_cache_marker_is_strategy_driven_not_kind(monkeypatch):
 
 
 def test_cache_optin_enabled_reads_env(monkeypatch):
-    from compound.orproxy import cache_optin_enabled
+    from compound.core.orproxy import cache_optin_enabled
 
     monkeypatch.setenv("COMPOUND_DW_CACHE", "on")
     assert cache_optin_enabled() is True
@@ -224,7 +224,7 @@ def _flaky_server():
 
 
 def test_open_with_retries_survives_transient_429s():
-    from compound.orproxy import open_with_retries
+    from compound.core.orproxy import open_with_retries
 
     server = _flaky_server()
     port = server.server_address[1]
@@ -243,7 +243,7 @@ def test_open_with_retries_survives_transient_429s():
 def test_open_with_retries_does_not_retry_400():
     import pytest as _pytest
 
-    from compound.orproxy import open_with_retries
+    from compound.core.orproxy import open_with_retries
 
     server = _flaky_server()
     port = server.server_address[1]
@@ -262,7 +262,7 @@ def test_open_with_retries_does_not_retry_400():
 def test_open_with_retries_gives_up_and_surfaces_last_429():
     import pytest as _pytest
 
-    from compound.orproxy import open_with_retries
+    from compound.core.orproxy import open_with_retries
 
     server = _flaky_server()
     port = server.server_address[1]
@@ -336,7 +336,7 @@ class _StreamingUpstream(BaseHTTPRequestHandler):
 
 def test_proxy_records_a_call_ledger_row_without_altering_the_stream(monkeypatch, tmp_path):
     """The ledger is a tee: the client sees the identical bytes either way."""
-    import compound.orproxy as orproxy
+    import compound.core.orproxy as orproxy
 
     ledger_path = tmp_path / "calls.jsonl"
     monkeypatch.setenv("OPENROUTER_API_KEY", "sekret")
@@ -388,7 +388,7 @@ def test_proxy_records_a_call_ledger_row_without_altering_the_stream(monkeypatch
 
 
 def test_proxy_writes_no_ledger_when_disabled(monkeypatch, tmp_path):
-    import compound.orproxy as orproxy
+    import compound.core.orproxy as orproxy
 
     monkeypatch.delenv("COMPOUND_CALL_LEDGER", raising=False)
     orproxy._LEDGERS.clear()
@@ -451,7 +451,7 @@ class _HangingUpstream(BaseHTTPRequestHandler):
 
 def test_proxy_gives_up_on_a_call_that_never_completes(monkeypatch, tmp_path):
     """A host streaming padding forever must not stall the whole run."""
-    import compound.orproxy as orproxy
+    import compound.core.orproxy as orproxy
 
     ledger_path = tmp_path / "calls.jsonl"
     monkeypatch.setenv("OPENROUTER_API_KEY", "sekret")

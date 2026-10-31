@@ -6,9 +6,9 @@ from copy import deepcopy
 
 import pytest
 
-from compound import cache_study as study
-from compound.providers_registry import parse_providers
-from compound.serving_report import aggregate, build_report, read_results
+from compound.core.providers_registry import parse_providers
+from compound.report.serving import aggregate, build_report, read_results
+from compound.serving import cache_study as study
 
 SHAPES = {"document": {"messages": [{"role": "user", "content": "A document."}], "max_tokens": 16}}
 
@@ -122,7 +122,7 @@ def test_cli_dry_run_counts_every_call_without_writes(tmp_path):
         [
             sys.executable,
             "-m",
-            "compound.bench",
+            "compound.cli",
             "cache-study",
             "--providers",
             "openrouter/auto,openrouter/relace",
@@ -169,7 +169,7 @@ def test_doubleword_model_and_markers_required(tmp_path, monkeypatch):
 
 
 def test_paid_cli_loads_env_without_real_requests(tmp_path, monkeypatch):
-    from compound import bench
+    from compound import cli as bench
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)

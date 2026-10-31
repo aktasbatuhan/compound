@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from compound.bench import BENCHMARKS, _apply_tb_env, _require_keys, select_case_ids
-from compound.tau_sweep import SweepConfig
+from compound.bench.tau_sweep import SweepConfig
+from compound.cli import BENCHMARKS, _apply_tb_env, _require_keys, select_case_ids
 
 
 def _tb_args(**over):
@@ -27,8 +27,8 @@ CASES = [
 
 
 def test_probe_requires_explicit_go(monkeypatch, capsys):
-    from compound import openrouter_discovery
-    from compound.bench import main
+    from compound.cli import main
+    from compound.core import openrouter_discovery
 
     monkeypatch.setattr("sys.argv", ["compound", "providers", "m", "--probe"])
     monkeypatch.setattr(
@@ -39,8 +39,8 @@ def test_probe_requires_explicit_go(monkeypatch, capsys):
 
 
 def test_paid_probe_dispatches_only_after_key_preflight(monkeypatch):
-    from compound import openrouter_discovery
-    from compound.bench import main
+    from compound.cli import main
+    from compound.core import openrouter_discovery
 
     monkeypatch.setattr(
         "sys.argv", ["compound", "providers", "m", "--probe", "--go"],
@@ -181,7 +181,7 @@ def test_apply_tb_env_without_the_flag_leaves_recording_off(monkeypatch) -> None
 
 
 def test_parse_agent_kwargs_splits_pairs() -> None:
-    from compound.bench import _parse_agent_kwargs
+    from compound.cli import _parse_agent_kwargs
 
     assert _parse_agent_kwargs(["max_turns=30", "foo=a=b"]) == {
         "max_turns": "30",
@@ -191,7 +191,7 @@ def test_parse_agent_kwargs_splits_pairs() -> None:
 
 
 def test_parse_agent_kwargs_rejects_a_malformed_pair() -> None:
-    from compound.bench import _parse_agent_kwargs
+    from compound.cli import _parse_agent_kwargs
 
     with pytest.raises(SystemExit, match="KEY=VALUE"):
         _parse_agent_kwargs(["max_turns"])

@@ -1,6 +1,6 @@
 import pytest
 
-from compound.budget import BudgetExceededError, BudgetLedger
+from compound.core.budget import BudgetExceededError, BudgetLedger
 
 
 def test_budget_ledger_persists_and_enforces_limit(tmp_path) -> None:

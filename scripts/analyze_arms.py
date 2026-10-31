@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from compound.call_ledger import load_records, summarize
+from compound.core.call_ledger import load_records, summarize
 
 
 def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:

@@ -1,4 +1,4 @@
-from compound.baseline_matrix import _model_summary
+from compound.bench.ds1000_matrix import _model_summary
 
 
 def test_model_summary_distinguishes_cases_from_repeated_trials() -> None:

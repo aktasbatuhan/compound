@@ -80,5 +80,5 @@ Flags specific to it:
 
 A benchmark is one registry entry: a manifest of partitioned case ids and a
 runner that accepts `(models, case_ids)`. See
-[`src/compound/adapters/`](https://github.com/aktasbatuhan/compound/tree/main/src/compound/adapters)
+[`src/compound/bench/adapters/`](https://github.com/aktasbatuhan/compound/tree/main/src/compound/bench/adapters)
 for the interface and the five existing adapters.

@@ -13,7 +13,7 @@ import os
 
 import pytest
 
-from compound.adapters.harbor import (
+from compound.bench.adapters.harbor import (
     DEFAULT_AGENT,
     DEFAULT_DATASET,
     build_command,
@@ -219,9 +219,9 @@ class TestSweepHarborWiring:
     def _run(self, tmp_path, monkeypatch, ledger_dir=None):
         import contextlib
 
-        from compound import provider_sweep
-        from compound.adapters import harbor as harbor_mod
-        from compound.providers_registry import ProviderSpec
+        from compound.bench import provider_sweep
+        from compound.bench.adapters import harbor as harbor_mod
+        from compound.core.providers_registry import ProviderSpec
 
         seen: dict = {}
 
@@ -398,7 +398,7 @@ def test_multi_key_rewards_are_graded_not_discarded():
     # FrontierSWE returns {"reward", "valid", "correctness", ...}. Reading only
     # single-key payloads reported every such trial as "no verdict", turning a
     # measured 0.0 into a missing measurement.
-    from compound.adapters.harbor import summarize, trial_rows
+    from compound.bench.adapters.harbor import summarize, trial_rows
 
     job = {
         "trial_results": [
@@ -421,7 +421,7 @@ def test_multi_key_rewards_are_graded_not_discarded():
 
 
 def test_binary_rewards_still_drive_the_resolve_rate():
-    from compound.adapters.harbor import summarize, trial_rows
+    from compound.bench.adapters.harbor import summarize, trial_rows
 
     job = {
         "trial_results": [

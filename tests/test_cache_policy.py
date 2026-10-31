@@ -7,7 +7,7 @@ upstream supports caching. Paid qualification must inspect provider usage.
 import re
 from pathlib import Path
 
-from compound.cache_policy import (
+from compound.core.cache_policy import (
     MARKER_REQUIRED_HOSTS,
     is_marked,
     mark_cache_prefix,
@@ -17,11 +17,12 @@ from compound.cache_policy import (
 SRC = Path(__file__).resolve().parents[1] / "src/compound"
 
 # Modules that name a cacheable host but hand request construction to an
-# upstream harness. They are only safe behind the marking proxy in orproxy.py,
-# and each entry records why it cannot mark its own payloads.
+# upstream harness. They are only safe behind the marking proxy in core/orproxy.py,
+# and each entry records why it cannot mark its own payloads. Paths are relative
+# to src/compound.
 DELEGATES_TO_PROXY = {
-    "tau_sweep.py": "passes a base_url to the tau2 harness; point it at orproxy",
-    "bench.py": "resolves a base_url for external benchmarks; point them at orproxy",
+    "bench/tau_sweep.py": "passes a base_url to the tau2 harness; point it at orproxy",
+    "cli.py": "resolves a base_url for external benchmarks; point them at orproxy",
 }
 
 
@@ -83,19 +84,20 @@ def test_needs_marker_knows_which_endpoints_cache_on_request():
 def test_no_module_talks_to_a_cacheable_host_without_marking_it():
     """The guard. A new unmarked paid path fails here instead of on the bill."""
     offenders = []
-    for path in sorted(SRC.glob("*.py")):
-        if path.name in ("cache_policy.py", "orproxy.py"):
+    for path in sorted(SRC.rglob("*.py")):
+        rel = path.relative_to(SRC).as_posix()
+        if rel in ("core/cache_policy.py", "core/orproxy.py"):
             continue
         text = path.read_text()
         if not any(host in text for host in MARKER_REQUIRED_HOSTS):
             continue
         marks = "mark_cache_prefix" in text or "cache_control" in text
-        if marks or path.name in DELEGATES_TO_PROXY:
+        if marks or rel in DELEGATES_TO_PROXY:
             continue
-        offenders.append(path.name)
+        offenders.append(rel)
     assert not offenders, (
         f"{offenders} build requests for a cacheable host without a cache marker. "
-        "Route them through compound.cache_policy.mark_cache_prefix, or add them to "
+        "Route them through compound.core.cache_policy.mark_cache_prefix, or add them to "
         "DELEGATES_TO_PROXY with the reason they cannot mark their own payloads."
     )
 
@@ -107,8 +109,8 @@ def test_every_delegating_module_still_exists_so_the_allowlist_cannot_rot():
 
 def test_no_module_hardcodes_the_uncacheable_responses_endpoint():
     offenders = [
-        p.name
-        for p in sorted(SRC.glob("*.py"))
+        p.relative_to(SRC).as_posix()
+        for p in sorted(SRC.rglob("*.py"))
         if re.search(r"api\.doubleword\.ai/v1/responses", p.read_text())
     ]
     assert not offenders, f"{offenders} send agent traffic to the uncacheable endpoint"
@@ -117,7 +119,7 @@ def test_no_module_hardcodes_the_uncacheable_responses_endpoint():
 def test_caching_asked_for_and_never_delivered_is_flagged():
     """The runtime check the static scan cannot make: a host that accepts the
     marker and returns nothing must be flagged, not billed as cached."""
-    from compound.serving_metrics import cache_effectiveness
+    from compound.serving.metrics import cache_effectiveness
 
     calls = 8
 

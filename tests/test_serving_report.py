@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from compound.serving_report import aggregate, build_report, read_results
+from compound.report.serving import aggregate, build_report, read_results
 
 
 def record(**overrides):
@@ -153,7 +153,7 @@ def test_cli_report_offline(tmp_path):
         [
             sys.executable,
             "-m",
-            "compound.bench",
+            "compound.cli",
             "serving-report",
             str(path),
             "--out",

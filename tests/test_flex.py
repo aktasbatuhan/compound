@@ -5,16 +5,16 @@ from typing import Any
 
 import pytest
 
-from compound.budget import BudgetLedger
-from compound.costs import TokenPrices
-from compound.flex import (
+from compound.core.budget import BudgetLedger
+from compound.core.costs import TokenPrices
+from compound.core.flex import (
     CachedFlexRunner,
     FlexRequest,
     flex_fingerprint,
     responses_output_text,
     responses_usage,
 )
-from compound.providers import BackgroundResponseSnapshot
+from compound.core.providers import BackgroundResponseSnapshot
 
 
 def _completed(response_id: str = "resp_1") -> BackgroundResponseSnapshot:

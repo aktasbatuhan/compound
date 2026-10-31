@@ -1,6 +1,6 @@
 import json
 
-from compound.adapters.mmlu import (
+from compound.bench.adapters.mmlu import (
     PARTITION_WEIGHTS,
     build_manifest,
     grade,

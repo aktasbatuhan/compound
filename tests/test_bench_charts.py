@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from compound.bench_charts import radar_axes, render_charts
+from compound.report.bench_charts import radar_axes, render_charts
 
 
 def _summary():

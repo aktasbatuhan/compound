@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from compound.spend_ledger import (
+from compound.core.spend_ledger import (
     RESERVATION_TTL_MS,
     BudgetExceededError,
     SpendLedger,

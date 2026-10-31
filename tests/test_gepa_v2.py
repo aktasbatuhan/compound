@@ -6,11 +6,7 @@ from unittest.mock import Mock, patch
 
 import gepa
 
-from compound.budget import BudgetLedger
-from compound.contracts import Usage
-from compound.costs import TokenPrices
-from compound.ds1000_optimizer import DS1000Example, completion_fingerprint
-from compound.gepa_v2 import (
+from compound.bench.ds1000_gepa import (
     MAX_CANDIDATE_WORDS,
     SEED_COMPONENTS,
     DS1000GEPAAdapterV2,
@@ -21,7 +17,11 @@ from compound.gepa_v2 import (
     compose_system_prompt,
     select_library_components,
 )
-from compound.providers import ProviderResponse
+from compound.bench.ds1000_optimizer import DS1000Example, completion_fingerprint
+from compound.core.budget import BudgetLedger
+from compound.core.contracts import Usage
+from compound.core.costs import TokenPrices
+from compound.core.providers import ProviderResponse
 
 
 def _response(text: str) -> ProviderResponse:
@@ -158,7 +158,7 @@ def test_cache_only_adapter_refuses_a_missing_paid_completion(tmp_path: Path) ->
     provider.complete.assert_not_called()
 
 
-@patch("compound.gepa_v2.subprocess.run")
+@patch("compound.bench.ds1000_gepa.subprocess.run")
 def test_repeated_trials_use_distinct_completion_cache_entries(run: Mock, tmp_path: Path) -> None:
     run.return_value = Mock(
         returncode=0,
@@ -175,7 +175,7 @@ def test_repeated_trials_use_distinct_completion_cache_entries(run: Mock, tmp_pa
     assert len(list((tmp_path / "cache" / "completions").glob("*.json"))) == 2
 
 
-@patch("compound.gepa_v2.subprocess.run")
+@patch("compound.bench.ds1000_gepa.subprocess.run")
 def test_flex_adapter_batches_missing_trials_and_separates_request_identity(
     run: Mock, tmp_path: Path
 ) -> None:
@@ -217,7 +217,7 @@ def test_flex_adapter_batches_missing_trials_and_separates_request_identity(
     provider.complete.assert_not_called()
 
 
-@patch("compound.gepa_v2.subprocess.run")
+@patch("compound.bench.ds1000_gepa.subprocess.run")
 def test_flex_adapter_deduplicates_repeated_trial_identity(
     run: Mock, tmp_path: Path
 ) -> None:
@@ -250,7 +250,7 @@ def test_flex_adapter_deduplicates_repeated_trial_identity(
     assert len(flex_runner.run_many.call_args.args[0]) == 1
 
 
-@patch("compound.gepa_v2.subprocess.run")
+@patch("compound.bench.ds1000_gepa.subprocess.run")
 def test_adapter_runs_through_pinned_gepa_multiobjective_flow(run: Mock, tmp_path: Path) -> None:
     run.return_value = Mock(
         returncode=0,

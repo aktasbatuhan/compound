@@ -1,6 +1,6 @@
 import pytest
 
-from compound.config import load_config, require_paid_run_budget
+from compound.core.config import load_config, require_paid_run_budget
 
 
 def test_default_config_is_valid() -> None:

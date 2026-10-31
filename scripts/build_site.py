@@ -67,7 +67,7 @@ def reference_markdown() -> str:
         "",
         "Generated from `--help` at build time, so it matches the checked-in CLI. "
         "`compound` is installed by `uv sync --extra dev`; "
-        "`python -m compound.bench` is the same entry point.",
+        "`python -m compound.cli` is the same entry point.",
         "",
     ]
     for sub in BENCH_SUBCOMMANDS:

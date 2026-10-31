@@ -55,7 +55,7 @@ row numbers preserve provenance; exclusions remain explicit in the manifest.
 ## Adding a benchmark
 
 A benchmark is one registry entry: a manifest of partitioned case ids plus a
-runner that accepts `(models, case_ids)`. Read `src/compound/adapters/` for the
+runner that accepts `(models, case_ids)`. Read `src/compound/bench/adapters/` for the
 interface and the five shipped adapters, and keep the official grader.
 
 ## Adding a provider
@@ -63,7 +63,7 @@ interface and the five shipped adapters, and keep the official grader.
 Most hosts need no code. An OpenAI-compatible endpoint is a `providers.<name>`
 block in `compound.yaml`, addressed as `direct/<name>`. Open an issue if a host
 needs a different pinning dialect, cache marker, or usage format; those go in
-`src/compound/providers_registry.py` and `src/compound/orproxy.py`.
+`src/compound/core/providers_registry.py` and `src/compound/core/orproxy.py`.
 
 ## Reporting a problem
 

@@ -8,7 +8,7 @@
  *   `budget`, `providers`, `models`, `pricing_usd_per_million_tokens`,
  *   `flex_pricing_usd_per_million_tokens`, `benchmarks`, `optimization`,
  *   `gate`) are the Python engine's business. They are validated structurally
- *   (the keys `src/compound/config.py` reads must exist and have the right
+ *   (the keys `src/compound/core/config.py` reads must exist and have the right
  *   types) but stay permissive about extra keys, so the engine can add fields
  *   without a TypeScript release.
  * - **Product sections** (`task_keys`, `redaction`, `ingest`) are owned here and

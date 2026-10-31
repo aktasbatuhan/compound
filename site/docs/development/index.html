@@ -51,24 +51,28 @@ imports production traces and evaluates candidate changes on curated cases.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>src/compound/bench.py</code></td>
-<td>Benchmark CLI and execution opt-in</td>
+<td><code>src/compound/cli.py</code></td>
+<td>The <code>compound</code> command and execution opt-in</td>
 </tr>
 <tr>
-<td><code>providers_registry.py</code>, <code>orproxy.py</code></td>
-<td>Provider tokens, request pinning, harness proxy</td>
+<td><code>core/</code></td>
+<td>Config, providers and host pinning (<code>providers_registry.py</code>, <code>orproxy.py</code>), ledgers and budgets</td>
 </tr>
 <tr>
-<td><code>adapters/</code>, <code>provider_sweep.py</code></td>
-<td>Official benchmark harness integration and host sweeps</td>
+<td><code>serving/</code></td>
+<td>Serving measurements (<code>metrics.py</code>) and cache studies</td>
 </tr>
 <tr>
-<td><code>serving_metrics.py</code>, <code>call_ledger.py</code></td>
-<td>Serving measurements and per-call evidence</td>
+<td><code>bench/</code></td>
+<td>Official benchmark harnesses (<code>adapters/</code>), host sweeps, BFCL and DS-1000 runners</td>
 </tr>
 <tr>
-<td><code>bench_report.py</code>, <code>scripts/analyze_*.py</code></td>
+<td><code>report/</code>, <code>scripts/analyze_*.py</code></td>
 <td>Reports and comparison analysis</td>
+</tr>
+<tr>
+<td><code>eval/optimize.py</code>, <code>core/spend_ledger.py</code></td>
+<td>Python optimizer on the trace pipeline's SQLite budget</td>
 </tr>
 <tr>
 <td><code>packages/pipeline</code>, <code>ingest</code>, <code>redaction</code>, <code>contract</code></td>
@@ -83,10 +87,6 @@ imports production traces and evaluates candidate changes on curated cases.</p>
 <td>Replay, spend reservations, cache, durable state, orchestration</td>
 </tr>
 <tr>
-<td><code>src/compound/optimize_product.py</code>, <code>spend_ledger.py</code></td>
-<td>Python optimizer on the trace pipeline's SQLite budget</td>
-</tr>
-<tr>
 <td><code>packages/api</code>, <code>dashboard</code></td>
 <td>Local API and Next.js views</td>
 </tr>
@@ -97,8 +97,8 @@ imports production traces and evaluates candidate changes on curated cases.</p>
 </tbody>
 </table>
 <p>Paths without a directory prefix in the Python rows are under <code>src/compound/</code>.
-Use <code>compound</code> for benchmarks and <code>bun run compound</code> for traces; the Python
-package also installs a separate <code>compound</code> command for its experiment engine.</p>
+Use <code>compound</code> for benchmarks and serving runs, and <code>bun run compound</code> for the
+trace pipeline until it moves into the Python package.</p>
 <h2 id="spend-controls">Spend controls</h2>
 <table>
 <thead>

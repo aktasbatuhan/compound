@@ -13,7 +13,7 @@ import threading
 
 import pytest
 
-from compound.call_ledger import (
+from compound.core.call_ledger import (
     DEFAULT_CALL_TIMEOUT_S,
     CallLedger,
     build_record,

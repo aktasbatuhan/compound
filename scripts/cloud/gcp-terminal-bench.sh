@@ -197,4 +197,4 @@ fi
 tar xzf "$RESULTS_TGZ" -C .   # tarball paths already start with $LOCAL_OUT
 
 echo "== done; cleanup trap will delete the VM =="
-echo "then report: uv run python -m compound.tb_report $LOCAL_OUT --prices deepinfra-fp4=0.14,0.28"
+echo "then report: uv run python -m compound.report.terminal_bench $LOCAL_OUT --prices deepinfra-fp4=0.14,0.28"

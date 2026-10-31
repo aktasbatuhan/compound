@@ -3,7 +3,7 @@ order: 90
 
 # CLI reference
 
-Generated from `--help` at build time, so it matches the checked-in CLI. `compound` is installed by `uv sync --extra dev`; `python -m compound.bench` is the same entry point.
+Generated from `--help` at build time, so it matches the checked-in CLI. `compound` is installed by `uv sync --extra dev`; `python -m compound.cli` is the same entry point.
 
 ## compound list
 
@@ -274,8 +274,31 @@ options:
 ## compound (trace pipeline, TypeScript)
 
 ```text
-error: Cannot find module '@compound/api/src/serve' from '/Users/batuhanaktas/Development/personal/compound/.claude/worktrees/python-core-cleanup/packages/cli/src/main.ts'
+compound — turn production traces into gated optimization evidence
 
-Bun v1.3.9 (macOS arm64)
-error: script "compound" exited with code 1
+Usage:
+  compound init [--config PATH] [--db PATH] [--force]
+  compound validate [--config PATH]
+  compound providers [name]                        (known providers; a name prints a paste-ready block)
+  compound import <file> [--importer langfuse|json|otel] [--db PATH] [--config PATH] [--project-id ID] [--unsafe-no-redaction]
+  compound curate <task_key> [--split train:val:cal:dec] [--db PATH]
+  compound suggest-assertions <task_key> [--db PATH] [--config PATH]
+  compound experiment <task_key> <model> [--partition P] [--paid --cap USD]
+  compound gate <task_key> --candidate M --reference M --reason "..." [--margin 0.05] [--monthly-volume N] [--paid --cap USD]
+  compound eval <task_key> --candidate M --reference M [--reason "..."]   (CI gate: exit 0 meets / 1 regresses / 2 undecidable)
+  compound judge calibrate <task_key> [--paid --cap USD]
+  compound judge grade <task_key> <experiment_id> [--paid --cap USD]
+  compound optimize <task_key> --candidate M [--reflection M] [--max-calls N] [--force]
+  compound telemetry [task_key] [--json] [--db PATH]
+  compound view [gate|case|trace|experiment] [id] [--full] [--db PATH]   (read-only browser; overview if no args)
+  compound view compare [task_key] [--priority quality=0.5,cost=0.3,latency=0.2] [--monthly-volume N] [--db PATH]
+                                                                         (cost vs score per model; --priority adds a weighted
+                                                                          ranking + Pareto frontier; axes: quality, cost,
+                                                                          latency, throughput; per-task default via
+                                                                          compound.yaml task_keys.<task>.priority)
+  compound status [--db PATH]
+  compound serve [--port N] [--host HOST] [--db PATH] [--config PATH]
+  compound help
+
+Importers: langfuse, json, otel
 ```

@@ -3,7 +3,7 @@
  * packages/config/schema/compound.config.v1.schema.json
  *
  * The artifact lets non-TS consumers (the Python engine, via
- * `compound.config_schema`) validate the same file without importing this
+ * `compound.core.config_schema`) validate the same file without importing this
  * package. Run with:
  *   bun run generate:schema
  */

@@ -63,7 +63,7 @@ compound harbor --model z-ai/glm-5.3-flash \
     --ledger-dir artifacts/harbor/calls --go
 
 # 3. episode report, then per-call cache and routing evidence
-PYTHONPATH=src python -m compound.bench_report artifacts/example
+PYTHONPATH=src python -m compound.report.bench artifacts/example
 compound ledger artifacts/example/calls.jsonl --hosts
 ```
 
@@ -101,7 +101,7 @@ prints paste-ready tokens.
 
 `compound prepare <name>` does any one-time setup. Adding a benchmark is one
 registry entry backed by a partitioned manifest; see
-[`src/compound/adapters/`](src/compound/adapters).
+[`src/compound/bench/adapters/`](src/compound/bench/adapters).
 
 ## Examples
 

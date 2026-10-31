@@ -11,7 +11,7 @@ and which host actually answered.
 ## `bench_report`
 
 ```bash
-PYTHONPATH=src python -m compound.bench_report artifacts/dsflash \
+PYTHONPATH=src python -m compound.report.bench artifacts/dsflash \
     --prices doubleword-flex=0.70,2.25 --prices doubleword-realtime=0.93,3.00
 ```
 

@@ -3,7 +3,7 @@
 
 import pytest
 
-from compound.adapters import tau_setup
+from compound.bench.adapters import tau_setup
 
 
 def test_ensure_tau2_points_at_prepare_when_missing(monkeypatch) -> None:
