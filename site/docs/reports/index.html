@@ -44,7 +44,7 @@ enabled, one row per model call. Episode results tell you who passed. The
 ledger tells you what each call cost, how long it took, whether the cache hit,
 and which host actually answered.</p>
 <h2 id="bench_report"><code>bench_report</code></h2>
-<pre><code class="language-bash">PYTHONPATH=src python -m compound.bench_report artifacts/dsflash \
+<pre><code class="language-bash">PYTHONPATH=src python -m compound.report.bench artifacts/dsflash \
     --prices doubleword-flex=0.70,2.25 --prices doubleword-realtime=0.93,3.00
 </code></pre>
 <p>Reads the per-host episode dumps a <code>--providers</code> sweep writes and emits, under
@@ -137,8 +137,8 @@ with the harness before making per-call claims. A warning about missing rows
 means the evidence is incomplete. The JSONL ledger is not a spend limiter.</p>
 <p>A <code>null</code> means the host did not tell us. It is not the same claim as a measured
 zero, and the tooling keeps the two apart.</p>
-<pre><code class="language-bash">compound-bench ledger artifacts/tb/calls.jsonl           # per-route rollup
-compound-bench ledger artifacts/tb/calls.jsonl --hosts   # plus which upstreams answered
+<pre><code class="language-bash">compound ledger artifacts/tb/calls.jsonl           # per-route rollup
+compound ledger artifacts/tb/calls.jsonl --hosts   # plus which upstreams answered
 </code></pre>
 <h2 id="comparing-arms">Comparing arms</h2>
 <p><code>scripts/analyze_arms.py &lt;dir&gt;</code> reads every ledger under a directory and prints,

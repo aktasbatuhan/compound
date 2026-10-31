@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from compound.telemetry import ingest_tau_results, summarize_model_calls
+from compound.core.telemetry import ingest_tau_results, summarize_model_calls
 
 
 def test_telemetry_summary_groups_provider_and_model(tmp_path) -> None:

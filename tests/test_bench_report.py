@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from compound.bench_report import build_report, iter_episodes
+from compound.report.bench import build_report, iter_episodes
 
 
 def _sim(task, trial, reward, prompt, completion, cost, provider, tier=None, term="user_stop"):

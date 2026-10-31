@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from compound import serving_metrics as sm
-from compound.bench import main as bench_main  # noqa: F401 — ensures the module imports
-from compound.providers_registry import parse_provider
+from compound.cli import main as bench_main  # noqa: F401 — ensures the module imports
+from compound.core.providers_registry import parse_provider
+from compound.serving import metrics as sm
 
 # A tiny shape with a json_schema response_format, mirroring the real agent payload.
 SHAPE = {
@@ -33,7 +33,7 @@ def test_cli_serving_never_calls_without_consent_and_credentials(
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setattr(sm, "run_serving", lambda *a, **kw: pytest.fail("unexpected paid call"))
     argv = [
-        "compound-bench", "serving", "--providers", "openrouter/deepinfra",
+        "compound", "serving", "--providers", "openrouter/deepinfra",
         "--model-or", "m", "--shapes", str(shapes), "--out", str(tmp_path / "out"),
     ]
     monkeypatch.setattr("sys.argv", argv + (["--go"] if paid else []))
@@ -341,7 +341,7 @@ def _parse(argv):
     # Rebuild just the serving subparser exactly as bench.main wires it, by
     # invoking the real parser through a monkeypatch-free path: parse_known via
     # the module's main is awkward, so we assert through the public parser.
-    from compound import bench
+    from compound import cli as bench
 
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -382,7 +382,7 @@ def test_cli_serving_is_registered_on_the_real_parser(monkeypatch, tmp_path, cap
     monkeypatch.setattr(
         "sys.argv",
         [
-            "compound-bench",
+            "compound",
             "serving",
             "--go",
             "--providers",
@@ -403,7 +403,7 @@ def test_cli_serving_is_registered_on_the_real_parser(monkeypatch, tmp_path, cap
             str(tmp_path / "out"),
         ],
     )
-    from compound.bench import main
+    from compound.cli import main
 
     rc = main()
     assert rc == 0
@@ -422,7 +422,7 @@ def test_cli_serving_fails_fast_on_missing_model(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "sys.argv",
         [
-            "compound-bench",
+            "compound",
             "serving",
             "--providers",
             "openrouter/deepinfra",
@@ -431,7 +431,7 @@ def test_cli_serving_fails_fast_on_missing_model(monkeypatch, tmp_path):
             # no --model-or given for an OpenRouter route
         ],
     )
-    from compound.bench import main
+    from compound.cli import main
 
     with pytest.raises(SystemExit):
         main()
@@ -449,8 +449,8 @@ def test_parse_defaults():
 def test_warm_cell_sends_the_prompt_unchanged_and_cold_nonces_it():
     # The cold/warm distinction is the cache measurement: a nonce makes a warm
     # hit impossible, so a warm cell must send byte-identical bytes every rep.
-    from compound.providers_registry import parse_provider
-    from compound.serving_metrics import CACHE_COLD, CACHE_WARM, REASONING_OFF, build_body
+    from compound.core.providers_registry import parse_provider
+    from compound.serving.metrics import CACHE_COLD, CACHE_WARM, REASONING_OFF, build_body
 
     spec = parse_provider("openrouter/novita")
     shape = {"messages": [{"role": "user", "content": "hello"}]}
@@ -467,8 +467,8 @@ def test_warm_cell_sends_the_prompt_unchanged_and_cold_nonces_it():
 
 
 def test_temperature_and_per_shape_max_tokens_reach_the_body():
-    from compound.providers_registry import parse_provider
-    from compound.serving_metrics import REASONING_OFF, build_body
+    from compound.core.providers_registry import parse_provider
+    from compound.serving.metrics import REASONING_OFF, build_body
 
     spec = parse_provider("openrouter/novita")
     shape = {"messages": [{"role": "user", "content": "x"}], "max_tokens": 100}
@@ -482,7 +482,7 @@ def test_temperature_and_per_shape_max_tokens_reach_the_body():
 
 
 def test_measure_stream_accumulates_the_generated_text():
-    from compound.serving_metrics import measure_stream
+    from compound.serving.metrics import measure_stream
 
     lines = [
         'data: {"choices":[{"delta":{"content":"Hel"}}]}',
@@ -499,8 +499,8 @@ def test_measure_stream_accumulates_the_generated_text():
 def test_marker_hosts_get_the_marker_the_proxy_would_inject(monkeypatch):
     # A serving comparison that skips the marker measures an opt-in cache host at
     # its worst case while every implicit-cache host is measured at its best.
-    from compound.providers_registry import parse_provider
-    from compound.serving_metrics import REASONING_OFF, build_body
+    from compound.core.providers_registry import parse_provider
+    from compound.serving.metrics import REASONING_OFF, build_body
 
     monkeypatch.delenv("COMPOUND_DW_CACHE", raising=False)  # markers default on
     shape = {"messages": [{"role": "user", "content": "hi"}]}
@@ -515,8 +515,8 @@ def test_marker_hosts_get_the_marker_the_proxy_would_inject(monkeypatch):
 
 
 def test_marker_can_be_turned_off_for_the_unmarked_path(monkeypatch):
-    from compound.providers_registry import parse_provider
-    from compound.serving_metrics import REASONING_OFF, build_body
+    from compound.core.providers_registry import parse_provider
+    from compound.serving.metrics import REASONING_OFF, build_body
 
     monkeypatch.setenv("COMPOUND_DW_CACHE", "0")
     shape = {"messages": [{"role": "user", "content": "hi"}]}
@@ -737,7 +737,7 @@ def test_openai_tier_echo_and_declared_timeout_reach_the_record(monkeypatch):
 
 
 def test_model_for_prefers_a_per_host_wire_model():
-    from compound.providers_registry import apply_host_models, parse_providers
+    from compound.core.providers_registry import apply_host_models, parse_providers
 
     specs = parse_providers("openrouter/deepinfra,direct/anthropic,direct/openai-flex",
                             providers_config=ANTHROPIC_CFG)
@@ -769,13 +769,13 @@ def test_cli_serving_accepts_host_model(monkeypatch, tmp_path):
 
     monkeypatch.setattr(sm, "run_serving", fake_run_serving)
     monkeypatch.setattr("sys.argv", [
-        "compound-bench", "serving", "--go",
+        "compound", "serving", "--go",
         "--providers", "openrouter/deepinfra,direct/anthropic",
         "--shapes", str(shapes), "--model-or", "or-slug",
         "--host-model", "anthropic=claude-sonnet-5",
         "--out", str(tmp_path / "out"),
     ])
-    from compound.bench import main
+    from compound.cli import main
 
     assert main() == 0
     assert seen["wire"] == [("deepinfra", None), ("anthropic", "claude-sonnet-5")]
@@ -825,7 +825,7 @@ def test_cache_effectiveness_flags_requested_but_never_observed():
     API layer can accept the request and report zero cached tokens, which scores
     the host at 0% cache and reads as the tier being expensive.
     """
-    from compound.serving_metrics import cache_effectiveness
+    from compound.serving.metrics import cache_effectiveness
 
     asked_and_denied = [
         {"cache_requested": True,
@@ -859,7 +859,7 @@ def test_cache_effectiveness_reads_real_provider_usage_shapes():
     routes it down the Responses branch and scores it at 0% cache, which is the
     failure this function exists to detect.
     """
-    from compound.serving_metrics import cache_effectiveness
+    from compound.serving.metrics import cache_effectiveness
 
     # Doubleword realtime, chat completions, measured 2026-09-14.
     dw_realtime = {"prompt_tokens": 3899,
@@ -898,7 +898,7 @@ def test_cache_effectiveness_reads_real_provider_usage_shapes():
 
 def test_cache_effectiveness_precedence_and_flags():
     """Zero is a measurement; a missing counter is not. Either request flag counts."""
-    from compound.serving_metrics import cache_effectiveness
+    from compound.serving.metrics import cache_effectiveness
 
     # Nested counter says zero while a stale top-level counter says 40: zero wins,
     # so a route that genuinely stopped caching is not reported as still caching.
@@ -927,7 +927,7 @@ def test_cache_effectiveness_precedence_and_flags():
 
 
 def test_cache_effectiveness_handles_empty_and_missing_usage():
-    from compound.serving_metrics import cache_effectiveness
+    from compound.serving.metrics import cache_effectiveness
 
     assert cache_effectiveness([])["cached_input_share"] == 0.0
     assert cache_effectiveness([])["warning"] is None
@@ -940,8 +940,8 @@ def test_cache_effectiveness_handles_empty_and_missing_usage():
 def test_min_call_interval_spaces_one_routes_call_starts(tmp_path, monkeypatch):
     import threading
 
-    from compound import serving_metrics as sm
-    from compound.providers_registry import parse_provider
+    from compound.core.providers_registry import parse_provider
+    from compound.serving import metrics as sm
 
     now = [0.0]
     starts: list[float] = []
@@ -966,8 +966,8 @@ def test_min_call_interval_spaces_one_routes_call_starts(tmp_path, monkeypatch):
 def test_unpaced_by_default(tmp_path, monkeypatch):
     import threading
 
-    from compound import serving_metrics as sm
-    from compound.providers_registry import parse_provider
+    from compound.core.providers_registry import parse_provider
+    from compound.serving import metrics as sm
 
     slept: list[float] = []
     monkeypatch.setattr(sm, "one_call", lambda *a, **k: {"route": "x"})

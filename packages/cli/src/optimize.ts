@@ -3,7 +3,7 @@
  *
  * Orchestrates GEPA prompt optimization (docs/optimization-v1.md): loads the
  * task's optimizer_train / optimizer_validation cases (NEVER the sealed set),
- * writes a job, invokes the Python `compound.optimize_product` entrypoint (which
+ * writes a job, invokes the Python `compound.eval.optimize` entrypoint (which
  * drives the real gepa library and grades via `compound grade-batch`), and
  * stores the optimized prompt as an artifact. The optimized prompt is a
  * PROPOSAL — adopting it means re-gating it on the sealed set, a separate step.
@@ -247,7 +247,7 @@ export function runOptimizeCommand(args: ParsedArgs, env: CommandEnvironment): C
       `optimizing ${candidateModel} on '${taskKey}' (${train.length} train, ${val.length} val)...`,
     );
     try {
-      execFileSync("uv", ["run", "python", "-m", "compound.optimize_product", jobPath], {
+      execFileSync("uv", ["run", "python", "-m", "compound.eval.optimize", jobPath], {
         stdio: ["ignore", "ignore", "inherit"],
       });
     } catch (error) {

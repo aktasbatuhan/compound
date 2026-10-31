@@ -11,7 +11,7 @@ and which host actually answered.
 ## `bench_report`
 
 ```bash
-PYTHONPATH=src python -m compound.bench_report artifacts/dsflash \
+PYTHONPATH=src python -m compound.report.bench artifacts/dsflash \
     --prices doubleword-flex=0.70,2.25 --prices doubleword-realtime=0.93,3.00
 ```
 
@@ -62,8 +62,8 @@ A `null` means the host did not tell us. It is not the same claim as a measured
 zero, and the tooling keeps the two apart.
 
 ```bash
-compound-bench ledger artifacts/tb/calls.jsonl           # per-route rollup
-compound-bench ledger artifacts/tb/calls.jsonl --hosts   # plus which upstreams answered
+compound ledger artifacts/tb/calls.jsonl           # per-route rollup
+compound ledger artifacts/tb/calls.jsonl --hosts   # plus which upstreams answered
 ```
 
 ## Comparing arms

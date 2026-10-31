@@ -12,7 +12,7 @@ Two halves, two languages:
 
 | Half | Language | Entry point | What it does |
 |---|---|---|---|
-| Benchmark sweeps | Python | `compound-bench` | Run public benchmarks across pinned hosts and report per host |
+| Benchmark sweeps | Python | `compound` | Run public benchmarks across pinned hosts and report per host |
 | Trace backtesting | TypeScript | `bun run compound` | Turn your production traces into graded cases and gate a model or host switch on them |
 
 Most people start with the sweep. The trace pipeline is earlier stage; its
@@ -23,7 +23,7 @@ Most people start with the sweep. The trace pipeline is earlier stage; its
 ```bash
 git clone https://github.com/aktasbatuhan/compound
 cd compound
-uv sync --extra dev          # Python half, installs compound-bench
+uv sync --extra dev          # Python half, installs compound
 bun install                  # TypeScript half, optional
 ```
 
@@ -34,16 +34,16 @@ OPENROUTER_API_KEY=
 DOUBLEWORD_API_KEY=          # only if you use doubleword/* tokens
 ```
 
-`compound-bench` reads `.env` itself. Do not `source` it into your shell.
+`compound` reads `.env` itself. Do not `source` it into your shell.
 
 ## First run
 
 ```bash
 # who serves this model, with quantization, price, and live status
-compound-bench providers z-ai/glm-5.3-flash
+compound providers z-ai/glm-5.3-flash
 
 # a dry run prints the plan and spends nothing
-compound-bench run terminal_bench --model z-ai/glm-5.3-flash \
+compound run terminal_bench --model z-ai/glm-5.3-flash \
     --providers openrouter/deepinfra/fp8,openrouter/z-ai/fp8 \
     --tasks hello-world --trials 1
 

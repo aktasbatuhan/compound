@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Terminal-Bench 4.0 · Compound</title>
 <meta name="description" content="Terminal-Bench 4.0 is distributed as a Harbor
-dataset. compound-bench harbor runs it across pinned hosts: one Harbor job per
+dataset. compound harbor runs it across pinned hosts: one Harbor job per
 host, each behind its own proxy, with a call ledger per host.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -39,9 +39,9 @@ host, each behind its own proxy, with a call ledger per host.">
   <article class="docs-body">
 <h1 id="terminal-bench-40-through-harbor">Terminal-Bench 4.0 through Harbor</h1>
 <p>Terminal-Bench 4.0 is distributed as a <a href="https://harborframework.com">Harbor</a>
-dataset. <code>compound-bench harbor</code> runs it across pinned hosts: one Harbor job per
+dataset. <code>compound harbor</code> runs it across pinned hosts: one Harbor job per
 host, each behind its own proxy, with a call ledger per host.</p>
-<pre><code class="language-bash">compound-bench harbor \
+<pre><code class="language-bash">compound harbor \
     --model z-ai/glm-5.3-flash \
     --providers openrouter/auto,openrouter/deepinfra/fp8,doubleword/realtime,doubleword/flex \
     --host-model doubleword=zai-org/GLM-5.3-Flash --reasoning on \
@@ -134,7 +134,7 @@ trials:</p>
 <h2 id="reading-the-results">Reading the results</h2>
 <p>Harbor writes a job directory per arm with a <code>result.json</code> per trial. The
 ledger directory gets <code>&lt;host&gt;.jsonl</code>. Then:</p>
-<pre><code class="language-bash">compound-bench ledger artifacts/tb4/ledger/deepinfra-fp8.jsonl --hosts
+<pre><code class="language-bash">compound ledger artifacts/tb4/ledger/deepinfra-fp8.jsonl --hosts
 python3 scripts/analyze_arms.py artifacts/tb4          # arms side by side
 </code></pre>
 <p>See <a href="../reports/">Reports and ledgers</a> for what each column means.</p>

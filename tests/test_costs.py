@@ -1,5 +1,5 @@
-from compound.contracts import Usage
-from compound.costs import TokenPrices, estimate_cost
+from compound.core.contracts import Usage
+from compound.core.costs import TokenPrices, estimate_cost
 
 
 def test_cost_estimate_excludes_cached_input_tokens() -> None:

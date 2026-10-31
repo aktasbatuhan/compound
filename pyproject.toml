@@ -29,7 +29,8 @@ bfcl = [
 
 [project.scripts]
 compound = "compound.cli:main"
-compound-bench = "compound.bench:main"
+# Older docs and scripts call the same CLI by this name.
+compound-bench = "compound.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -52,5 +53,5 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 # Inline HTML/SVG templates and long literal assertions; wrapping them hurts readability.
-"src/compound/viz.py" = ["E501"]
+"src/compound/report/viz.py" = ["E501"]
 "tests/*" = ["E501"]

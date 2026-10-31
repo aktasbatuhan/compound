@@ -150,7 +150,7 @@ RUNALL="$(mktemp)"
   echo 'rm -f RUN_DONE RUN_FAIL'
   echo '{'
   echo "  OPENROUTER_API_KEY='$OPENROUTER_API_KEY' DOUBLEWORD_API_KEY='${DOUBLEWORD_API_KEY:-}' \\"
-  echo "    uv run python -m compound.bench harbor \\"
+  echo "    uv run python -m compound.cli harbor \\"
   echo "      --providers '$PROVIDERS' --model '$MODEL' \\"
   for pair in $HOST_MODELS; do echo "      --host-model '$pair' \\"; done
   [ -n "$REASONING" ] && echo "      --reasoning '$REASONING' \\"
@@ -198,4 +198,4 @@ echo "== tarball verified: $GOT result.json inside =="
 tar xzf "$RESULTS_TGZ" -C .
 
 echo "== done; cleanup trap will delete the VM =="
-echo "then report: uv run python -m compound.bench ledger $LOCAL_OUT/ledger/<host>.jsonl --hosts"
+echo "then report: uv run python -m compound.cli ledger $LOCAL_OUT/ledger/<host>.jsonl --hosts"

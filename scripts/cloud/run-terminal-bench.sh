@@ -53,7 +53,7 @@ if [ ! -d .compound/sources/terminal-bench-core ]; then
     --name terminal-bench-core --version 0.1.1 \
     --output-dir .compound/sources/terminal-bench-core
 fi
-uv run python -m compound.bench prepare terminal_bench >/dev/null 2>&1 || true
+uv run python -m compound.cli prepare terminal_bench >/dev/null 2>&1 || true
 
 # Optional: multiply every task's agent time limit (COMPOUND_TB_TIMEOUT_MULT=3).
 # This deliberately deviates from official terminal-bench limits; runs made this
@@ -72,7 +72,7 @@ echo "== running sweep: model=$MODEL providers=$PROVIDERS trials=${TB_TRIALS:-1}
 # resolve-rate rather than a single noisy pass/fail).
 for t in $(seq 1 "${TB_TRIALS:-1}"); do
   echo "== trial $t/${TB_TRIALS:-1} =="
-  PYTHONPATH=src uv run python -m compound.bench run terminal_bench \
+  PYTHONPATH=src uv run python -m compound.cli run terminal_bench \
     --model "$MODEL" --providers "$PROVIDERS" --tasks "$TASKS" \
     --tb-concurrent "${TB_CONCURRENT:-2}" --output "$OUT/trial-$t" --go
   # Prune after EVERY trial, not just at the end: a multi-trial sweep otherwise

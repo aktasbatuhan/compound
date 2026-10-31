@@ -111,7 +111,7 @@ def load_rates(path: Path | None) -> dict[str, Any]:
 
 
 def speed_table(rows: list[dict[str, Any]], rates: dict[str, Any]) -> None:
-    from compound.serving_metrics import derived_cost_usd
+    from compound.serving.metrics import derived_cost_usd
 
     cells: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     for r in rows:

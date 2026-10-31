@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from compound.config_schema import (
+from compound.core.config_schema import (
     ConfigSchemaError,
     iter_schema_errors,
     load_schema,

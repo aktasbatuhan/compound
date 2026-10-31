@@ -1,7 +1,7 @@
 import json
 
-from compound.adapters.tau import TauModel, task_ids_by_domain
-from compound.contracts import Partition
+from compound.bench.adapters.tau import TauModel, task_ids_by_domain
+from compound.core.contracts import Partition
 
 
 def test_tau_model_routes_openrouter_and_doubleword() -> None:
@@ -72,7 +72,7 @@ def test_nl_judge_rerouted_through_openrouter(monkeypatch) -> None:
     import sys
     import types
 
-    from compound.adapters.tau import NL_ASSERTIONS_JUDGE, route_nl_judge_via_openrouter
+    from compound.bench.adapters.tau import NL_ASSERTIONS_JUDGE, route_nl_judge_via_openrouter
 
     tau2 = types.ModuleType("tau2")
     config = types.ModuleType("tau2.config")

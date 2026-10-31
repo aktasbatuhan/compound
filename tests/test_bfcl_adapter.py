@@ -2,14 +2,14 @@ import json
 
 import pytest
 
-from compound.adapters.bfcl import (
+from compound.bench.adapters.bfcl import (
     BFCLCase,
     grade_bfcl_single_turn,
     load_bfcl_cases,
     render_bfcl_single_turn_prompt,
     write_bfcl_run_ids,
 )
-from compound.contracts import Partition
+from compound.core.contracts import Partition
 
 TRIANGLE_FUNCTION = {
     "name": "calculate_triangle_area",

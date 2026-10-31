@@ -1,4 +1,4 @@
-from compound.adapters.ds1000 import build_test_program, postprocess_completion
+from compound.bench.adapters.ds1000 import build_test_program, postprocess_completion
 
 
 def test_ds1000_postprocessing_matches_official_rules() -> None:

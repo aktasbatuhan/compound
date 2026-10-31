@@ -1,6 +1,6 @@
 import os
 
-from compound.env import load_env
+from compound.core.env import load_env
 
 
 def test_load_env_does_not_override_process_environment(tmp_path, monkeypatch) -> None:

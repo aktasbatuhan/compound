@@ -1,8 +1,8 @@
 import pytest
 
-from compound.adapters.bfcl import BFCLCase
-from compound.bfcl_matrix import _model_summary, select_single_turn_cases
-from compound.contracts import Partition
+from compound.bench.adapters.bfcl import BFCLCase
+from compound.bench.bfcl_matrix import _model_summary, select_single_turn_cases
+from compound.core.contracts import Partition
 
 
 def _case(case_id: str, stratum: str, category: str) -> BFCLCase:

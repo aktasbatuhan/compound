@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CLI reference · Compound</title>
-<meta name="description" content="Generated from --help at build time, so it matches the checked-in CLI. compound-bench is installed by uv sync --extra dev; python -m compound.bench is the same entry point.">
+<meta name="description" content="Generated from --help at build time, so it matches the checked-in CLI. compound is installed by uv sync --extra dev; python -m compound.cli is the same entry point.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap">
@@ -36,16 +36,16 @@
   </nav>
   <article class="docs-body">
 <h1 id="cli-reference">CLI reference</h1>
-<p>Generated from <code>--help</code> at build time, so it matches the checked-in CLI. <code>compound-bench</code> is installed by <code>uv sync --extra dev</code>; <code>python -m compound.bench</code> is the same entry point.</p>
-<h2 id="compound-bench-list">compound-bench list</h2>
-<pre><code class="language-text">usage: compound.bench list [-h]
+<p>Generated from <code>--help</code> at build time, so it matches the checked-in CLI. <code>compound</code> is installed by <code>uv sync --extra dev</code>; <code>python -m compound.cli</code> is the same entry point.</p>
+<h2 id="compound-list">compound list</h2>
+<pre><code class="language-text">usage: compound list [-h]
 
 options:
   -h, --help  show this help message and exit
 </code></pre>
-<h2 id="compound-bench-prepare">compound-bench prepare</h2>
-<pre><code class="language-text">usage: compound.bench prepare [-h] [--per-subject PER_SUBJECT]
-                              {tau2,mmlu,terminal_bench}
+<h2 id="compound-prepare">compound prepare</h2>
+<pre><code class="language-text">usage: compound prepare [-h] [--per-subject PER_SUBJECT]
+                        {tau2,mmlu,terminal_bench}
 
 positional arguments:
   {tau2,mmlu,terminal_bench}
@@ -55,8 +55,8 @@ options:
   --per-subject PER_SUBJECT
                         mmlu: test questions per subject
 </code></pre>
-<h2 id="compound-bench-providers">compound-bench providers</h2>
-<pre><code class="language-text">usage: compound.bench providers [-h] [--json] [--probe] [--go] model
+<h2 id="compound-providers">compound providers</h2>
+<pre><code class="language-text">usage: compound providers [-h] [--json] [--probe] [--go] model
 
 positional arguments:
   model       OpenRouter model slug, e.g. deepseek/deepseek-v4-flash-0731
@@ -70,9 +70,9 @@ options:
               listed-up host can 429 every call.
   --go        execute paid probes with --probe
 </code></pre>
-<h2 id="compound-bench-tasks">compound-bench tasks</h2>
-<pre><code class="language-text">usage: compound.bench tasks [-h] [--partition PARTITION] [--contains CONTAINS]
-                            {bfcl,ds1000,mmlu,tau2,terminal_bench}
+<h2 id="compound-tasks">compound tasks</h2>
+<pre><code class="language-text">usage: compound tasks [-h] [--partition PARTITION] [--contains CONTAINS]
+                      {bfcl,ds1000,mmlu,tau2,terminal_bench}
 
 positional arguments:
   {bfcl,ds1000,mmlu,tau2,terminal_bench}
@@ -83,22 +83,20 @@ options:
                         filter to one partition
   --contains CONTAINS   case-insensitive substring filter
 </code></pre>
-<h2 id="compound-bench-run">compound-bench run</h2>
-<pre><code class="language-text">usage: compound.bench run [-h] --model MODEL [--tasks TASKS]
-                          [--partition PARTITION] [--manifest MANIFEST]
-                          [--contains CONTAINS] [--trials TRIALS] [--go]
-                          [--providers PROVIDERS] [--provider PROVIDER]
-                          [--api-base API_BASE] [--api-key-env API_KEY_ENV]
-                          [--upstream UPSTREAM] [--tier TIER]
-                          [--max-steps MAX_STEPS] [--max-tokens MAX_TOKENS]
-                          [--user-model USER_MODEL] [--output OUTPUT]
-                          [--cap CAP] [--tb-agent TB_AGENT]
-                          [--tb-concurrent TB_CONCURRENT]
-                          [--reasoning {on,off,default}]
-                          [--cache-optin | --no-cache-optin]
-                          [--call-ledger PATH]
-                          [--tb-timeout-mult TB_TIMEOUT_MULT]
-                          {bfcl,ds1000,mmlu,tau2,terminal_bench}
+<h2 id="compound-run">compound run</h2>
+<pre><code class="language-text">usage: compound run [-h] --model MODEL [--tasks TASKS] [--partition PARTITION]
+                    [--manifest MANIFEST] [--contains CONTAINS]
+                    [--trials TRIALS] [--go] [--providers PROVIDERS]
+                    [--provider PROVIDER] [--api-base API_BASE]
+                    [--api-key-env API_KEY_ENV] [--upstream UPSTREAM]
+                    [--tier TIER] [--max-steps MAX_STEPS]
+                    [--max-tokens MAX_TOKENS] [--user-model USER_MODEL]
+                    [--output OUTPUT] [--cap CAP] [--tb-agent TB_AGENT]
+                    [--tb-concurrent TB_CONCURRENT]
+                    [--reasoning {on,off,default}]
+                    [--cache-optin | --no-cache-optin] [--call-ledger PATH]
+                    [--tb-timeout-mult TB_TIMEOUT_MULT]
+                    {bfcl,ds1000,mmlu,tau2,terminal_bench}
 
 positional arguments:
   {bfcl,ds1000,mmlu,tau2,terminal_bench}
@@ -155,19 +153,18 @@ options:
                         results are labeled non-official). A pre-set
                         COMPOUND_TB_TIMEOUT_MULT wins over this flag.
 </code></pre>
-<h2 id="compound-bench-harbor">compound-bench harbor</h2>
-<pre><code class="language-text">usage: compound.bench harbor [-h] --providers PROVIDERS --model MODEL
-                             [--task-path TASK_PATH] [--host-model HOST=MODEL]
-                             [--dataset DATASET] [--agent AGENT]
-                             [--tasks TASKS] [--n-tasks N_TASKS]
-                             [--attempts ATTEMPTS]
-                             [--n-concurrent N_CONCURRENT]
-                             [--timeout-multiplier TIMEOUT_MULTIPLIER]
-                             [--agent-timeout-multiplier AGENT_TIMEOUT_MULTIPLIER]
-                             [--ak KEY=VALUE] [--env ENV]
-                             [--jobs-dir JOBS_DIR] [--ledger-dir LEDGER_DIR]
-                             [--reasoning {on,off,default}]
-                             [--cache-optin | --no-cache-optin] [--go]
+<h2 id="compound-harbor">compound harbor</h2>
+<pre><code class="language-text">usage: compound harbor [-h] --providers PROVIDERS --model MODEL
+                       [--task-path TASK_PATH] [--host-model HOST=MODEL]
+                       [--dataset DATASET] [--agent AGENT] [--tasks TASKS]
+                       [--n-tasks N_TASKS] [--attempts ATTEMPTS]
+                       [--n-concurrent N_CONCURRENT]
+                       [--timeout-multiplier TIMEOUT_MULTIPLIER]
+                       [--agent-timeout-multiplier AGENT_TIMEOUT_MULTIPLIER]
+                       [--ak KEY=VALUE] [--env ENV] [--jobs-dir JOBS_DIR]
+                       [--ledger-dir LEDGER_DIR]
+                       [--reasoning {on,off,default}]
+                       [--cache-optin | --no-cache-optin] [--go]
 
 options:
   -h, --help            show this help message and exit
@@ -221,15 +218,15 @@ options:
                         default; --no-cache-optin measures the unmarked path.
   --go                  execute (default is a dry run)
 </code></pre>
-<h2 id="compound-bench-serving">compound-bench serving</h2>
-<pre><code class="language-text">usage: compound.bench serving [-h] [--go] --providers PROVIDERS --shapes
-                              SHAPES [--model-or MODEL_OR] [--model MODEL]
-                              [--host-model HOST=MODEL] [--rounds ROUNDS]
-                              [--interval INTERVAL] [--reps REPS]
-                              [--cache-mode {cold,warm,both}]
-                              [--reasoning-modes {on,off,both}]
-                              [--temperature TEMPERATURE]
-                              [--min-call-interval SECONDS] [--out OUT]
+<h2 id="compound-serving">compound serving</h2>
+<pre><code class="language-text">usage: compound serving [-h] [--go] --providers PROVIDERS --shapes SHAPES
+                        [--model-or MODEL_OR] [--model MODEL]
+                        [--host-model HOST=MODEL] [--rounds ROUNDS]
+                        [--interval INTERVAL] [--reps REPS]
+                        [--cache-mode {cold,warm,both}]
+                        [--reasoning-modes {on,off,both}]
+                        [--temperature TEMPERATURE]
+                        [--min-call-interval SECONDS] [--out OUT]
 
 options:
   -h, --help            show this help message and exit
@@ -272,8 +269,8 @@ options:
                         the host's behaviour. Default 0 (unpaced).
   --out OUT             output dir for results.jsonl
 </code></pre>
-<h2 id="compound-bench-ledger">compound-bench ledger</h2>
-<pre><code class="language-text">usage: compound.bench ledger [-h] [--hosts] path
+<h2 id="compound-ledger">compound ledger</h2>
+<pre><code class="language-text">usage: compound ledger [-h] [--hosts] path
 
 positional arguments:
   path        path to a calls.jsonl written by --call-ledger

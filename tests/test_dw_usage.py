@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from compound.dw_usage import (
+from compound.core.dw_usage import (
     FLEX_LABEL,
     REALTIME_LABEL,
     derive_tier_rates,

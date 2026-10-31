@@ -10,7 +10,7 @@ Sources live in ``site/docs-src/*.md``. Each file starts with a small header::
 
 and renders to ``site/<out>/index.html`` inside a shared shell that links the
 site stylesheet. ``reference.md`` is regenerated from the live ``--help`` text
-of every ``compound-bench`` subcommand so the reference cannot drift from the
+of every ``compound`` subcommand so the reference cannot drift from the
 CLI.
 
 Run from the repo root::
@@ -66,13 +66,13 @@ def reference_markdown() -> str:
         "# CLI reference",
         "",
         "Generated from `--help` at build time, so it matches the checked-in CLI. "
-        "`compound-bench` is installed by `uv sync --extra dev`; "
-        "`python -m compound.bench` is the same entry point.",
+        "`compound` is installed by `uv sync --extra dev`; "
+        "`python -m compound.cli` is the same entry point.",
         "",
     ]
     for sub in BENCH_SUBCOMMANDS:
-        text = cli_help(["uv", "run", "compound-bench", sub, "--help"])
-        parts += [f"## compound-bench {sub}", "", "```text", text, "```", ""]
+        text = cli_help(["uv", "run", "compound", sub, "--help"])
+        parts += [f"## compound {sub}", "", "```text", text, "```", ""]
     text = cli_help(["bun", "run", "compound", "--help"])
     text = re.sub(r"\x1b\[[0-9;]*m", "", text)
     text = "\n".join(line for line in text.splitlines() if not line.startswith("$ bun run"))

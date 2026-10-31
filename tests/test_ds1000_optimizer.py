@@ -4,16 +4,16 @@ import json
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from compound.budget import BudgetLedger
-from compound.contracts import Usage
-from compound.costs import TokenPrices
-from compound.ds1000_optimizer import (
+from compound.bench.ds1000_optimizer import (
     CachedDS1000Adapter,
     DS1000Example,
     MeteredReflectionLM,
     response_text,
 )
-from compound.providers import ProviderResponse
+from compound.core.budget import BudgetLedger
+from compound.core.contracts import Usage
+from compound.core.costs import TokenPrices
+from compound.core.providers import ProviderResponse
 
 
 def _response(text: str) -> ProviderResponse:
@@ -33,7 +33,7 @@ def test_adapter_uses_gepa_default_proposer() -> None:
     assert CachedDS1000Adapter.propose_new_texts is None
 
 
-@patch("compound.ds1000_optimizer.subprocess.run")
+@patch("compound.bench.ds1000_optimizer.subprocess.run")
 def test_adapter_caches_model_and_grader_result(run: Mock, tmp_path: Path) -> None:
     run.return_value = Mock(
         returncode=0,

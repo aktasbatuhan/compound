@@ -35,7 +35,7 @@ Then use Compound to run the same measurements on your own prompts.
 Create the same kind of interactive comparison from your own serving run:
 
 ```bash
-compound-bench serving-report artifacts/serving/results.jsonl --out report.html
+compound serving-report artifacts/serving/results.jsonl --out report.html
 ```
 
 Open `report.html` locally or publish it. The file includes workload selectors, linked
@@ -47,24 +47,24 @@ provider highlighting, metric definitions and downloadable measurements.
 uv sync --extra dev
 
 # 1. which hosts serve this model, with quant, price, and live status
-compound-bench providers z-ai/glm-5.3-flash
+compound providers z-ai/glm-5.3-flash
 
 # 2. run a benchmark subset across the hosts you care about (drop --go for a free dry run)
-compound-bench run terminal_bench \
+compound run terminal_bench \
     --model z-ai/glm-5.3-flash \
     --providers openrouter/deepinfra/fp8,openrouter/parasail/fp8,openrouter/z-ai/fp8 \
     --tasks hello-world,fix-permissions --trials 3 \
     --output artifacts/example --call-ledger artifacts/example/calls.jsonl --go
 
 #    or Terminal-Bench 4.0 through Harbor, same provider tokens
-compound-bench harbor --model z-ai/glm-5.3-flash \
+compound harbor --model z-ai/glm-5.3-flash \
     --providers openrouter/auto,openrouter/deepinfra/fp8 \
     --dataset terminal-bench@4.0.0 --n-tasks 5 --attempts 2 \
     --ledger-dir artifacts/harbor/calls --go
 
 # 3. episode report, then per-call cache and routing evidence
-PYTHONPATH=src python -m compound.bench_report artifacts/example
-compound-bench ledger artifacts/example/calls.jsonl --hosts
+PYTHONPATH=src python -m compound.report.bench artifacts/example
+compound ledger artifacts/example/calls.jsonl --hosts
 ```
 
 You need an OpenRouter key in `.env` for OpenRouter routes. A `--go` run checks every
@@ -86,7 +86,7 @@ What a run gives you:
   puts your own vLLM box in the same table as the OpenRouter routes.
 
 Provider tokens: `openrouter/<upstream>[/<quant>]`, `doubleword/<realtime|flex>`, or
-`direct/<name>` for a host defined in `compound.yaml`. `compound-bench providers <model>`
+`direct/<name>` for a host defined in `compound.yaml`. `compound providers <model>`
 prints paste-ready tokens.
 
 ### Benchmarks
@@ -99,9 +99,9 @@ prints paste-ready tokens.
 | `ds1000` | data-science code generation | official tests in a pinned container |
 | `mmlu` | multiple-choice knowledge, 57 subjects | exact letter match, no judge |
 
-`compound-bench prepare <name>` does any one-time setup. Adding a benchmark is one
+`compound prepare <name>` does any one-time setup. Adding a benchmark is one
 registry entry backed by a partitioned manifest; see
-[`src/compound/adapters/`](src/compound/adapters).
+[`src/compound/bench/adapters/`](src/compound/bench/adapters).
 
 ## Examples
 

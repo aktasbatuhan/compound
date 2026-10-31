@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import json
 
-from compound.openrouter_discovery import (
+from compound.core.openrouter_discovery import (
     Endpoint,
     fetch_endpoints,
     format_table,

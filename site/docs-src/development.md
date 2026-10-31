@@ -11,21 +11,21 @@ imports production traces and evaluates candidate changes on curated cases.
 
 | Area | Responsibility |
 |---|---|
-| `src/compound/bench.py` | Benchmark CLI and execution opt-in |
-| `providers_registry.py`, `orproxy.py` | Provider tokens, request pinning, harness proxy |
-| `adapters/`, `provider_sweep.py` | Official benchmark harness integration and host sweeps |
-| `serving_metrics.py`, `call_ledger.py` | Serving measurements and per-call evidence |
-| `bench_report.py`, `scripts/analyze_*.py` | Reports and comparison analysis |
+| `src/compound/cli.py` | The `compound` command and execution opt-in |
+| `core/` | Config, providers and host pinning (`providers_registry.py`, `orproxy.py`), ledgers and budgets |
+| `serving/` | Serving measurements (`metrics.py`) and cache studies |
+| `bench/` | Official benchmark harnesses (`adapters/`), host sweeps, BFCL and DS-1000 runners |
+| `report/`, `scripts/analyze_*.py` | Reports and comparison analysis |
+| `eval/optimize.py`, `core/spend_ledger.py` | Python optimizer on the trace pipeline's SQLite budget |
 | `packages/pipeline`, `ingest`, `redaction`, `contract` | Normalize, redact, validate, classify, persist |
 | `packages/curation`, `assertions`, `judge`, `gate` | Case provenance, grading, calibration, sealed decisions |
 | `packages/execution`, `storage`, `cli` | Replay, spend reservations, cache, durable state, orchestration |
-| `src/compound/optimize_product.py`, `spend_ledger.py` | Python optimizer on the trace pipeline's SQLite budget |
 | `packages/api`, `dashboard` | Local API and Next.js views |
 | `site/docs-src`, `scripts/build_site.py` | Documentation source and generated pages |
 
 Paths without a directory prefix in the Python rows are under `src/compound/`.
-Use `compound-bench` for benchmarks and `bun run compound` for traces; the Python
-package also installs a separate `compound` command for its experiment engine.
+Use `compound` for benchmarks and serving runs, and `bun run compound` for the
+trace pipeline until it moves into the Python package.
 
 ## Spend controls
 
