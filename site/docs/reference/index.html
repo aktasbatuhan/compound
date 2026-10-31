@@ -30,6 +30,7 @@
     <a href="../../docs/reports/">Reports and ledgers</a>
     <a href="../../docs/serving/">Serving metrics</a>
     <a href="../../docs/shape/">Workload shape</a>
+    <a href="../../docs/estimate/">Cost estimate</a>
     <a href="../../docs/traces/">Your own traces</a>
     <a href="../../docs/config/">Configuration</a>
     <a href="../../docs/development/">Implementation and development</a>
@@ -300,6 +301,58 @@ options:
                         seconds a cached prefix lives (default 300)
   --min-prefix-tokens MIN_PREFIX_TOKENS
                         shortest prefix a host caches (default 1024)
+</code></pre>
+<h2 id="compound-prices">compound prices</h2>
+<pre><code class="language-text">usage: compound prices [-h] [--hosts HOSTS] --out OUT
+
+options:
+  -h, --help     show this help message and exit
+  --hosts HOSTS  comma-separated models to also fetch per-host prices for
+  --out OUT      where to write the snapshot (JSON)
+</code></pre>
+<h2 id="compound-estimate">compound estimate</h2>
+<pre><code class="language-text">usage: compound estimate [-h] --current CURRENT
+                         [--current-route CURRENT_ROUTE]
+                         [--candidates CANDIDATES] [--catalog CATALOG]
+                         [--monthly-calls MONTHLY_CALLS]
+                         [--input-tokens INPUT_TOKENS]
+                         [--output-tokens OUTPUT_TOKENS]
+                         [--cached-share CACHED_SHARE]
+                         [--reuse-share REUSE_SHARE]
+                         [--turkish-share TURKISH_SHARE]
+                         [--cache-ttl CACHE_TTL]
+                         [--min-prefix-tokens MIN_PREFIX_TOKENS] [--top TOP]
+                         [--include-down] [--json JSON]
+                         [paths ...]
+
+positional arguments:
+  paths                 trace, request-log or shape files; or use the form
+
+options:
+  -h, --help            show this help message and exit
+  --current CURRENT     model in use today, e.g. openai/gpt-6-sol
+  --current-route CURRENT_ROUTE
+                        how it is bought today (default openrouter)
+  --candidates CANDIDATES
+                        comma-separated models to price the workload on
+  --catalog CATALOG     saved price snapshot from compound prices
+  --monthly-calls MONTHLY_CALLS
+                        calls a month (form, or to scale logs)
+  --input-tokens INPUT_TOKENS
+                        form: average input tokens per call
+  --output-tokens OUTPUT_TOKENS
+                        form: average output tokens per call
+  --cached-share CACHED_SHARE
+                        form: share of input served from cache
+  --reuse-share REUSE_SHARE
+                        form: share of input a cache could serve
+  --turkish-share TURKISH_SHARE
+                        form: share of calls in Turkish
+  --cache-ttl CACHE_TTL
+  --min-prefix-tokens MIN_PREFIX_TOKENS
+  --top TOP             rows to print (default 15)
+  --include-down        keep hosts marked down
+  --json JSON           write the full estimate as JSON
 </code></pre>
 <h2 id="compound-trace-pipeline-typescript">compound (trace pipeline, TypeScript)</h2>
 <pre><code class="language-text">compound — turn production traces into gated optimization evidence

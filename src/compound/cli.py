@@ -740,6 +740,99 @@ def cmd_shape(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_catalog(args: argparse.Namespace, models: list[str]):
+    from compound.estimate import Catalog, fetch_catalog
+
+    if args.catalog:
+        return Catalog.load(args.catalog)
+    print("fetching prices from OpenRouter (use --catalog to pin a saved snapshot)")
+    return fetch_catalog(models)
+
+
+def cmd_prices(args: argparse.Namespace) -> int:
+    """Save a dated price snapshot, with per-host prices for chosen models."""
+    import json as _json
+
+    from compound.estimate import fetch_catalog
+
+    hosts = [m.strip() for m in args.hosts.split(",") if m.strip()]
+    catalog = fetch_catalog(hosts)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(_json.dumps(catalog.to_json(), indent=2) + "\n")
+    host_count = sum(len(v) for v in catalog.hosts.values())
+    print(f"{len(catalog.models)} models and {host_count} host prices -> {out}")
+    return 0
+
+
+def cmd_estimate(args: argparse.Namespace) -> int:
+    """Monthly cost today and on each candidate model and host."""
+    import json as _json
+
+    from compound.estimate import (
+        estimate,
+        format_estimate,
+        workload_from_form,
+        workload_from_shapes,
+    )
+    from compound.shape import CacheAssumptions, build_profile, load_shapes, new_salt
+
+    candidates = [m.strip() for m in (args.candidates or "").split(",") if m.strip()]
+    if args.paths:
+        report = load_shapes(args.paths, new_salt())
+        if not report.shapes:
+            raise SystemExit("error: no model calls found in " + ", ".join(args.paths))
+        profile = build_profile(
+            report.shapes,
+            CacheAssumptions(ttl_s=args.cache_ttl, min_prefix_tokens=args.min_prefix_tokens),
+        )
+        try:
+            workload = workload_from_shapes(
+                report.shapes, profile, monthly_calls=args.monthly_calls
+            )
+        except ValueError as exc:
+            raise SystemExit(f"error: {exc}") from exc
+    else:
+        missing = [
+            flag
+            for flag, value in (
+                ("--monthly-calls", args.monthly_calls),
+                ("--input-tokens", args.input_tokens),
+                ("--output-tokens", args.output_tokens),
+            )
+            if value is None
+        ]
+        if missing:
+            raise SystemExit("error: give log files, or " + ", ".join(missing))
+        workload = workload_from_form(
+            monthly_calls=args.monthly_calls,
+            input_tokens=args.input_tokens,
+            output_tokens=args.output_tokens,
+            cached_share=args.cached_share,
+            reuse_share=args.reuse_share,
+            turkish_share=args.turkish_share,
+        )
+    catalog = _load_catalog(args, [args.current, *candidates])
+    try:
+        result = estimate(
+            workload,
+            catalog,
+            current=args.current,
+            current_route=args.current_route,
+            candidates=candidates,
+            include_down=args.include_down,
+        )
+    except (KeyError, ValueError) as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    print(format_estimate(result, top=args.top))
+    if args.json:
+        out = Path(args.json)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(_json.dumps(result, indent=2) + "\n")
+        print(f"\nestimate: {out}")
+    return 0
+
+
 def cmd_ledger(args: argparse.Namespace) -> int:
     """Per-route read of a call ledger: cache hits, routing spread, cost."""
     from compound.core import call_ledger
@@ -1090,6 +1183,36 @@ def main() -> int:
         help="shortest prefix a host caches (default 1024)",
     )
 
+    prices = sub.add_parser("prices", help="save a dated price snapshot from OpenRouter")
+    prices.add_argument(
+        "--hosts", default="", help="comma-separated models to also fetch per-host prices for"
+    )
+    prices.add_argument("--out", required=True, help="where to write the snapshot (JSON)")
+
+    est = sub.add_parser(
+        "estimate", help="monthly cost today and on other models and hosts (offline, no calls)"
+    )
+    est.add_argument("paths", nargs="*", help="trace, request-log or shape files; or use the form")
+    est.add_argument("--current", required=True, help="model in use today, e.g. openai/gpt-6-sol")
+    est.add_argument(
+        "--current-route", default="openrouter", help="how it is bought today (default openrouter)"
+    )
+    est.add_argument("--candidates", help="comma-separated models to price the workload on")
+    est.add_argument("--catalog", help="saved price snapshot from compound prices")
+    est.add_argument("--monthly-calls", type=float, help="calls a month (form, or to scale logs)")
+    est.add_argument("--input-tokens", type=float, help="form: average input tokens per call")
+    est.add_argument("--output-tokens", type=float, help="form: average output tokens per call")
+    est.add_argument("--cached-share", type=float, help="form: share of input served from cache")
+    est.add_argument("--reuse-share", type=float, help="form: share of input a cache could serve")
+    est.add_argument(
+        "--turkish-share", type=float, default=0.0, help="form: share of calls in Turkish"
+    )
+    est.add_argument("--cache-ttl", type=float, default=300.0)
+    est.add_argument("--min-prefix-tokens", type=int, default=1024)
+    est.add_argument("--top", type=int, default=15, help="rows to print (default 15)")
+    est.add_argument("--include-down", action="store_true", help="keep hosts marked down")
+    est.add_argument("--json", help="write the full estimate as JSON")
+
     run = sub.add_parser("run", help="run a task subset (dry run unless --go)")
     run.add_argument("benchmark", choices=sorted(BENCHMARKS))
     run.add_argument("--model", required=True, help="model id as the provider knows it")
@@ -1197,6 +1320,10 @@ def main() -> int:
         return cmd_ledger(args)
     if args.command == "shape":
         return cmd_shape(args)
+    if args.command == "prices":
+        return cmd_prices(args)
+    if args.command == "estimate":
+        return cmd_estimate(args)
     if args.command == "harbor":
         return cmd_harbor(args)
     return cmd_run(args)
