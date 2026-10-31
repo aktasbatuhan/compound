@@ -20,7 +20,7 @@ jobs:
           enable-cache: true
       - run: uv python install 3.12
       - run: uv sync --extra dev
-      - run: uv run ruff check src tests scripts
+      - run: uv run ruff check src tests scripts sdk
       - run: uv run compound validate-config
       - run: uv run pytest -q
 
