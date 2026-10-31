@@ -701,6 +701,45 @@ def cmd_harbor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_shape(args: argparse.Namespace) -> int:
+    """Reduce calls to content-free shapes and print the workload profile."""
+    import json as _json
+
+    from compound.shape import (
+        CacheAssumptions,
+        build_profile,
+        format_profile,
+        load_shapes,
+        new_salt,
+    )
+
+    report = load_shapes(args.paths, new_salt())
+    if not report.shapes:
+        raise SystemExit("error: no model calls found in " + ", ".join(args.paths))
+    sources = ", ".join(f"{n:,} from {kind}" for kind, n in report.by_source.items())
+    skipped = sum(report.skipped.values())
+    note = f", {skipped:,} records skipped" if skipped else ""
+    print(f"{len(report.shapes):,} calls ({sources}){note}")
+    profile = build_profile(
+        report.shapes,
+        CacheAssumptions(ttl_s=args.cache_ttl, min_prefix_tokens=args.min_prefix_tokens),
+    )
+    print(format_profile(profile))
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(_json.dumps(profile, indent=2) + "\n")
+        print(f"profile: {out}")
+    if args.calls_out:
+        out = Path(args.calls_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with out.open("w") as handle:
+            for shape in report.shapes:
+                handle.write(_json.dumps(shape.to_json()) + "\n")
+        print(f"shapes (no prompt text; hashes salted for this export only): {out}")
+    return 0
+
+
 def cmd_ledger(args: argparse.Namespace) -> int:
     """Per-route read of a call ledger: cache hits, routing spread, cost."""
     from compound.core import call_ledger
@@ -1028,6 +1067,29 @@ def main() -> int:
         help="also list which upstreams answered each route, with counts",
     )
 
+    shape = sub.add_parser(
+        "shape",
+        help="profile a workload from traces, request logs or ledgers, without its text",
+    )
+    shape.add_argument(
+        "paths",
+        nargs="+",
+        help="trace, request-log, ledger or shape files (.json/.jsonl) or folders",
+    )
+    shape.add_argument("--out", help="write the workload profile as JSON")
+    shape.add_argument(
+        "--calls-out", help="write one content-free shape record per call (JSONL), safe to share"
+    )
+    shape.add_argument(
+        "--cache-ttl", type=float, default=300.0, help="seconds a cached prefix lives (default 300)"
+    )
+    shape.add_argument(
+        "--min-prefix-tokens",
+        type=int,
+        default=1024,
+        help="shortest prefix a host caches (default 1024)",
+    )
+
     run = sub.add_parser("run", help="run a task subset (dry run unless --go)")
     run.add_argument("benchmark", choices=sorted(BENCHMARKS))
     run.add_argument("--model", required=True, help="model id as the provider knows it")
@@ -1133,6 +1195,8 @@ def main() -> int:
         return cmd_serving(args)
     if args.command == "ledger":
         return cmd_ledger(args)
+    if args.command == "shape":
+        return cmd_shape(args)
     if args.command == "harbor":
         return cmd_harbor(args)
     return cmd_run(args)

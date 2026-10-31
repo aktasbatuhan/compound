@@ -271,6 +271,30 @@ options:
   --hosts     also list which upstreams answered each route, with counts
 ```
 
+## compound shape
+
+```text
+usage: compound shape [-h] [--out OUT] [--calls-out CALLS_OUT]
+                      [--cache-ttl CACHE_TTL]
+                      [--min-prefix-tokens MIN_PREFIX_TOKENS]
+                      paths [paths ...]
+
+positional arguments:
+  paths                 trace, request-log, ledger or shape files
+                        (.json/.jsonl) or folders
+
+options:
+  -h, --help            show this help message and exit
+  --out OUT             write the workload profile as JSON
+  --calls-out CALLS_OUT
+                        write one content-free shape record per call (JSONL),
+                        safe to share
+  --cache-ttl CACHE_TTL
+                        seconds a cached prefix lives (default 300)
+  --min-prefix-tokens MIN_PREFIX_TOKENS
+                        shortest prefix a host caches (default 1024)
+```
+
 ## compound (trace pipeline, TypeScript)
 
 ```text

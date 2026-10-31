@@ -35,7 +35,9 @@ ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
 SRC = SITE / "docs-src"
 
-BENCH_SUBCOMMANDS = ["list", "prepare", "providers", "tasks", "run", "harbor", "serving", "ledger"]
+BENCH_SUBCOMMANDS = [
+    "list", "prepare", "providers", "tasks", "run", "harbor", "serving", "ledger", "shape",
+]
 
 
 def parse(path: Path) -> tuple[dict[str, str], str]:

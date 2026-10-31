@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workload shape · Compound</title>
+<meta name="description" content="Before you compare hosts, you need to know what your traffic looks like. How
+many calls a month, how long the prompts and answers are, how bursty the
+arrivals are, how many calls run at once, and how much of each prompt repeats
+so a cache could serve it. compound shape answers that from logs you alr">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../../docs/" class="cur">docs</a>
+      <a href="../../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../../docs/">Overview</a>
+    <a href="../../docs/providers/">Providers</a>
+    <a href="../../docs/benchmarks/">Benchmarks</a>
+    <a href="../../docs/harbor/">Terminal-Bench 4.0</a>
+    <a href="../../docs/reports/">Reports and ledgers</a>
+    <a href="../../docs/serving/">Serving metrics</a>
+    <a href="../../docs/shape/" class="cur">Workload shape</a>
+    <a href="../../docs/traces/">Your own traces</a>
+    <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/development/">Implementation and development</a>
+    <a href="../../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="workload-shape">Workload shape</h1>
+<p>Before you compare hosts, you need to know what your traffic looks like. How
+many calls a month, how long the prompts and answers are, how bursty the
+arrivals are, how many calls run at once, and how much of each prompt repeats
+so a cache could serve it. <code>compound shape</code> answers that from logs you already
+have, and it never keeps the text of a prompt or an answer.</p>
+<pre><code class="language-bash">compound shape traces/ --out profile.json --calls-out shapes.jsonl
+</code></pre>
+<p>It reads four kinds of input, and one folder may mix them:</p>
+<ul>
+<li><code>compound.trace</code> documents, which <code>bun run compound import</code> writes from
+  Langfuse, plain JSON or OpenTelemetry exports</li>
+<li>request logs, one JSON object per call with <code>request</code> (model, messages,
+  tools), <code>response</code> (with <code>usage</code>) and a timestamp, which most gateways and
+  loggers can produce</li>
+<li>Compound call ledgers from <code>--call-ledger</code>, which have sizes and timing but
+  no prompts</li>
+<li>shape files written by an earlier <code>--calls-out</code>, or by the SDK</li>
+</ul>
+<p>Anything else is counted as skipped and left out, never guessed at.</p>
+<h2 id="what-the-profile-says">What the profile says</h2>
+<p>The terminal shows a short reading, and <code>--out</code> writes the full profile as
+JSON. It covers token distributions (input, output, reasoning), latency,
+arrivals per minute with the busiest minute, peak concurrency, and a monthly
+projection. The projection appears only when the data covers at least a day,
+and it states the basis it was scaled from.</p>
+<p>It reports two cache numbers and keeps them apart. <strong>Cache served today</strong> is
+what your current host said it served from cache. <strong>Cache could serve</strong> is
+what the prompts themselves allow: the longest prefix each call shares with an
+earlier call within the cache lifetime, counted only when it reaches the
+minimum length a host caches. When the second number is much larger than the
+first, the usual cause is prompt layout or a missing cache marker, and that is
+money left on the table.</p>
+<p>The cache assumptions are flags, because hosts differ:</p>
+<pre><code class="language-bash">compound shape logs.jsonl --cache-ttl 3600 --min-prefix-tokens 2048
+</code></pre>
+<h2 id="sharing-a-shape-without-sharing-your-data">Sharing a shape without sharing your data</h2>
+<p><code>--calls-out</code> writes one record per call with counts, timing, a language hint
+and a chain of prefix hashes. The hashes are salted with a random value that
+exists only while the command runs, so nobody can recover a common system
+prompt by hashing guesses at it. The cost is that hashes only compare within
+one export. That file is what we ask for when a team cannot send prompts: it
+is enough to estimate cost and to replay the traffic at the same size and
+rhythm, and it holds no words from the conversation.</p>
+<p>The language hint is <code>tr</code> when Turkish-only letters make up at least 1% of
+the letters, <code>latin</code> for other Latin-script text and <code>other</code> for the rest. It
+picks a tokenizer ratio for cost estimates and is not language detection.</p>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../../docs/">docs</a> <a href="../../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>
