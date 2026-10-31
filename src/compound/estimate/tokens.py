@@ -1,10 +1,12 @@
 """How many tokens the same text costs on one model compared with another.
 
 Ratios come from ``data/tokenizers.json``, written by
-``scripts/measure_tokenizers.py``: tokens per 1,000 characters of Turkish and
-English text for each published tokenizer. A model is matched by its Hugging
-Face id. OpenAI models are matched to ``o200k_base`` by assumption, since
-OpenAI does not publish which encoding each model uses; the label says so.
+``scripts/measure_tokenizers.py`` from the FLORES-101 parallel corpus: tokens
+per 1,000 characters per language for each tokenizer. A model is matched by
+its own measured id first (OpenAI models through OpenAI's token counter, any
+model through OpenRouter's usage), then by its Hugging Face repo. Other OpenAI
+models fall back to ``o200k_base``, which matched the measured GPT models to
+within a few tokens in 27,000; the label still says "assumed".
 
 A model whose tokenizer is not public (Claude, Gemini) is unknown. Rather than
 pretend it matches, the estimate assumes it falls somewhere inside the range
@@ -58,9 +60,15 @@ class TokenizerTable:
         return min(values), max(values)
 
     def density(self, card: PriceCard, lang: str) -> Density:
-        if card.hugging_face_id and card.hugging_face_id in self.table:
-            value = self.table[card.hugging_face_id][lang]["tokens_per_1k_chars"]
-            return Density(value, value, "measured")
+        # Closed models measured through their own API or OpenRouter's usage
+        # are keyed by model id; open models by their Hugging Face repo.
+        keys = [f"openrouter:{card.model}", card.hugging_face_id]
+        if card.model.startswith("openai/"):
+            keys.insert(0, f"openai:{card.model.removeprefix('openai/')}")
+        for key in keys:
+            if key and key in self.table and lang in self.table[key]:
+                value = self.table[key][lang]["tokens_per_1k_chars"]
+                return Density(value, value, "measured")
         if card.tokenizer == "GPT" and "tiktoken:o200k_base" in self.table:
             value = self.table["tiktoken:o200k_base"][lang]["tokens_per_1k_chars"]
             return Density(value, value, "assumed")

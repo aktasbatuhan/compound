@@ -1,253 +1,266 @@
 {
   "schema": "compound.tokenizer_ratios",
-  "schema_version": 1,
+  "schema_version": 2,
   "measured_at": "2026-10-31",
-  "method": "tokens per 1,000 characters of Wikipedia article intros, no special tokens",
+  "method": "tokens per 1,000 characters of FLORES-101 devtest per language",
   "corpus": {
-    "en": [
-      {
-        "title": "Artificial intelligence",
-        "revid": 1382961533
-      },
-      {
-        "title": "Accounting",
-        "revid": 1381773393
-      },
-      {
-        "title": "Insurance",
-        "revid": 1381395513
-      },
-      {
-        "title": "Stock exchange",
-        "revid": 1382706989
-      },
-      {
-        "title": "Tax",
-        "revid": 1381596523
-      },
-      {
-        "title": "Inflation",
-        "revid": 1382757685
-      },
-      {
-        "title": "Supply chain",
-        "revid": 1381568087
-      },
-      {
-        "title": "Loan",
-        "revid": 1375554418
-      },
-      {
-        "title": "Invoice",
-        "revid": 1375197550
-      },
-      {
-        "title": "Customer service",
-        "revid": 1380173528
-      },
-      {
-        "title": "Personal data",
-        "revid": 1375187017
-      },
-      {
-        "title": "Payment",
-        "revid": 1380788327
-      },
-      {
-        "title": "Credit card",
-        "revid": 1382994697
-      },
-      {
-        "title": "Contract",
-        "revid": 1380660178
-      },
-      {
-        "title": "Bank",
-        "revid": 1382393147
-      }
-    ],
-    "tr": [
-      {
-        "title": "Yapay zek\u00e2",
-        "revid": 38231134
-      },
-      {
-        "title": "Muhasebe",
-        "revid": 35639319
-      },
-      {
-        "title": "Sigorta",
-        "revid": 38048943
-      },
-      {
-        "title": "Menkul k\u0131ymetler borsas\u0131",
-        "revid": 35333275
-      },
-      {
-        "title": "Vergi",
-        "revid": 36747466
-      },
-      {
-        "title": "Enflasyon",
-        "revid": 37067289
-      },
-      {
-        "title": "Tedarik zinciri",
-        "revid": 37983261
-      },
-      {
-        "title": "\u0130stikraz",
-        "revid": 30467358
-      },
-      {
-        "title": "Fatura",
-        "revid": 33895826
-      },
-      {
-        "title": "M\u00fc\u015fteri hizmetleri",
-        "revid": 36453348
-      },
-      {
-        "title": "Ki\u015fisel veri",
-        "revid": 37831332
-      },
-      {
-        "title": "\u00d6deme",
-        "revid": 35666222
-      },
-      {
-        "title": "Kredi kart\u0131",
-        "revid": 36335681
-      },
-      {
-        "title": "S\u00f6zle\u015fme",
-        "revid": 38326300
-      },
-      {
-        "title": "Banka",
-        "revid": 36475073
-      }
-    ]
+    "dataset": "gsarti/flores_101",
+    "revision": "bc58ae43b22607b3e1e2bf3ae1bc5cb053495abb",
+    "split": "devtest",
+    "license": "CC BY-SA 4.0",
+    "sentences": 1012,
+    "languages": {
+      "en": "eng",
+      "tr": "tur",
+      "ar": "ara",
+      "az": "azj",
+      "kk": "kaz",
+      "uz": "uzb"
+    },
+    "characters": {
+      "en": 131966,
+      "tr": 135761,
+      "ar": 116358,
+      "az": 143739,
+      "kk": 135404,
+      "uz": 149323
+    }
   },
   "tokenizers": {
-    "tiktoken:o200k_base": {
-      "en": {
-        "tokens_per_1k_chars": 184.64,
-        "chars": 28158
-      },
-      "tr": {
-        "tokens_per_1k_chars": 270.09,
-        "chars": 16376
-      }
-    },
     "deepseek-ai/DeepSeek-V4.1-Flash": {
       "en": {
-        "tokens_per_1k_chars": 184.53,
-        "chars": 28158
+        "tokens_per_1k_chars": 204.91
       },
       "tr": {
-        "tokens_per_1k_chars": 399.18,
-        "chars": 16376
+        "tokens_per_1k_chars": 406.35
+      },
+      "ar": {
+        "tokens_per_1k_chars": 376.26
+      },
+      "az": {
+        "tokens_per_1k_chars": 467.33
+      },
+      "kk": {
+        "tokens_per_1k_chars": 530.15
+      },
+      "uz": {
+        "tokens_per_1k_chars": 385.63
       }
     },
     "deepseek-ai/DeepSeek-V4-Pro": {
       "en": {
-        "tokens_per_1k_chars": 184.53,
-        "chars": 28158
+        "tokens_per_1k_chars": 204.91
       },
       "tr": {
-        "tokens_per_1k_chars": 399.18,
-        "chars": 16376
-      }
-    },
-    "deepseek-ai/DeepSeek-V4-Flash": {
-      "en": {
-        "tokens_per_1k_chars": 184.53,
-        "chars": 28158
+        "tokens_per_1k_chars": 406.35
       },
-      "tr": {
-        "tokens_per_1k_chars": 399.18,
-        "chars": 16376
+      "ar": {
+        "tokens_per_1k_chars": 376.26
+      },
+      "az": {
+        "tokens_per_1k_chars": 467.33
+      },
+      "kk": {
+        "tokens_per_1k_chars": 530.15
+      },
+      "uz": {
+        "tokens_per_1k_chars": 385.63
       }
     },
     "zai-org/GLM-5.3": {
       "en": {
-        "tokens_per_1k_chars": 185.95,
-        "chars": 28158
+        "tokens_per_1k_chars": 206.0
       },
       "tr": {
-        "tokens_per_1k_chars": 316.5,
-        "chars": 16376
+        "tokens_per_1k_chars": 329.36
+      },
+      "ar": {
+        "tokens_per_1k_chars": 413.02
+      },
+      "az": {
+        "tokens_per_1k_chars": 473.63
+      },
+      "kk": {
+        "tokens_per_1k_chars": 544.83
+      },
+      "uz": {
+        "tokens_per_1k_chars": 388.78
       }
     },
     "zai-org/GLM-5.3-Flash": {
       "en": {
-        "tokens_per_1k_chars": 185.95,
-        "chars": 28158
+        "tokens_per_1k_chars": 206.0
       },
       "tr": {
-        "tokens_per_1k_chars": 316.5,
-        "chars": 16376
+        "tokens_per_1k_chars": 329.36
+      },
+      "ar": {
+        "tokens_per_1k_chars": 413.02
+      },
+      "az": {
+        "tokens_per_1k_chars": 473.63
+      },
+      "kk": {
+        "tokens_per_1k_chars": 544.83
+      },
+      "uz": {
+        "tokens_per_1k_chars": 388.78
       }
     },
     "Qwen/Qwen3.8-Flash-Next": {
       "en": {
-        "tokens_per_1k_chars": 188.44,
-        "chars": 28158
+        "tokens_per_1k_chars": 208.61
       },
       "tr": {
-        "tokens_per_1k_chars": 276.2,
-        "chars": 16376
+        "tokens_per_1k_chars": 290.79
+      },
+      "ar": {
+        "tokens_per_1k_chars": 310.09
+      },
+      "az": {
+        "tokens_per_1k_chars": 378.22
+      },
+      "kk": {
+        "tokens_per_1k_chars": 446.73
+      },
+      "uz": {
+        "tokens_per_1k_chars": 375.14
       }
     },
     "Qwen/Qwen3.8-27B": {
       "en": {
-        "tokens_per_1k_chars": 188.44,
-        "chars": 28158
+        "tokens_per_1k_chars": 208.61
       },
       "tr": {
-        "tokens_per_1k_chars": 276.2,
-        "chars": 16376
+        "tokens_per_1k_chars": 290.79
+      },
+      "ar": {
+        "tokens_per_1k_chars": 310.09
+      },
+      "az": {
+        "tokens_per_1k_chars": 378.22
+      },
+      "kk": {
+        "tokens_per_1k_chars": 446.73
+      },
+      "uz": {
+        "tokens_per_1k_chars": 375.14
       }
     },
     "mistralai/Mistral-Small-4-119B-2603": {
       "en": {
-        "tokens_per_1k_chars": 189.75,
-        "chars": 28158
+        "tokens_per_1k_chars": 210.86
       },
       "tr": {
-        "tokens_per_1k_chars": 296.96,
-        "chars": 16376
+        "tokens_per_1k_chars": 305.63
+      },
+      "ar": {
+        "tokens_per_1k_chars": 297.34
+      },
+      "az": {
+        "tokens_per_1k_chars": 349.9
+      },
+      "kk": {
+        "tokens_per_1k_chars": 421.09
+      },
+      "uz": {
+        "tokens_per_1k_chars": 338.98
       }
     },
     "mistralai/Mistral-Large-4-1T-A52B": {
       "en": {
-        "tokens_per_1k_chars": 187.3,
-        "chars": 28158
+        "tokens_per_1k_chars": 210.9
       },
       "tr": {
-        "tokens_per_1k_chars": 256.23,
-        "chars": 16376
+        "tokens_per_1k_chars": 271.12
+      },
+      "ar": {
+        "tokens_per_1k_chars": 308.66
+      },
+      "az": {
+        "tokens_per_1k_chars": 271.35
+      },
+      "kk": {
+        "tokens_per_1k_chars": 272.88
+      },
+      "uz": {
+        "tokens_per_1k_chars": 265.74
       }
     },
     "openai/gpt-oss-120b": {
       "en": {
-        "tokens_per_1k_chars": 184.64,
-        "chars": 28158
+        "tokens_per_1k_chars": 203.64
       },
       "tr": {
-        "tokens_per_1k_chars": 270.09,
-        "chars": 16376
+        "tokens_per_1k_chars": 283.15
+      },
+      "ar": {
+        "tokens_per_1k_chars": 319.3
+      },
+      "az": {
+        "tokens_per_1k_chars": 320.32
+      },
+      "kk": {
+        "tokens_per_1k_chars": 314.44
+      },
+      "uz": {
+        "tokens_per_1k_chars": 319.52
       }
     },
     "google/gemma-4-31B-it": {
       "en": {
-        "tokens_per_1k_chars": 186.52,
-        "chars": 28158
+        "tokens_per_1k_chars": 205.46
       },
       "tr": {
-        "tokens_per_1k_chars": 263.43,
-        "chars": 16376
+        "tokens_per_1k_chars": 273.58
+      },
+      "ar": {
+        "tokens_per_1k_chars": 343.26
+      },
+      "az": {
+        "tokens_per_1k_chars": 381.88
+      },
+      "kk": {
+        "tokens_per_1k_chars": 407.9
+      },
+      "uz": {
+        "tokens_per_1k_chars": 346.26
+      }
+    },
+    "tiktoken:o200k_base": {
+      "en": {
+        "tokens_per_1k_chars": 203.64
+      },
+      "tr": {
+        "tokens_per_1k_chars": 283.15
+      },
+      "ar": {
+        "tokens_per_1k_chars": 319.3
+      },
+      "az": {
+        "tokens_per_1k_chars": 320.32
+      },
+      "kk": {
+        "tokens_per_1k_chars": 314.44
+      },
+      "uz": {
+        "tokens_per_1k_chars": 319.52
+      }
+    },
+    "openai:gpt-6-sol": {
+      "en": {
+        "tokens_per_1k_chars": 203.67
+      },
+      "tr": {
+        "tokens_per_1k_chars": 283.18
+      }
+    },
+    "openai:gpt-5.4-mini": {
+      "en": {
+        "tokens_per_1k_chars": 203.67
+      },
+      "tr": {
+        "tokens_per_1k_chars": 283.18
       }
     }
   }
