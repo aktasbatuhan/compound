@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Serving metrics · Compound</title>
-<meta name="description" content="Task success is one axis. compound-bench serving measures the others
+<meta name="description" content="Task success is one axis. compound serving measures the others
 directly: time to first token, decode speed, and cost per route, repeated on a
 schedule so you can see how a host moves through the day.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -38,10 +38,10 @@ schedule so you can see how a host moves through the day.">
   </nav>
   <article class="docs-body">
 <h1 id="serving-metrics">Serving metrics</h1>
-<p>Task success is one axis. <code>compound-bench serving</code> measures the others
+<p>Task success is one axis. <code>compound serving</code> measures the others
 directly: time to first token, decode speed, and cost per route, repeated on a
 schedule so you can see how a host moves through the day.</p>
-<pre><code class="language-bash">compound-bench serving \
+<pre><code class="language-bash">compound serving \
     --providers openrouter/deepinfra,doubleword/realtime,doubleword/flex,openrouter/auto \
     --model-or deepseek/deepseek-v4-flash-0731 \
     --model deepseek-ai/DeepSeek-V4-Flash-0731 \
@@ -61,7 +61,7 @@ inferred. Results land in <code>results.jsonl</code> under <code>--out</code>, o
 feed the per-host profile in the sweep report.</p>
 <h2 id="make-an-interactive-report">Make an interactive report</h2>
 <p>Turn a serving run into a single HTML file you can open locally or publish:</p>
-<pre><code class="language-bash">compound-bench serving-report artifacts/serving/results.jsonl \
+<pre><code class="language-bash">compound serving-report artifacts/serving/results.jsonl \
     --out artifacts/serving/report.html --title &quot;Our support workload&quot;
 </code></pre>
 <p>This command runs offline and makes no provider calls. The HTML includes charts,
@@ -90,7 +90,7 @@ Existing output files are preserved unless you pass <code>--force</code>.</p>
 realtime/flex. Each independent trial primes a new prefix, waits for the selected idle delay,
 then submits a burst of probes. Priming completes before any probe starts. No retries
 are added. Trial order is shuffled with a recorded seed.</p>
-<pre><code class="language-bash">compound-bench cache-study \
+<pre><code class="language-bash">compound cache-study \
     --providers openrouter/auto,openrouter/relace \
     --model-or YOUR_MODEL \
     --shapes benchmarks/cache-study/shapes.json \
@@ -127,7 +127,7 @@ load. Idle time is measured from priming completion; <code>actual_idle_s</code> 
 probe's start gap. A failed prime remains in the evidence and probes still run, so
 inspect priming failures before interpreting a low cache share. Provider cache hits
 are measured, never assumed from the phase name.</p>
-<pre><code class="language-bash">compound-bench serving-report artifacts/cache-study/results.jsonl \
+<pre><code class="language-bash">compound serving-report artifacts/cache-study/results.jsonl \
     --out artifacts/cache-study/report.html --title &quot;Routing and prefix reuse&quot;
 </code></pre>
 <p>The report separates reuse policy, delay, burst size and prime/probe phases. Its cost

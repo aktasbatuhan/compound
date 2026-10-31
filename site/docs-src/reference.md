@@ -3,22 +3,22 @@ order: 90
 
 # CLI reference
 
-Generated from `--help` at build time, so it matches the checked-in CLI. `compound-bench` is installed by `uv sync --extra dev`; `python -m compound.bench` is the same entry point.
+Generated from `--help` at build time, so it matches the checked-in CLI. `compound` is installed by `uv sync --extra dev`; `python -m compound.bench` is the same entry point.
 
-## compound-bench list
+## compound list
 
 ```text
-usage: compound.bench list [-h]
+usage: compound list [-h]
 
 options:
   -h, --help  show this help message and exit
 ```
 
-## compound-bench prepare
+## compound prepare
 
 ```text
-usage: compound.bench prepare [-h] [--per-subject PER_SUBJECT]
-                              {tau2,mmlu,terminal_bench}
+usage: compound prepare [-h] [--per-subject PER_SUBJECT]
+                        {tau2,mmlu,terminal_bench}
 
 positional arguments:
   {tau2,mmlu,terminal_bench}
@@ -29,10 +29,10 @@ options:
                         mmlu: test questions per subject
 ```
 
-## compound-bench providers
+## compound providers
 
 ```text
-usage: compound.bench providers [-h] [--json] [--probe] [--go] model
+usage: compound providers [-h] [--json] [--probe] [--go] model
 
 positional arguments:
   model       OpenRouter model slug, e.g. deepseek/deepseek-v4-flash-0731
@@ -47,11 +47,11 @@ options:
   --go        execute paid probes with --probe
 ```
 
-## compound-bench tasks
+## compound tasks
 
 ```text
-usage: compound.bench tasks [-h] [--partition PARTITION] [--contains CONTAINS]
-                            {bfcl,ds1000,mmlu,tau2,terminal_bench}
+usage: compound tasks [-h] [--partition PARTITION] [--contains CONTAINS]
+                      {bfcl,ds1000,mmlu,tau2,terminal_bench}
 
 positional arguments:
   {bfcl,ds1000,mmlu,tau2,terminal_bench}
@@ -63,24 +63,22 @@ options:
   --contains CONTAINS   case-insensitive substring filter
 ```
 
-## compound-bench run
+## compound run
 
 ```text
-usage: compound.bench run [-h] --model MODEL [--tasks TASKS]
-                          [--partition PARTITION] [--manifest MANIFEST]
-                          [--contains CONTAINS] [--trials TRIALS] [--go]
-                          [--providers PROVIDERS] [--provider PROVIDER]
-                          [--api-base API_BASE] [--api-key-env API_KEY_ENV]
-                          [--upstream UPSTREAM] [--tier TIER]
-                          [--max-steps MAX_STEPS] [--max-tokens MAX_TOKENS]
-                          [--user-model USER_MODEL] [--output OUTPUT]
-                          [--cap CAP] [--tb-agent TB_AGENT]
-                          [--tb-concurrent TB_CONCURRENT]
-                          [--reasoning {on,off,default}]
-                          [--cache-optin | --no-cache-optin]
-                          [--call-ledger PATH]
-                          [--tb-timeout-mult TB_TIMEOUT_MULT]
-                          {bfcl,ds1000,mmlu,tau2,terminal_bench}
+usage: compound run [-h] --model MODEL [--tasks TASKS] [--partition PARTITION]
+                    [--manifest MANIFEST] [--contains CONTAINS]
+                    [--trials TRIALS] [--go] [--providers PROVIDERS]
+                    [--provider PROVIDER] [--api-base API_BASE]
+                    [--api-key-env API_KEY_ENV] [--upstream UPSTREAM]
+                    [--tier TIER] [--max-steps MAX_STEPS]
+                    [--max-tokens MAX_TOKENS] [--user-model USER_MODEL]
+                    [--output OUTPUT] [--cap CAP] [--tb-agent TB_AGENT]
+                    [--tb-concurrent TB_CONCURRENT]
+                    [--reasoning {on,off,default}]
+                    [--cache-optin | --no-cache-optin] [--call-ledger PATH]
+                    [--tb-timeout-mult TB_TIMEOUT_MULT]
+                    {bfcl,ds1000,mmlu,tau2,terminal_bench}
 
 positional arguments:
   {bfcl,ds1000,mmlu,tau2,terminal_bench}
@@ -138,21 +136,20 @@ options:
                         COMPOUND_TB_TIMEOUT_MULT wins over this flag.
 ```
 
-## compound-bench harbor
+## compound harbor
 
 ```text
-usage: compound.bench harbor [-h] --providers PROVIDERS --model MODEL
-                             [--task-path TASK_PATH] [--host-model HOST=MODEL]
-                             [--dataset DATASET] [--agent AGENT]
-                             [--tasks TASKS] [--n-tasks N_TASKS]
-                             [--attempts ATTEMPTS]
-                             [--n-concurrent N_CONCURRENT]
-                             [--timeout-multiplier TIMEOUT_MULTIPLIER]
-                             [--agent-timeout-multiplier AGENT_TIMEOUT_MULTIPLIER]
-                             [--ak KEY=VALUE] [--env ENV]
-                             [--jobs-dir JOBS_DIR] [--ledger-dir LEDGER_DIR]
-                             [--reasoning {on,off,default}]
-                             [--cache-optin | --no-cache-optin] [--go]
+usage: compound harbor [-h] --providers PROVIDERS --model MODEL
+                       [--task-path TASK_PATH] [--host-model HOST=MODEL]
+                       [--dataset DATASET] [--agent AGENT] [--tasks TASKS]
+                       [--n-tasks N_TASKS] [--attempts ATTEMPTS]
+                       [--n-concurrent N_CONCURRENT]
+                       [--timeout-multiplier TIMEOUT_MULTIPLIER]
+                       [--agent-timeout-multiplier AGENT_TIMEOUT_MULTIPLIER]
+                       [--ak KEY=VALUE] [--env ENV] [--jobs-dir JOBS_DIR]
+                       [--ledger-dir LEDGER_DIR]
+                       [--reasoning {on,off,default}]
+                       [--cache-optin | --no-cache-optin] [--go]
 
 options:
   -h, --help            show this help message and exit
@@ -207,17 +204,17 @@ options:
   --go                  execute (default is a dry run)
 ```
 
-## compound-bench serving
+## compound serving
 
 ```text
-usage: compound.bench serving [-h] [--go] --providers PROVIDERS --shapes
-                              SHAPES [--model-or MODEL_OR] [--model MODEL]
-                              [--host-model HOST=MODEL] [--rounds ROUNDS]
-                              [--interval INTERVAL] [--reps REPS]
-                              [--cache-mode {cold,warm,both}]
-                              [--reasoning-modes {on,off,both}]
-                              [--temperature TEMPERATURE]
-                              [--min-call-interval SECONDS] [--out OUT]
+usage: compound serving [-h] [--go] --providers PROVIDERS --shapes SHAPES
+                        [--model-or MODEL_OR] [--model MODEL]
+                        [--host-model HOST=MODEL] [--rounds ROUNDS]
+                        [--interval INTERVAL] [--reps REPS]
+                        [--cache-mode {cold,warm,both}]
+                        [--reasoning-modes {on,off,both}]
+                        [--temperature TEMPERATURE]
+                        [--min-call-interval SECONDS] [--out OUT]
 
 options:
   -h, --help            show this help message and exit
@@ -261,10 +258,10 @@ options:
   --out OUT             output dir for results.jsonl
 ```
 
-## compound-bench ledger
+## compound ledger
 
 ```text
-usage: compound.bench ledger [-h] [--hosts] path
+usage: compound ledger [-h] [--hosts] path
 
 positional arguments:
   path        path to a calls.jsonl written by --call-ledger
@@ -277,31 +274,8 @@ options:
 ## compound (trace pipeline, TypeScript)
 
 ```text
-compound — turn production traces into gated optimization evidence
+error: Cannot find module '@compound/api/src/serve' from '/Users/batuhanaktas/Development/personal/compound/.claude/worktrees/python-core-cleanup/packages/cli/src/main.ts'
 
-Usage:
-  compound init [--config PATH] [--db PATH] [--force]
-  compound validate [--config PATH]
-  compound providers [name]                        (known providers; a name prints a paste-ready block)
-  compound import <file> [--importer langfuse|json|otel] [--db PATH] [--config PATH] [--project-id ID] [--unsafe-no-redaction]
-  compound curate <task_key> [--split train:val:cal:dec] [--db PATH]
-  compound suggest-assertions <task_key> [--db PATH] [--config PATH]
-  compound experiment <task_key> <model> [--partition P] [--paid --cap USD]
-  compound gate <task_key> --candidate M --reference M --reason "..." [--margin 0.05] [--monthly-volume N] [--paid --cap USD]
-  compound eval <task_key> --candidate M --reference M [--reason "..."]   (CI gate: exit 0 meets / 1 regresses / 2 undecidable)
-  compound judge calibrate <task_key> [--paid --cap USD]
-  compound judge grade <task_key> <experiment_id> [--paid --cap USD]
-  compound optimize <task_key> --candidate M [--reflection M] [--max-calls N] [--force]
-  compound telemetry [task_key] [--json] [--db PATH]
-  compound view [gate|case|trace|experiment] [id] [--full] [--db PATH]   (read-only browser; overview if no args)
-  compound view compare [task_key] [--priority quality=0.5,cost=0.3,latency=0.2] [--monthly-volume N] [--db PATH]
-                                                                         (cost vs score per model; --priority adds a weighted
-                                                                          ranking + Pareto frontier; axes: quality, cost,
-                                                                          latency, throughput; per-task default via
-                                                                          compound.yaml task_keys.<task>.priority)
-  compound status [--db PATH]
-  compound serve [--port N] [--host HOST] [--db PATH] [--config PATH]
-  compound help
-
-Importers: langfuse, json, otel
+Bun v1.3.9 (macOS arm64)
+error: script "compound" exited with code 1
 ```

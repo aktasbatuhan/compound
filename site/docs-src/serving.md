@@ -3,12 +3,12 @@ order: 60
 
 # Serving metrics
 
-Task success is one axis. `compound-bench serving` measures the others
+Task success is one axis. `compound serving` measures the others
 directly: time to first token, decode speed, and cost per route, repeated on a
 schedule so you can see how a host moves through the day.
 
 ```bash
-compound-bench serving \
+compound serving \
     --providers openrouter/deepinfra,doubleword/realtime,doubleword/flex,openrouter/auto \
     --model-or deepseek/deepseek-v4-flash-0731 \
     --model deepseek-ai/DeepSeek-V4-Flash-0731 \
@@ -33,7 +33,7 @@ feed the per-host profile in the sweep report.
 Turn a serving run into a single HTML file you can open locally or publish:
 
 ```bash
-compound-bench serving-report artifacts/serving/results.jsonl \
+compound serving-report artifacts/serving/results.jsonl \
     --out artifacts/serving/report.html --title "Our support workload"
 ```
 
@@ -71,7 +71,7 @@ then submits a burst of probes. Priming completes before any probe starts. No re
 are added. Trial order is shuffled with a recorded seed.
 
 ```bash
-compound-bench cache-study \
+compound cache-study \
     --providers openrouter/auto,openrouter/relace \
     --model-or YOUR_MODEL \
     --shapes benchmarks/cache-study/shapes.json \
@@ -115,7 +115,7 @@ inspect priming failures before interpreting a low cache share. Provider cache h
 are measured, never assumed from the phase name.
 
 ```bash
-compound-bench serving-report artifacts/cache-study/results.jsonl \
+compound serving-report artifacts/cache-study/results.jsonl \
     --out artifacts/cache-study/report.html --title "Routing and prefix reuse"
 ```
 

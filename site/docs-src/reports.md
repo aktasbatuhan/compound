@@ -62,8 +62,8 @@ A `null` means the host did not tell us. It is not the same claim as a measured
 zero, and the tooling keeps the two apart.
 
 ```bash
-compound-bench ledger artifacts/tb/calls.jsonl           # per-route rollup
-compound-bench ledger artifacts/tb/calls.jsonl --hosts   # plus which upstreams answered
+compound ledger artifacts/tb/calls.jsonl           # per-route rollup
+compound ledger artifacts/tb/calls.jsonl --hosts   # plus which upstreams answered
 ```
 
 ## Comparing arms

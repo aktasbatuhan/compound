@@ -21,10 +21,10 @@ Terminal-Bench 4.0 runs through a separate `harbor` subcommand; see
 ## Commands
 
 ```bash
-compound-bench list                                # benchmarks, case counts, how each runs
-compound-bench prepare tau2                        # one-time engine or dataset setup
-compound-bench tasks tau2 --contains retail        # case ids, optionally filtered
-compound-bench run tau2 --model ... --tasks retail:10,airline:3 --go
+compound list                                # benchmarks, case counts, how each runs
+compound prepare tau2                        # one-time engine or dataset setup
+compound tasks tau2 --contains retail        # case ids, optionally filtered
+compound run tau2 --model ... --tasks retail:10,airline:3 --go
 ```
 
 `run` accepts one of `--tasks` (explicit ids), `--partition` (every case in a
@@ -40,7 +40,7 @@ optimizer, it sees only the first two; `decision_test` is the sealed set.
 ## Sweeping hosts
 
 ```bash
-compound-bench run tau2 \
+compound run tau2 \
     --model deepseek/deepseek-v4-flash-0731 \
     --providers openrouter/deepinfra/fp4,openrouter/baseten/fp8,doubleword/realtime,doubleword/flex \
     --tasks airline:6,retail:20 --trials 3 --max-tokens 8192 \
@@ -60,7 +60,7 @@ tool-calling turns and records a failure the host did not earn.
 the pinning proxy:
 
 ```bash
-compound-bench run terminal_bench \
+compound run terminal_bench \
     --model deepseek/deepseek-v4-flash-0731 \
     --providers openrouter/deepinfra/fp4,doubleword/flex \
     --tasks hello-world,fix-permissions --trials 3 \

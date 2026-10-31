@@ -24,7 +24,7 @@ many hosts" is one flag.
 differently, so a mixed grid passes one id per host:
 
 ```bash
-compound-bench serving --providers direct/openai,direct/openai-flex,direct/anthropic \
+compound serving --providers direct/openai,direct/openai-flex,direct/anthropic \
     --shapes profiles.json \
     --host-model openai=gpt-5.4-mini --host-model openai-flex=gpt-5.4-mini \
     --host-model anthropic=claude-sonnet-5 --go
@@ -34,7 +34,7 @@ You do not need to know the upstream slugs. `providers <model>` reads them off
 OpenRouter and prints paste-ready tokens:
 
 ```bash
-compound-bench providers z-ai/glm-5.3-flash
+compound providers z-ai/glm-5.3-flash
 # PROVIDER TOKEN              QUANT   CONTEXT   $IN/M  $OUT/M  STATUS
 # openrouter/z-ai/fp8         fp8        1.0M  $0.075  $0.250  up
 # openrouter/novita/fp8       fp8        1.0M  $0.075  $0.250  up
@@ -51,7 +51,7 @@ listed as up can return 429 on every call for one model while serving another
 fine. `--probe --go` tests it by sending one small pinned call to each host:
 
 ```bash
-compound-bench providers z-ai/glm-5.3-flash --probe --go
+compound providers z-ai/glm-5.3-flash --probe --go
 # PROVIDER TOKEN                  STATUS  SECONDS  DETAIL
 # openrouter/z-ai/fp8                200      1.4  Z.AI
 # openrouter/deepinfra/fp8           429      0.5  {"error":{"message":"Provider returned error"...
@@ -101,7 +101,7 @@ needs. Two consequences to read the numbers with:
   failed to reproduce itself.
 - The pinning proxy speaks chat completions only and refuses this host rather
   than forward it through the lossy layer, so Anthropic runs in
-  `compound-bench serving` and not behind a third-party harness.
+  `compound serving` and not behind a third-party harness.
 
 Quantization suffixes such as `/fp8` are labels from discovery. Routing strips
 the suffix and pins the host only; a matching provider echo does not verify
@@ -125,7 +125,7 @@ Any OpenAI-compatible endpoint works without adapter code. For tau2 it is three
 flags:
 
 ```bash
-compound-bench run tau2 --model my-model \
+compound run tau2 --model my-model \
     --provider myhost --api-base http://localhost:8000/v1 --api-key-env MYHOST_API_KEY --go
 ```
 

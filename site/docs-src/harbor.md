@@ -4,11 +4,11 @@ order: 40
 # Terminal-Bench 4.0 through Harbor
 
 Terminal-Bench 4.0 is distributed as a [Harbor](https://harborframework.com)
-dataset. `compound-bench harbor` runs it across pinned hosts: one Harbor job per
+dataset. `compound harbor` runs it across pinned hosts: one Harbor job per
 host, each behind its own proxy, with a call ledger per host.
 
 ```bash
-compound-bench harbor \
+compound harbor \
     --model z-ai/glm-5.3-flash \
     --providers openrouter/auto,openrouter/deepinfra/fp8,doubleword/realtime,doubleword/flex \
     --host-model doubleword=zai-org/GLM-5.3-Flash --reasoning on \
@@ -123,7 +123,7 @@ Harbor writes a job directory per arm with a `result.json` per trial. The
 ledger directory gets `<host>.jsonl`. Then:
 
 ```bash
-compound-bench ledger artifacts/tb4/ledger/deepinfra-fp8.jsonl --hosts
+compound ledger artifacts/tb4/ledger/deepinfra-fp8.jsonl --hosts
 python3 scripts/analyze_arms.py artifacts/tb4          # arms side by side
 ```
 

@@ -30,7 +30,7 @@ def test_probe_requires_explicit_go(monkeypatch, capsys):
     from compound import openrouter_discovery
     from compound.bench import main
 
-    monkeypatch.setattr("sys.argv", ["compound-bench", "providers", "m", "--probe"])
+    monkeypatch.setattr("sys.argv", ["compound", "providers", "m", "--probe"])
     monkeypatch.setattr(
         openrouter_discovery, "fetch_endpoints", lambda *a: pytest.fail("unexpected network"),
     )
@@ -43,7 +43,7 @@ def test_paid_probe_dispatches_only_after_key_preflight(monkeypatch):
     from compound.bench import main
 
     monkeypatch.setattr(
-        "sys.argv", ["compound-bench", "providers", "m", "--probe", "--go"],
+        "sys.argv", ["compound", "providers", "m", "--probe", "--go"],
     )
     monkeypatch.setattr(openrouter_discovery, "fetch_endpoints", lambda *a: [])
     called = []
@@ -73,7 +73,7 @@ def test_registry_manifests_are_partitioned() -> None:
     for bench in BENCHMARKS.values():
         if not bench.manifest.exists():
             # mmlu's manifest embeds the answer key, so the repo ships without it;
-            # it is rebuilt deterministically with `compound-bench prepare mmlu`.
+            # it is rebuilt deterministically with `compound prepare mmlu`.
             assert bench.name == "mmlu", f"{bench.name} manifest missing from the repo"
             continue
         cases = json.loads(bench.manifest.read_text())["cases"]

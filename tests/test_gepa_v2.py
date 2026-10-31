@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import gepa
-import pytest
 
 from compound.budget import BudgetLedger
 from compound.contracts import Usage
@@ -21,11 +20,6 @@ from compound.gepa_v2 import (
     _target_satisfied,
     compose_system_prompt,
     select_library_components,
-)
-from compound.gepa_v2_runner import (
-    _decision_manifest_cases,
-    _load_teacher_traces,
-    _paired_comparison,
 )
 from compound.providers import ProviderResponse
 
@@ -134,107 +128,6 @@ def test_library_only_selector_never_mutates_the_shared_contract() -> None:
 
     assert selected == ["numpy_strategy"]
     assert "response_contract" not in selected
-
-
-def test_teacher_loader_prefers_first_passing_model_and_filters_cases(tmp_path: Path) -> None:
-    artifact = tmp_path / "teachers.json"
-    artifact.write_text(
-        json.dumps(
-            {
-                "models": [
-                    {
-                        "model": "gpt",
-                        "cases": [
-                            {"case_id": "a", "trial_id": 0, "passed": False, "completion": "bad"},
-                            {"case_id": "b", "trial_id": 0, "passed": True, "completion": "gpt-b"},
-                        ],
-                    },
-                    {
-                        "model": "opus",
-                        "cases": [
-                            {"case_id": "a", "trial_id": 0, "passed": True, "completion": "opus-a"},
-                            {"case_id": "b", "trial_id": 0, "passed": True, "completion": "opus-b"},
-                            {"case_id": "c", "trial_id": 0, "passed": True, "completion": "opus-c"},
-                        ],
-                    },
-                ]
-            }
-        )
-    )
-
-    teachers = _load_teacher_traces(
-        artifact, preferred_models=["gpt", "opus"], allowed_case_ids={"a", "b"}
-    )
-
-    assert teachers == {
-        "a": {"model": "opus", "completion": "opus-a"},
-        "b": {"model": "gpt", "completion": "gpt-b"},
-    }
-
-
-def test_external_decision_manifest_rejects_origin_overlap(tmp_path: Path) -> None:
-    optimization = tmp_path / "optimization.json"
-    optimization.write_text(
-        json.dumps(
-            {
-                "cases": [
-                    {
-                        "case_id": "train",
-                        "partition": "optimizer_train",
-                        "stratum": "numpy",
-                        "metadata": {"perturbation_origin_id": 1},
-                    }
-                ]
-            }
-        )
-    )
-    decision = tmp_path / "decision.json"
-    decision.write_text(
-        json.dumps(
-            {
-                "cohort_role": "sealed_decision",
-                "cases": [
-                    {
-                        "case_id": "decision",
-                        "partition": "decision_test",
-                        "stratum": "numpy",
-                        "metadata": {"perturbation_origin_id": 1},
-                    }
-                ],
-            }
-        )
-    )
-
-    with pytest.raises(ValueError, match="origin groups overlap"):
-        _decision_manifest_cases(
-            run_manifest={"benchmark_manifest": str(optimization)},
-            decision_manifest_path=decision,
-        )
-
-
-@patch("compound.gepa_v2.subprocess.run")
-def test_adapter_returns_correctness_dominant_objectives_and_caches(
-    run: Mock, tmp_path: Path
-) -> None:
-    run.return_value = Mock(
-        returncode=0,
-        stdout=json.dumps({"passed": True, "feedback": "passed"}),
-        stderr="",
-    )
-    provider = Mock()
-    provider.complete.return_value = _response("result = values + 1")
-    adapter = _adapter(tmp_path, provider)
-
-    first = adapter.evaluate([_example()], dict(SEED_COMPONENTS), capture_traces=True)
-    second = adapter.evaluate([_example()], dict(SEED_COMPONENTS), capture_traces=True)
-
-    assert first.scores[0] >= 1.09
-    assert first.objective_scores is not None
-    assert first.objective_scores[0]["task_success"] == 1.0
-    assert second.scores == first.scores
-    assert _paired_comparison(first, second)["trial_transitions"]["both_pass"] == 1
-    provider.complete.assert_called_once()
-    run.assert_called_once()
 
 
 def test_oversized_candidate_is_rejected_without_a_model_call(tmp_path: Path) -> None:

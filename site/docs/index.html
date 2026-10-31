@@ -57,7 +57,7 @@ cache-hit rate, with confidence intervals and a record of every model call.</p>
 <tr>
 <td>Benchmark sweeps</td>
 <td>Python</td>
-<td><code>compound-bench</code></td>
+<td><code>compound</code></td>
 <td>Run public benchmarks across pinned hosts and report per host</td>
 </tr>
 <tr>
@@ -73,20 +73,20 @@ cache-hit rate, with confidence intervals and a record of every model call.</p>
 <h2 id="install">Install</h2>
 <pre><code class="language-bash">git clone https://github.com/aktasbatuhan/compound
 cd compound
-uv sync --extra dev          # Python half, installs compound-bench
+uv sync --extra dev          # Python half, installs compound
 bun install                  # TypeScript half, optional
 </code></pre>
 <p>Keys go in a git-ignored <code>.env</code> at the repo root:</p>
 <pre><code class="language-env">OPENROUTER_API_KEY=
 DOUBLEWORD_API_KEY=          # only if you use doubleword/* tokens
 </code></pre>
-<p><code>compound-bench</code> reads <code>.env</code> itself. Do not <code>source</code> it into your shell.</p>
+<p><code>compound</code> reads <code>.env</code> itself. Do not <code>source</code> it into your shell.</p>
 <h2 id="first-run">First run</h2>
 <pre><code class="language-bash"># who serves this model, with quantization, price, and live status
-compound-bench providers z-ai/glm-5.3-flash
+compound providers z-ai/glm-5.3-flash
 
 # a dry run prints the plan and spends nothing
-compound-bench run terminal_bench --model z-ai/glm-5.3-flash \
+compound run terminal_bench --model z-ai/glm-5.3-flash \
     --providers openrouter/deepinfra/fp8,openrouter/z-ai/fp8 \
     --tasks hello-world --trials 1
 

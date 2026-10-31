@@ -270,7 +270,7 @@ class _Handler(BaseHTTPRequestHandler):
         headers = {"Content-Type": "application/json", "Authorization": _auth_header(spec)}
         # OpenRouter asks for these attribution headers; harmless elsewhere.
         headers.setdefault("HTTP-Referer", "https://github.com/aktasbatuhan/compound")
-        headers.setdefault("X-Title", "compound-bench")
+        headers.setdefault("X-Title", "compound")
 
         debug_path = os.getenv("ORPROXY_DEBUG_LOG")
         if debug_path and data:
@@ -404,7 +404,7 @@ def serve_provider(spec: ProviderSpec, port: int = 0):
         # again. Refuse rather than run an arm that cannot be compared.
         raise RuntimeError(
             f"{spec.token}: the pinning proxy speaks chat completions only; a "
-            f"{spec.dialect}-dialect host runs in `compound-bench serving`, not "
+            f"{spec.dialect}-dialect host runs in `compound serving`, not "
             "behind a harness"
         )
     server = ProxyServer(spec, port)

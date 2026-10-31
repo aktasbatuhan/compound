@@ -190,7 +190,7 @@ def test_paid_cli_loads_env_without_real_requests(tmp_path, monkeypatch):
         sys,
         "argv",
         [
-            "compound-bench",
+            "compound",
             "cache-study",
             "--providers",
             "openrouter/auto",

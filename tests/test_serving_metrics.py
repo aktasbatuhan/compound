@@ -33,7 +33,7 @@ def test_cli_serving_never_calls_without_consent_and_credentials(
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setattr(sm, "run_serving", lambda *a, **kw: pytest.fail("unexpected paid call"))
     argv = [
-        "compound-bench", "serving", "--providers", "openrouter/deepinfra",
+        "compound", "serving", "--providers", "openrouter/deepinfra",
         "--model-or", "m", "--shapes", str(shapes), "--out", str(tmp_path / "out"),
     ]
     monkeypatch.setattr("sys.argv", argv + (["--go"] if paid else []))
@@ -382,7 +382,7 @@ def test_cli_serving_is_registered_on_the_real_parser(monkeypatch, tmp_path, cap
     monkeypatch.setattr(
         "sys.argv",
         [
-            "compound-bench",
+            "compound",
             "serving",
             "--go",
             "--providers",
@@ -422,7 +422,7 @@ def test_cli_serving_fails_fast_on_missing_model(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "sys.argv",
         [
-            "compound-bench",
+            "compound",
             "serving",
             "--providers",
             "openrouter/deepinfra",
@@ -769,7 +769,7 @@ def test_cli_serving_accepts_host_model(monkeypatch, tmp_path):
 
     monkeypatch.setattr(sm, "run_serving", fake_run_serving)
     monkeypatch.setattr("sys.argv", [
-        "compound-bench", "serving", "--go",
+        "compound", "serving", "--go",
         "--providers", "openrouter/deepinfra,direct/anthropic",
         "--shapes", str(shapes), "--model-or", "or-slug",
         "--host-model", "anthropic=claude-sonnet-5",

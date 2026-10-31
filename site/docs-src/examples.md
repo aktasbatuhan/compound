@@ -44,6 +44,6 @@ not compared: at five tasks almost nothing resolved on any arm.
 ## Reproduce either
 
 Both reports were produced by the commands in the [docs](../docs/). The second
-one is a single `compound-bench harbor` invocation per arm; the first is a
-`compound-bench run terminal_bench --providers ...` sweep followed by
+one is a single `compound harbor` invocation per arm; the first is a
+`compound run terminal_bench --providers ...` sweep followed by
 `bench_report`.

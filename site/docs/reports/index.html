@@ -137,8 +137,8 @@ with the harness before making per-call claims. A warning about missing rows
 means the evidence is incomplete. The JSONL ledger is not a spend limiter.</p>
 <p>A <code>null</code> means the host did not tell us. It is not the same claim as a measured
 zero, and the tooling keeps the two apart.</p>
-<pre><code class="language-bash">compound-bench ledger artifacts/tb/calls.jsonl           # per-route rollup
-compound-bench ledger artifacts/tb/calls.jsonl --hosts   # plus which upstreams answered
+<pre><code class="language-bash">compound ledger artifacts/tb/calls.jsonl           # per-route rollup
+compound ledger artifacts/tb/calls.jsonl --hosts   # plus which upstreams answered
 </code></pre>
 <h2 id="comparing-arms">Comparing arms</h2>
 <p><code>scripts/analyze_arms.py &lt;dir&gt;</code> reads every ledger under a directory and prints,

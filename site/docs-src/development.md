@@ -24,7 +24,7 @@ imports production traces and evaluates candidate changes on curated cases.
 | `site/docs-src`, `scripts/build_site.py` | Documentation source and generated pages |
 
 Paths without a directory prefix in the Python rows are under `src/compound/`.
-Use `compound-bench` for benchmarks and `bun run compound` for traces; the Python
+Use `compound` for benchmarks and `bun run compound` for traces; the Python
 package also installs a separate `compound` command for its experiment engine.
 
 ## Spend controls

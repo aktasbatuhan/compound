@@ -3,7 +3,7 @@ order: 80
 
 # Configuration
 
-`compound.yaml` at the repo root is shared by both halves. `compound-bench` reads
+`compound.yaml` at the repo root is shared by both halves. `compound` reads
 the `providers`, `budget`, and `models` sections; the trace pipeline reads the
 rest. `bun run compound init` writes a starter file and `compound validate`
 checks it.

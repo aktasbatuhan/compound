@@ -28,7 +28,8 @@ bfcl = [
 ]
 
 [project.scripts]
-compound = "compound.cli:main"
+compound = "compound.bench:main"
+# Older docs and scripts call the same CLI by this name.
 compound-bench = "compound.bench:main"
 
 [build-system]

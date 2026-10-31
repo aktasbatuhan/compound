@@ -86,10 +86,10 @@ and the ledger around it.</p>
 <p>Terminal-Bench 4.0 runs through a separate <code>harbor</code> subcommand; see
 <a href="../harbor/">Terminal-Bench 4.0</a>.</p>
 <h2 id="commands">Commands</h2>
-<pre><code class="language-bash">compound-bench list                                # benchmarks, case counts, how each runs
-compound-bench prepare tau2                        # one-time engine or dataset setup
-compound-bench tasks tau2 --contains retail        # case ids, optionally filtered
-compound-bench run tau2 --model ... --tasks retail:10,airline:3 --go
+<pre><code class="language-bash">compound list                                # benchmarks, case counts, how each runs
+compound prepare tau2                        # one-time engine or dataset setup
+compound tasks tau2 --contains retail        # case ids, optionally filtered
+compound run tau2 --model ... --tasks retail:10,airline:3 --go
 </code></pre>
 <p><code>run</code> accepts one of <code>--tasks</code> (explicit ids), <code>--partition</code> (every case in a
 partition), or <code>--contains</code> (substring match). <code>--trials N</code> repeats each case.</p>
@@ -99,7 +99,7 @@ partition), or <code>--contains</code> (substring match). <code>--trials N</code
 hash-based, so it is stable across machines. If you use Compound's prompt
 optimizer, it sees only the first two; <code>decision_test</code> is the sealed set.</p>
 <h2 id="sweeping-hosts">Sweeping hosts</h2>
-<pre><code class="language-bash">compound-bench run tau2 \
+<pre><code class="language-bash">compound run tau2 \
     --model deepseek/deepseek-v4-flash-0731 \
     --providers openrouter/deepinfra/fp4,openrouter/baseten/fp8,doubleword/realtime,doubleword/flex \
     --tasks airline:6,retail:20 --trials 3 --max-tokens 8192 \
@@ -113,7 +113,7 @@ tool-calling turns and records a failure the host did not earn.</p>
 <h2 id="terminal-bench-1x">Terminal-Bench 1.x</h2>
 <p><code>run terminal_bench</code> delegates to the original terminal-bench harness through
 the pinning proxy:</p>
-<pre><code class="language-bash">compound-bench run terminal_bench \
+<pre><code class="language-bash">compound run terminal_bench \
     --model deepseek/deepseek-v4-flash-0731 \
     --providers openrouter/deepinfra/fp4,doubleword/flex \
     --tasks hello-world,fix-permissions --trials 3 \
