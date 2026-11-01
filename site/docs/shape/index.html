@@ -62,6 +62,26 @@ have, and it never keeps the text of a prompt or an answer.</p>
 <li>shape files written by an earlier <code>--calls-out</code>, or by the SDK</li>
 </ul>
 <p>Anything else is counted as skipped and left out, never guessed at.</p>
+<h2 id="from-a-gateway">From a gateway</h2>
+<p>OpenRouter and Vercel AI Gateway cannot list your calls through their APIs,
+but both can look one up by its generation id, which every response carries
+in its <code>id</code> field. Give <code>compound gateway-import</code> a file of those ids, or the
+request logs that hold them, and it writes shape records with the gateway's
+own timing, the provider's native token counts (cached and reasoning
+included) and cost:</p>
+<pre><code class="language-bash">compound gateway-import ids.txt --gateway openrouter --content --out shapes.jsonl
+compound gateway-import ids.txt --gateway vercel --out shapes.jsonl
+</code></pre>
+<p>With <code>--content</code>, OpenRouter also returns the stored prompt when the account
+has input and output logging turned on. The importer uses it only to build
+the prefix chain, roles and language hint, then drops it, so the output holds
+no text. Without stored prompts the records still drive the cost estimate,
+but a replay needs the prefix structure.</p>
+<p>If you have no ids at all, <code>compound gateway-activity</code> reads OpenRouter's
+daily totals per model for the last 30 days and prints the <code>compound
+estimate</code> command for each model, with its monthly calls, average sizes and
+cached share filled in. OpenRouter only shows account activity to a
+management key.</p>
 <h2 id="what-the-profile-says">What the profile says</h2>
 <p>The terminal shows a short reading, and <code>--out</code> writes the full profile as
 JSON. It covers token distributions (input, output, reasoning), latency,

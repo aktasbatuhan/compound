@@ -914,6 +914,97 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_gateway_import(args: argparse.Namespace) -> int:
+    """Turn gateway generation ids into text-free shape records."""
+    import json as _json
+    import os
+
+    from compound.core.env import load_env
+    from compound.ingest import gateways
+    from compound.shape import build_profile, format_profile, new_salt
+
+    load_env()
+    ids = gateways.read_ids(args.ids)
+    if not ids:
+        raise SystemExit(
+            "error: no generation ids (gen-... or gen_...) found in " + ", ".join(args.ids)
+        )
+    key_env = gateways.GATEWAYS[args.gateway]["key_env"]
+    _require_keys({key_env})
+    try:
+        report = gateways.import_generations(
+            args.gateway, ids, gateways.http_get(os.environ[key_env]), salt=new_salt(),
+            content=args.content,
+        )
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    print(
+        f"{len(report.shapes):,} of {len(ids):,} generations found"
+        + (f", {report.with_content:,} with stored prompts" if args.content else "")
+        + (f"; not found: {len(report.not_found):,}" if report.not_found else "")
+    )
+    if report.not_found and args.gateway == "vercel":
+        print("  Vercel ingests usage a few seconds late; retry ids from the last minute.")
+    if not report.shapes:
+        return 1
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w") as handle:
+        for shape in report.shapes:
+            handle.write(_json.dumps(shape.to_json()) + "\n")
+    print(format_profile(build_profile(report.shapes)))
+    print(f"shapes (no prompt text): {out}")
+    return 0
+
+
+def cmd_gateway_activity(args: argparse.Namespace) -> int:
+    """OpenRouter's daily totals per model, summarized for the estimate."""
+    import json as _json
+    import os
+    import urllib.error
+
+    from compound.core.env import load_env
+    from compound.ingest import gateways
+
+    load_env()
+    _require_keys({"OPENROUTER_API_KEY"})
+    try:
+        rows = gateways.fetch_activity(
+            gateways.http_get(os.environ["OPENROUTER_API_KEY"]), args.date or None
+        )
+    except urllib.error.HTTPError as exc:
+        if exc.code == 403:
+            raise SystemExit(
+                "error: OpenRouter returns account activity only to a management key; "
+                "create one under Settings, Management keys, and set OPENROUTER_API_KEY to it"
+            ) from exc
+        raise
+    summary = gateways.summarize_activity(rows)
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(_json.dumps({"rows": rows, "by_model": summary}, indent=2) + "\n")
+    if not summary:
+        print("no activity in the last 30 days")
+        return 0
+    for m in summary:
+        cached = "unknown" if m["cached_share"] is None else f"{m['cached_share']:.0%}"
+        print(
+            f"{m['model']}: {m['monthly_calls']:,.0f} calls a month "
+            f"({m['requests']:,} over {m['days_with_traffic']} days), "
+            f"{m['avg_input_tokens']:,.0f} in and {m['avg_output_tokens']:,.0f} out per call, "
+            f"{cached} cached, about ${m['monthly_usd']:,.0f} a month"
+        )
+        print(
+            f"  compound estimate --current {m['model']} --monthly-calls "
+            f"{m['monthly_calls']:.0f} --input-tokens {m['avg_input_tokens']:.0f} "
+            f"--output-tokens {m['avg_output_tokens']:.0f}"
+            + ("" if m["cached_share"] is None else f" --cached-share {m['cached_share']:.2f}")
+            + " --candidates ..."
+        )
+    return 0
+
+
 def cmd_ledger(args: argparse.Namespace) -> int:
     """Per-route read of a call ledger: cache hits, routing spread, cost."""
     from compound.core import call_ledger
@@ -1313,6 +1404,24 @@ def main() -> int:
     rp.add_argument("--out", default="artifacts/replay/results.jsonl")
     rp.add_argument("--go", action="store_true", help="actually send (costs money)")
 
+    gi = sub.add_parser(
+        "gateway-import", help="turn OpenRouter or Vercel AI Gateway generation ids into shapes"
+    )
+    gi.add_argument("ids", nargs="+", help="files of generation ids, or JSON(L) logs holding them")
+    gi.add_argument("--gateway", choices=("openrouter", "vercel"), required=True)
+    gi.add_argument(
+        "--content",
+        action="store_true",
+        help="OpenRouter: also read stored prompts (if logging is on) for prefix structure",
+    )
+    gi.add_argument("--out", default="artifacts/gateway/shapes.jsonl")
+
+    ga = sub.add_parser(
+        "gateway-activity", help="OpenRouter daily usage per model (needs a management key)"
+    )
+    ga.add_argument("--date", action="append", help="a UTC day (YYYY-MM-DD); repeatable")
+    ga.add_argument("--out", help="write raw rows and the per-model summary as JSON")
+
     run = sub.add_parser("run", help="run a task subset (dry run unless --go)")
     run.add_argument("benchmark", choices=sorted(BENCHMARKS))
     run.add_argument("--model", required=True, help="model id as the provider knows it")
@@ -1420,6 +1529,10 @@ def main() -> int:
         return cmd_ledger(args)
     if args.command == "shape":
         return cmd_shape(args)
+    if args.command == "gateway-import":
+        return cmd_gateway_import(args)
+    if args.command == "gateway-activity":
+        return cmd_gateway_activity(args)
     if args.command == "replay":
         return cmd_replay(args)
     if args.command == "prices":

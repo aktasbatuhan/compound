@@ -388,6 +388,35 @@ options:
   --go                  actually send (costs money)
 ```
 
+## compound gateway-import
+
+```text
+usage: compound gateway-import [-h] --gateway {openrouter,vercel} [--content]
+                               [--out OUT]
+                               ids [ids ...]
+
+positional arguments:
+  ids                   files of generation ids, or JSON(L) logs holding them
+
+options:
+  -h, --help            show this help message and exit
+  --gateway {openrouter,vercel}
+  --content             OpenRouter: also read stored prompts (if logging is
+                        on) for prefix structure
+  --out OUT
+```
+
+## compound gateway-activity
+
+```text
+usage: compound gateway-activity [-h] [--date DATE] [--out OUT]
+
+options:
+  -h, --help   show this help message and exit
+  --date DATE  a UTC day (YYYY-MM-DD); repeatable
+  --out OUT    write raw rows and the per-model summary as JSON
+```
+
 ## compound (trace pipeline, TypeScript)
 
 ```text
