@@ -833,6 +833,87 @@ def cmd_estimate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_replay(args: argparse.Namespace) -> int:
+    """Send a workload's shape to hosts on its own schedule (dry run unless --go)."""
+    import json as _json
+
+    from compound.core.providers_registry import parse_providers
+    from compound.serving import metrics as sm
+    from compound.serving import replay
+    from compound.serving.filler import FillerCorpus
+    from compound.shape import build_profile, load_shapes, new_salt
+
+    report = load_shapes(args.paths, new_salt())
+    profile = build_profile(report.shapes)
+    reuse = profile["cache"]["reuse"]["reuse_share"]
+    specs = parse_providers(args.providers, providers_config=_load_providers_config())
+    try:
+        routes = [(spec, sm.model_for(spec, args.model_or, args.model)) for spec in specs]
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    loads = [float(x) for x in args.load.split(",") if x.strip()]
+    plans = {}
+    for load in loads:
+        try:
+            plans[load] = replay.plan(
+                report.shapes, load=load, max_calls=args.max_calls,
+                window_minutes=args.window_minutes,
+            )
+        except ValueError as exc:
+            raise SystemExit(f"error: {exc}") from exc
+    for load, planned in plans.items():
+        tokens_in = sum(p.shape.input_tokens or 0 for p in planned)
+        tokens_out = sum(p.shape.output_tokens or 256 for p in planned)
+        print(
+            f"load {load:g}x: {len(planned)} calls over {planned[-1].offset_s / 60:.1f} min to "
+            f"{len(routes)} route(s), peak about "
+            f"{replay.peak_planned_concurrency(planned, load)} in flight per route, "
+            f"{tokens_in:,} input and up to {tokens_out:,} output tokens per route"
+        )
+    if not args.go:
+        print("dry run: nothing was sent. Add --go to replay (spend is capped by --max-usd).")
+        return 0
+    _require_keys({s.required_key_env() for s in specs})
+    prices = {}
+    if args.catalog:
+        from compound.estimate import Catalog
+
+        catalog = Catalog.load(args.catalog)
+        for spec, model in routes:
+            if spec.kind != "openrouter" or model not in catalog.models:
+                continue
+            want = "openrouter" if spec.upstream is None else spec.token
+            for card in catalog.cards(model):
+                if card.route == want and card.prompt is not None and card.completion:
+                    prices[spec.token] = (card.prompt, card.completion)
+    unpriced = [s.token for s, _ in routes if s.token not in prices]
+    if unpriced:
+        print(
+            "note: no catalog price for " + ", ".join(unpriced) + "; the spend cap reserves "
+            "the average cost of finished calls for these, so a first burst can overshoot it"
+        )
+    corpus = FillerCorpus.flores(Path(args.corpus_dir).expanduser())
+    out = Path(args.out)
+    for load, planned in plans.items():
+        print(f"replaying at {load:g}x ...")
+        result = replay.run_replay(
+            planned, routes, corpus, load=load, out_path=out,
+            mode=sm.REASONING_ON if args.reasoning == "on" else sm.REASONING_OFF,
+            max_usd=args.max_usd, timeout_s=args.timeout, prices=prices,
+        )
+        print(
+            f"  sent {result['sent']}, skipped {result['skipped_over_budget']} over budget, "
+            f"spent ${result['spent_usd']:.4f}"
+        )
+        if result["skipped_over_budget"]:
+            break
+    records = [_json.loads(line) for line in out.read_text().splitlines() if line.strip()]
+    print()
+    print(replay.format_summary(replay.summarize(records), reuse))
+    print(f"\nrecords: {out}")
+    return 0
+
+
 def cmd_ledger(args: argparse.Namespace) -> int:
     """Per-route read of a call ledger: cache hits, routing spread, cost."""
     from compound.core import call_ledger
@@ -1213,6 +1294,25 @@ def main() -> int:
     est.add_argument("--include-down", action="store_true", help="keep hosts marked down")
     est.add_argument("--json", help="write the full estimate as JSON")
 
+    rp = sub.add_parser(
+        "replay",
+        help="send a workload's sizes, rhythm and prefix structure to hosts (dry run unless --go)",
+    )
+    rp.add_argument("paths", nargs="+", help="shape, trace or request-log files")
+    rp.add_argument("--providers", required=True, help="provider tokens, as for compound serving")
+    rp.add_argument("--model", help="model id for doubleword and direct routes")
+    rp.add_argument("--model-or", help="OpenRouter slug for openrouter routes")
+    rp.add_argument("--load", default="1", help="comma-separated load factors, e.g. 1,2,5")
+    rp.add_argument("--max-calls", type=int, default=100, help="calls per load (default 100)")
+    rp.add_argument("--window-minutes", type=float, help="replay the busiest window this long")
+    rp.add_argument("--reasoning", choices=("on", "off"), default="off")
+    rp.add_argument("--max-usd", type=float, default=5.0, help="stop sending past this spend")
+    rp.add_argument("--catalog", help="price snapshot, so the cap can reserve per call")
+    rp.add_argument("--timeout", type=int, default=420)
+    rp.add_argument("--corpus-dir", default="~/.compound/corpus")
+    rp.add_argument("--out", default="artifacts/replay/results.jsonl")
+    rp.add_argument("--go", action="store_true", help="actually send (costs money)")
+
     run = sub.add_parser("run", help="run a task subset (dry run unless --go)")
     run.add_argument("benchmark", choices=sorted(BENCHMARKS))
     run.add_argument("--model", required=True, help="model id as the provider knows it")
@@ -1320,6 +1420,8 @@ def main() -> int:
         return cmd_ledger(args)
     if args.command == "shape":
         return cmd_shape(args)
+    if args.command == "replay":
+        return cmd_replay(args)
     if args.command == "prices":
         return cmd_prices(args)
     if args.command == "estimate":

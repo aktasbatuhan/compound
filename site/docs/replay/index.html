@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workload replay · Compound</title>
+<meta name="description" content="The cost estimate says what your traffic should cost on a
+host. compound replay checks it. It sends traffic with the same sizes, the
+same rhythm and the same prompt-prefix structure as yours, without your text,
+and measures what each host does with it: time to first token, decode speed,
+errors, rate">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="../../"><span class="glyph"></span>compound</a>
+    <nav class="nav-links">
+      <a href="../../docs/" class="cur">docs</a>
+      <a href="../../examples/">examples</a>
+      <a class="gh-btn" href="https://github.com/aktasbatuhan/compound">GitHub</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap docs-layout">
+  <nav class="docs-nav">
+    <a href="../../docs/">Overview</a>
+    <a href="../../docs/providers/">Providers</a>
+    <a href="../../docs/benchmarks/">Benchmarks</a>
+    <a href="../../docs/harbor/">Terminal-Bench 4.0</a>
+    <a href="../../docs/reports/">Reports and ledgers</a>
+    <a href="../../docs/serving/">Serving metrics</a>
+    <a href="../../docs/sdk/">Recording SDK</a>
+    <a href="../../docs/shape/">Workload shape</a>
+    <a href="../../docs/estimate/">Cost estimate</a>
+    <a href="../../docs/replay/" class="cur">Workload replay</a>
+    <a href="../../docs/traces/">Your own traces</a>
+    <a href="../../docs/config/">Configuration</a>
+    <a href="../../docs/development/">Implementation and development</a>
+    <a href="../../docs/reference/">CLI reference</a>
+  </nav>
+  <article class="docs-body">
+<h1 id="workload-replay">Workload replay</h1>
+<p>The <a href="../estimate/">cost estimate</a> says what your traffic should cost on a
+host. <code>compound replay</code> checks it. It sends traffic with the same sizes, the
+same rhythm and the same prompt-prefix structure as yours, without your text,
+and measures what each host does with it: time to first token, decode speed,
+errors, rate limits, cache hits and cost per call.</p>
+<pre><code class="language-bash"># see the plan first; nothing is sent without --go
+compound replay shapes.jsonl --providers openrouter/deepinfra/fp8,openrouter/novita/fp8 \
+    --model-or deepseek/deepseek-v4.1-flash --load 1,2,5 --window-minutes 10
+
+compound replay shapes.jsonl ... --catalog prices.json --max-usd 5 --go
+</code></pre>
+<p>It reads anything <a href="../shape/"><code>compound shape</code></a> reads, so a shape export or
+the SDK's records are enough. The prompts are never needed.</p>
+<h2 id="how-the-traffic-is-rebuilt">How the traffic is rebuilt</h2>
+<p>Every original message becomes one message of real prose in the call's
+language, sized to that message's share of the original input tokens. The
+prose comes from FLORES-101, so it tokenizes like real Turkish or English
+rather than like lorem ipsum. The text for each message is chosen from its
+prefix hash, which means calls that shared a prompt prefix in production share
+the exact same bytes in the replay, and a host's cache sees the reuse it would
+have seen. A random value unique to each run goes into that choice too, so one
+replay never warms the cache for the next.</p>
+<p>Calls leave on your original schedule, divided by the load factor, whether
+or not earlier calls have finished. That is how rate limits are met in real
+life, and it is why the concurrency in a replay comes from your traffic and
+not from a worker count. <code>--window-minutes</code> replays your busiest stretch
+rather than the quiet start of a log. Each call is sent to every route at the
+same moment, so hosts are compared at the same time of day.</p>
+<p>Output length cannot be forced. Each call asks for an answer of about the
+original length and caps <code>max_tokens</code> there, and the summary's size column
+shows how close the synthetic prompts came to the original token counts.</p>
+<h2 id="money">Money</h2>
+<p>A replay spends real money, so it is a dry run unless you pass <code>--go</code>, and
+<code>--max-usd</code> caps it. The cap counts calls still in flight: each call reserves
+the most it could cost (its input and full output budget at the listed price)
+before it is sent, and settles to the reported cost when it returns. That needs
+prices, so pass <code>--catalog</code> from <code>compound prices</code>. A route the catalog cannot
+price reserves the average cost of finished calls instead, which a first burst
+can overshoot, and the command says when that applies.</p>
+<h2 id="reading-the-result">Reading the result</h2>
+<p>The summary has one row per route and load factor: calls that worked, 429s
+and other errors kept apart, time to first token at the median and 90th
+percentile, decode speed, the share of input served from cache, and cost per
+call. The profile's prediction of what a cache could serve is printed under
+it, so the estimate and the measurement sit side by side.</p>
+  </article>
+</main>
+<footer>
+  <div class="wrap foot">
+    <span>compound (Apache-2.0)</span>
+    <span><a href="../../docs/">docs</a> <a href="../../examples/">examples</a> <a href="https://github.com/aktasbatuhan/compound/issues">issues</a></span>
+  </div>
+</footer>
+</body>
+</html>

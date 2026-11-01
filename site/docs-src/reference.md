@@ -353,6 +353,41 @@ options:
   --json JSON           write the full estimate as JSON
 ```
 
+## compound replay
+
+```text
+usage: compound replay [-h] --providers PROVIDERS [--model MODEL]
+                       [--model-or MODEL_OR] [--load LOAD]
+                       [--max-calls MAX_CALLS]
+                       [--window-minutes WINDOW_MINUTES]
+                       [--reasoning {on,off}] [--max-usd MAX_USD]
+                       [--catalog CATALOG] [--timeout TIMEOUT]
+                       [--corpus-dir CORPUS_DIR] [--out OUT] [--go]
+                       paths [paths ...]
+
+positional arguments:
+  paths                 shape, trace or request-log files
+
+options:
+  -h, --help            show this help message and exit
+  --providers PROVIDERS
+                        provider tokens, as for compound serving
+  --model MODEL         model id for doubleword and direct routes
+  --model-or MODEL_OR   OpenRouter slug for openrouter routes
+  --load LOAD           comma-separated load factors, e.g. 1,2,5
+  --max-calls MAX_CALLS
+                        calls per load (default 100)
+  --window-minutes WINDOW_MINUTES
+                        replay the busiest window this long
+  --reasoning {on,off}
+  --max-usd MAX_USD     stop sending past this spend
+  --catalog CATALOG     price snapshot, so the cap can reserve per call
+  --timeout TIMEOUT
+  --corpus-dir CORPUS_DIR
+  --out OUT
+  --go                  actually send (costs money)
+```
+
 ## compound (trace pipeline, TypeScript)
 
 ```text
