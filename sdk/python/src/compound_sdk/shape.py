@@ -122,6 +122,7 @@ def build_record(
         "task_key": task_key,
         "trace_id": trace_id,
         "message_count": len(messages),
+        "roles": [str(m.get("role") or "user") for m in messages],
         "tool_count": len(tools or []),
         "prompt_chars": chain[-1][1] if chain else 0,
         "lang_hint": lang_hint(_plain_text(messages)),

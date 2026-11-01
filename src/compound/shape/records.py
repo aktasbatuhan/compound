@@ -64,6 +64,9 @@ class CallShape:
     lang_hint: str | None = None
     #: ``[[hash, cumulative_chars], ...]``: tool list first, then each message.
     prefix_chain: list[list[Any]] | None = None
+    #: Role of each message (system, user, assistant, tool), so a replay can
+    #: rebuild the conversation's structure. Roles carry no content.
+    roles: list[str] | None = None
     status: str | None = None
     finish_reason: str | None = None
     source: str | None = None
@@ -163,6 +166,7 @@ def shape_from_messages(
     chain = prefix_chain(messages, tools, salt)
     return CallShape(
         message_count=len(messages),
+        roles=[str(m.get("role") or "user") for m in messages],
         tool_count=len(tools or []),
         prompt_chars=chain[-1][1] if chain else 0,
         lang_hint=lang_hint(_plain_text(messages)),
