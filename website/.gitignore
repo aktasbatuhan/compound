@@ -22,3 +22,4 @@ pnpm-debug.log*
 
 # copied from ../site/report at build time
 public/report/
+.vercel

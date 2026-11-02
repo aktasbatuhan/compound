@@ -23,6 +23,7 @@ const redirects = {
 };
 
 export default defineConfig({
+	site: 'https://compound-docs.vercel.app',
 	redirects,
 	integrations: [
 		starlight({
