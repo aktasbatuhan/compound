@@ -1,0 +1,37 @@
+---
+title: Overview
+description: Find out what your AI traffic would cost and how it would behave on other models and hosts, measured on your own workload.
+template: splash
+hero:
+  title: Compound
+  tagline: Find out what your AI traffic would cost and how it would behave on other models and hosts, measured on your own workload rather than on a leaderboard.
+  actions:
+    - text: Get started
+      link: /start/introduction/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/aktasbatuhan/compound
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+	<Card title="Bring your traffic" icon="document">
+		Read the calls you already have from traces, gateway logs or a small SDK, and keep their
+		shape without keeping their text. [Start here](/traffic/sdk/).
+	</Card>
+	<Card title="Price it" icon="seti:json">
+		Estimate the monthly bill on every model, host and batch tier, with the token cost of your
+		language counted. [Cost estimate](/price/estimate/).
+	</Card>
+	<Card title="Measure it" icon="rocket">
+		Replay your traffic's size and rhythm against real hosts and see speed, errors, rate limits
+		and cache hits. [Workload replay](/measure/replay/).
+	</Card>
+	<Card title="Prove it" icon="approve-check">
+		Play a candidate model through your real conversations with a simulated user and decide a
+		switch on evidence. [Simulated users](/prove/simulate/).
+	</Card>
+</CardGrid>

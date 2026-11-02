@@ -60,3 +60,10 @@ jobs:
         working-directory: website
       - run: npm run build
         working-directory: website
+      # An empty content folder still builds, so check the pages are really there.
+      - name: the site has its pages
+        working-directory: website/dist
+        run: |
+          for page in start/introduction start/quickstart price/estimate measure/replay prove/simulate reference/cli; do
+            test -f "$page/index.html" || { echo "missing $page"; exit 1; }
+          done

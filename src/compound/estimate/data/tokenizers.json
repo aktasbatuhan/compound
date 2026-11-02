@@ -1,7 +1,7 @@
 {
   "schema": "compound.tokenizer_ratios",
   "schema_version": 2,
-  "measured_at": "2026-10-31",
+  "measured_at": "2026-11-02",
   "method": "tokens per 1,000 characters of FLORES-101 devtest per language",
   "corpus": {
     "dataset": "gsarti/flores_101",
@@ -261,6 +261,46 @@
       },
       "tr": {
         "tokens_per_1k_chars": 283.18
+      }
+    },
+    "openrouter:anthropic/claude-sonnet-5.5": {
+      "en": {
+        "tokens_per_1k_chars": 325.14
+      },
+      "tr": {
+        "tokens_per_1k_chars": 537.2
+      }
+    },
+    "openrouter:anthropic/claude-opus-5.5": {
+      "en": {
+        "tokens_per_1k_chars": 325.14
+      },
+      "tr": {
+        "tokens_per_1k_chars": 537.2
+      }
+    },
+    "openrouter:anthropic/claude-haiku-5.5": {
+      "en": {
+        "tokens_per_1k_chars": 325.14
+      },
+      "tr": {
+        "tokens_per_1k_chars": 537.2
+      }
+    },
+    "openrouter:google/gemini-3.8-flash": {
+      "en": {
+        "tokens_per_1k_chars": 212.99
+      },
+      "tr": {
+        "tokens_per_1k_chars": 280.89
+      }
+    },
+    "openrouter:google/gemini-4-argon": {
+      "en": {
+        "tokens_per_1k_chars": 212.56
+      },
+      "tr": {
+        "tokens_per_1k_chars": 275.55
       }
     }
   }
