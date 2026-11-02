@@ -37,7 +37,7 @@ SRC = SITE / "docs-src"
 
 BENCH_SUBCOMMANDS = [
     "list", "prepare", "providers", "tasks", "run", "harbor", "serving", "ledger", "shape",
-    "prices", "estimate", "replay", "gateway-import", "gateway-activity",
+    "prices", "estimate", "replay", "gateway-import", "gateway-activity", "simulate",
 ]
 
 
