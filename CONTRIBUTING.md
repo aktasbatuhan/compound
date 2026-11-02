@@ -20,11 +20,14 @@ cp .env.example .env       # keys; never committed
 uv run ruff check src tests scripts
 uv run pytest -q
 bun run lint && bun run typecheck && bun test packages
-python3 scripts/build_site.py      # only if you touched site/docs-src
+uv run python scripts/build_cli_reference.py   # if you changed a command or flag
+(cd website && npm ci && npm run build)         # if you touched the docs
 ```
 
-CI runs the same commands. The site job fails if `site/docs/` is out of date
-with `site/docs-src/`, so commit the rebuilt pages with the source change.
+CI runs the same commands. The docs job fails if the generated CLI reference in
+`website/src/content/docs/reference/cli.md` is out of date with the commands, so
+commit it with the change. The docs themselves are Markdown under
+`website/src/content/docs/`.
 
 The bundled serving study rebuilds without dependencies or credentials:
 

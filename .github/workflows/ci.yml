@@ -37,17 +37,26 @@ jobs:
       - run: bun run typecheck
       - run: bun test packages
 
-  site:
-    name: site (docs build is current)
+  docs:
+    name: docs (reference is current and the site builds)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
       - run: uv python install 3.12
       - run: uv sync --extra dev
       - run: bun install --frozen-lockfile
-      - run: uv run --with markdown python scripts/build_site.py
+      - run: uv run python scripts/build_cli_reference.py
       - run: python3 scripts/serving_evidence.py --check
-      - name: built docs match sources
-        run: git diff --exit-code -- site/docs site/examples
+      - name: generated pages match the code
+        run: git diff --exit-code -- website/src/content/docs/reference/cli.md site/report
+      - run: npm ci
+        working-directory: website
+      - run: npm run build
+        working-directory: website

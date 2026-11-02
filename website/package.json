@@ -1,0 +1,19 @@
+{
+  "name": "compound-docs",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "predev": "node scripts/sync-static.mjs",
+    "dev": "astro dev",
+    "prebuild": "node scripts/sync-static.mjs",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.8",
+    "astro": "^7.2.10",
+    "sharp": "^0.35.3"
+  },
+  "private": true
+}

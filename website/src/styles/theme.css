@@ -1,0 +1,44 @@
+/* Black and white: neutral greys instead of Starlight's blue-tinted ones,
+   and the accent is ink rather than a colour. Dark is Starlight's default
+   (:root); light is :root[data-theme='light']. */
+:root {
+	--sl-color-accent-low: #262626;
+	--sl-color-accent: #e5e5e5;
+	--sl-color-accent-high: #ffffff;
+	--sl-color-white: #ffffff;
+	--sl-color-gray-1: #ededed;
+	--sl-color-gray-2: #c7c7c7;
+	--sl-color-gray-3: #9b9b9b;
+	--sl-color-gray-4: #6b6b6b;
+	--sl-color-gray-5: #3d3d3d;
+	--sl-color-gray-6: #1f1f1f;
+	--sl-color-black: #121212;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #ececec;
+	--sl-color-accent: #111111;
+	--sl-color-accent-high: #000000;
+	--sl-color-white: #111111;
+	--sl-color-gray-1: #1f1f1f;
+	--sl-color-gray-2: #3d3d3d;
+	--sl-color-gray-3: #5c5c5c;
+	--sl-color-gray-4: #8a8a8a;
+	--sl-color-gray-5: #c2c2c2;
+	--sl-color-gray-6: #ececec;
+	--sl-color-gray-7: #f6f6f6;
+	--sl-color-black: #ffffff;
+}
+
+/* Cards keep the black and white palette instead of cycling colours. */
+.card-grid > .card {
+	--sl-card-border: var(--sl-color-gray-4);
+	--sl-card-bg: var(--sl-color-gray-6);
+}
+
+/* Links read as links without colour. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+	color: var(--sl-color-white);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 3px;
+}
