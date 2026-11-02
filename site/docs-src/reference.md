@@ -417,6 +417,47 @@ options:
   --out OUT    write raw rows and the per-model summary as JSON
 ```
 
+## compound simulate
+
+```text
+usage: compound simulate [-h] [--task TASK] --incumbent INCUMBENT
+                         [--candidates CANDIDATES] [--user {scripted,llm}]
+                         [--user-model USER_MODEL]
+                         [--default-policy {recorded,mocked,live_read_only,blocked}]
+                         [--max-scenarios MAX_SCENARIOS]
+                         [--max-model-calls MAX_MODEL_CALLS] [--margin MARGIN]
+                         [--fidelity-threshold FIDELITY_THRESHOLD]
+                         [--min-scenarios MIN_SCENARIOS] [--max-usd MAX_USD]
+                         [--out OUT] [--go]
+                         paths [paths ...]
+
+positional arguments:
+  paths                 compound.trace files or folders
+
+options:
+  -h, --help            show this help message and exit
+  --task TASK           only traces with this task_key
+  --incumbent INCUMBENT
+                        PROVIDER=MODEL running in production
+  --candidates CANDIDATES
+                        comma-separated PROVIDER=MODEL to grade
+  --user {scripted,llm}
+  --user-model USER_MODEL
+                        PROVIDER=MODEL that plays the user with --user llm
+  --default-policy {recorded,mocked,live_read_only,blocked}
+                        replay policy for tools a trace does not set (default
+                        recorded)
+  --max-scenarios MAX_SCENARIOS
+  --max-model-calls MAX_MODEL_CALLS
+                        per episode (default 24)
+  --margin MARGIN       non-inferiority margin
+  --fidelity-threshold FIDELITY_THRESHOLD
+  --min-scenarios MIN_SCENARIOS
+  --max-usd MAX_USD
+  --out OUT
+  --go                  actually call models (costs money)
+```
+
 ## compound (trace pipeline, TypeScript)
 
 ```text

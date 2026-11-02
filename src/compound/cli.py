@@ -1005,6 +1005,87 @@ def cmd_gateway_activity(args: argparse.Namespace) -> int:
     return 0
 
 
+def _arm_specs(value: str) -> list[tuple[str, str]]:
+    """``TOKEN=MODEL[,TOKEN=MODEL...]`` into (provider token, model id) pairs."""
+    out = []
+    for item in (v.strip() for v in value.split(",")):
+        if not item:
+            continue
+        token, sep, model = item.partition("=")
+        if not sep or not token or not model:
+            raise SystemExit(f"error: expected PROVIDER=MODEL, got {item!r}")
+        out.append((token.strip(), model.strip()))
+    return out
+
+
+def cmd_simulate(args: argparse.Namespace) -> int:
+    """Grade candidates on real interactive traces with a simulated user."""
+    from collections import Counter
+
+    from compound.core.env import load_env
+    from compound.core.providers_registry import parse_provider
+    from compound.eval.simulation import LLMUser, ScriptedUser, provider_chat
+    from compound.eval.simulation.run import Arm, format_result, load_scenarios, simulate
+
+    scenarios = load_scenarios(args.paths, task_key=args.task, default_policy=args.default_policy)
+    if args.max_scenarios:
+        scenarios = scenarios[: args.max_scenarios]
+    if not scenarios:
+        raise SystemExit("error: no interactive compound.trace scenarios found")
+    incumbent = _arm_specs(args.incumbent)
+    candidates = _arm_specs(args.candidates or "")
+    if len(incumbent) != 1:
+        raise SystemExit("error: --incumbent takes exactly one PROVIDER=MODEL")
+    policies = Counter(p for s in scenarios for p in s.policies.values())
+    gaps = sum(1 for s in scenarios if s.notes)
+    turns = sum(len(s.user_turns) for s in scenarios) / len(scenarios)
+    actions = sum(len(s.reference_actions) for s in scenarios) / len(scenarios)
+    arms = len(candidates) + 1
+    print(
+        f"{len(scenarios)} scenarios, {turns:.1f} user turns and {actions:.1f} tool calls each "
+        f"on average; tool policies {dict(policies)}"
+    )
+    if gaps:
+        print(
+            f"  {gaps} scenarios have a tool call with no recorded result; the production "
+            "model will stop there too, which lowers fidelity"
+        )
+    print(
+        f"{arms} model(s) x {len(scenarios)} scenarios, at most {args.max_model_calls} model "
+        f"calls each ({arms * len(scenarios) * args.max_model_calls:,} at most), user: {args.user}"
+    )
+    if not args.go:
+        print("dry run: nothing was sent. Add --go to run (spend is capped by --max-usd).")
+        return 0
+    load_env()
+    config = _load_providers_config()
+
+    def arm(token: str, model: str) -> Arm:
+        spec = parse_provider(token, providers_config=config)
+        _require_keys({spec.required_key_env()})
+        return Arm(name=f"{token}={model}", model=model, chat=provider_chat(spec, model))
+
+    if args.user == "llm":
+        if not args.user_model:
+            raise SystemExit("error: --user llm needs --user-model PROVIDER=MODEL")
+        ((token, model),) = _arm_specs(args.user_model)
+        user_arm = arm(token, model)
+
+        def make_user():
+            return LLMUser(user_arm.chat)
+    else:
+        def make_user():
+            return ScriptedUser()
+
+    result = simulate(
+        scenarios, arm(*incumbent[0]), [arm(t, m) for t, m in candidates], make_user,
+        out_dir=Path(args.out), margin=args.margin, fidelity_threshold=args.fidelity_threshold,
+        min_n=args.min_scenarios, max_usd=args.max_usd, max_model_calls=args.max_model_calls,
+    )
+    print(format_result(result))
+    return 0
+
+
 def cmd_ledger(args: argparse.Namespace) -> int:
     """Per-route read of a call ledger: cache hits, routing spread, cost."""
     from compound.core import call_ledger
@@ -1422,6 +1503,30 @@ def main() -> int:
     ga.add_argument("--date", action="append", help="a UTC day (YYYY-MM-DD); repeatable")
     ga.add_argument("--out", help="write raw rows and the per-model summary as JSON")
 
+    sim = sub.add_parser(
+        "simulate",
+        help="grade candidates on real traces with a simulated user (dry run unless --go)",
+    )
+    sim.add_argument("paths", nargs="+", help="compound.trace files or folders")
+    sim.add_argument("--task", help="only traces with this task_key")
+    sim.add_argument("--incumbent", required=True, help="PROVIDER=MODEL running in production")
+    sim.add_argument("--candidates", help="comma-separated PROVIDER=MODEL to grade")
+    sim.add_argument("--user", choices=("scripted", "llm"), default="scripted")
+    sim.add_argument("--user-model", help="PROVIDER=MODEL that plays the user with --user llm")
+    sim.add_argument(
+        "--default-policy", default="recorded",
+        choices=("recorded", "mocked", "live_read_only", "blocked"),
+        help="replay policy for tools a trace does not set (default recorded)",
+    )
+    sim.add_argument("--max-scenarios", type=int)
+    sim.add_argument("--max-model-calls", type=int, default=24, help="per episode (default 24)")
+    sim.add_argument("--margin", type=float, default=0.05, help="non-inferiority margin")
+    sim.add_argument("--fidelity-threshold", type=float, default=0.8)
+    sim.add_argument("--min-scenarios", type=int, default=10)
+    sim.add_argument("--max-usd", type=float, default=10.0)
+    sim.add_argument("--out", default="artifacts/simulate")
+    sim.add_argument("--go", action="store_true", help="actually call models (costs money)")
+
     run = sub.add_parser("run", help="run a task subset (dry run unless --go)")
     run.add_argument("benchmark", choices=sorted(BENCHMARKS))
     run.add_argument("--model", required=True, help="model id as the provider knows it")
@@ -1529,6 +1634,8 @@ def main() -> int:
         return cmd_ledger(args)
     if args.command == "shape":
         return cmd_shape(args)
+    if args.command == "simulate":
+        return cmd_simulate(args)
     if args.command == "gateway-import":
         return cmd_gateway_import(args)
     if args.command == "gateway-activity":
