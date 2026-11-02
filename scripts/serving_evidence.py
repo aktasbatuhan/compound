@@ -900,7 +900,7 @@ def main() -> None:
     # Portable copy: all downloads embedded; documentation links resolve on any domain.
     standalone = outputs["index.html"].replace(
         "../../docs/serving/",
-        "https://github.com/aktasbatuhan/compound/blob/main/site/docs-src/serving.md",
+        "https://github.com/aktasbatuhan/compound/blob/main/website/src/content/docs/measure/serving.md",
     )
     for name, mime in [
         ("calls.jsonl.gz", "application/gzip"),

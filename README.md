@@ -4,7 +4,7 @@
 
 **Which host should serve your open model? Measure it on your workload.**
 
-[docs](https://compound-1js.pages.dev/docs/) · [examples](https://compound-1js.pages.dev/examples/)
+[docs](https://compound-docs.vercel.app/) &nbsp;&nbsp; [examples](https://compound-docs.vercel.app/start/examples/)
 
 <br>
 
@@ -27,7 +27,7 @@ rate per host with confidence intervals.
 
 ## See what changes across hosts
 
-[Explore the serving report](https://compound-1js.pages.dev/report/serving/):
+[Explore the serving report](https://compound-docs.vercel.app/report/serving/):
 DeepSeek V4 Flash across 14 serving routes and six request shapes. Compare
 first-token latency, generation speed, cache behavior, failures, and request cost.
 Then use Compound to run the same measurements on your own prompts.
@@ -109,9 +109,9 @@ Two runs made with Compound, published with every per-call record. They are smal
 (one model each, a handful of hosts) and most within-mode host differences do not reach
 significance, so read them as worked examples of a report, not a leaderboard.
 
-- [Same model, eight hosts](https://compound-1js.pages.dev/report/): `deepseek-v4-flash` on
+- [Same model, eight hosts](https://compound-docs.vercel.app/report/): `deepseek-v4-flash` on
   terminal-bench, 588 episodes. Quality tied across hosts; cost per resolved task did not.
-- [Pinned host vs router](https://compound-1js.pages.dev/report/tb4/): `glm-5.3-flash` on
+- [Pinned host vs router](https://compound-docs.vercel.app/report/tb4/): `glm-5.3-flash` on
   Terminal-Bench 4.0, five routes run concurrently, 1,801 traced calls. Stall rate and cost
   per prompt token by route, and where the router actually sent traffic.
 
@@ -162,7 +162,7 @@ bun test                  # TypeScript: ingest, curation, experiments, gate, das
 
 CI runs both suites plus lint and a docs-build check on every pull request. See
 [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and the
-[current implementation map](site/docs-src/development.md).
+[current implementation map](https://compound-docs.vercel.app/reference/development/).
 
 ## License
 
