@@ -8,9 +8,11 @@ model through OpenRouter's usage), then by its Hugging Face repo. Other OpenAI
 models fall back to ``o200k_base``, which matched the measured GPT models to
 within a few tokens in 27,000; the label still says "assumed".
 
-A model whose tokenizer is not public (Claude, Gemini) is unknown. Rather than
-pretend it matches, the estimate assumes it falls somewhere inside the range
-of the tokenizers we did measure, and widens the cost range accordingly.
+Closed models whose tokenizers are not public (Claude, Gemini) are measured
+from the native prompt tokens their providers bill through OpenRouter. A model
+nobody has measured is unknown: rather than pretend it matches, the estimate
+assumes it falls somewhere inside the range of the tokenizers we did measure,
+and widens the cost range accordingly.
 """
 
 from __future__ import annotations

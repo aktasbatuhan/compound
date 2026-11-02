@@ -202,3 +202,9 @@ def test_bundled_tokenizer_table_loads():
     newer = PriceCard(model="openai/gpt-7", route="openrouter", provider="x", prompt=1,
                       completion=1, tokenizer="GPT")
     assert table.density(newer, "tr").basis == "assumed"
+    claude = PriceCard(model="anthropic/claude-sonnet-5.5", route="openrouter", provider="x",
+                       prompt=1, completion=1, tokenizer="Claude")
+    assert table.density(claude, "tr").basis == "measured"
+    # Claude bills far more tokens for the same text, so moving off it shrinks counts.
+    low, high = table.ratio(claude, card, "en")
+    assert low == high and low < 0.7

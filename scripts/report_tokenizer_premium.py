@@ -27,6 +27,10 @@ PRICED = {
     "google/gemma-4-31b-it": "google/gemma-4-31B-it",
     "openai/gpt-6-sol": "openai:gpt-6-sol",
     "openai/gpt-5.4-mini": "openai:gpt-5.4-mini",
+    "anthropic/claude-sonnet-5.5": "openrouter:anthropic/claude-sonnet-5.5",
+    "anthropic/claude-haiku-5.5": "openrouter:anthropic/claude-haiku-5.5",
+    "google/gemini-4-argon": "openrouter:google/gemini-4-argon",
+    "google/gemini-3.8-flash": "openrouter:google/gemini-3.8-flash",
 }
 REFERENCE = "tiktoken:o200k_base"
 LANG_NAMES = {"tr": "Turkish", "ar": "Arabic", "az": "Azerbaijani", "kk": "Kazakh",
@@ -99,8 +103,9 @@ def main(study_path: str, prices_path: str) -> str:
         "",
         "- FLORES sentences are news and encyclopedia prose. Chat, legal and code-mixed "
         "text may tokenize differently.",
-        "- Claude and Gemini are not measured yet; their tokenizers are not public and "
-        "the paid count through OpenRouter was not run.",
+        "- Closed models (Claude, Gemini) are counted from the native prompt tokens their "
+        "providers bill through OpenRouter, in English and Turkish only. A spot check on "
+        "Claude Haiku 5.5 matched the charged cost exactly.",
         "- Token cost is not quality. A model that needs fewer tokens can still give "
         "worse Turkish answers.",
         f"- Paid calls for this study: ${study['paid_usd']:.2f}. OpenAI counts came from "
